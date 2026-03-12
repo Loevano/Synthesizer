@@ -51,6 +51,7 @@ Optional args:
 2. Rebuild a module: `cmake --build build --target highpass_module`.
 3. Replace or point to different module file.
 4. Host auto-reloads when the module file timestamp changes.
+5. Shortcut script: `./scripts/swap-module.sh highpass_module`
 
 Detailed workflow: `docs/MODULES.md`
 

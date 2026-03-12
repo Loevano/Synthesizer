@@ -1,29 +1,15 @@
 # Synthesizer (C++)
 
-Personal learning project to practice:
-- C++/OOP architecture
-- DSP fundamentals
-- Audio systems integration (driver callback + real-time path)
-- MIDI + OSC control
+This is now a beginner-friendly MVP focused on learning:
+- C++ classes and project structure
+- Basic DSP (oscillator + gain)
+- Audio callback flow
 
-## Project goals implemented
-- Main host executable with audio driver callback path
-- Swappable DSP modules built as dynamic libraries
-- Logging infrastructure with file + console output
-- MIDI input layer (CoreMIDI on macOS)
-- OSC UDP server with basic OSC packet parser
-- Git/GitHub workflow scaffolding
-
-## Structure
-- `src/main.cpp`: app lifecycle, argument parsing, runtime loop
-- `src/audio`: synth rendering and engine orchestration
-- `src/interfaces`: audio driver abstraction (`CoreAudio` implementation)
-- `src/midi`: MIDI input handling
-- `src/osc`: OSC UDP server + parser
-- `src/dsp`: oscillator + dynamic DSP module host loader
-- `modules/*`: swappable DSP modules (`lowpass`, `highpass`)
-- `scripts`: helper scripts for build/log/commit/repo setup
-- `docs`: architecture notes and dev log
+## Current minimal architecture
+- `src/main.cpp`: app lifecycle and audio start/stop
+- `src/audio/SynthEngine.cpp`: generates audio samples
+- `src/interfaces/AudioDriverCoreAudio.cpp`: CoreAudio driver backend
+- `src/core/Logger.cpp`: console + file logging
 
 ## Build
 ```bash
@@ -33,41 +19,19 @@ cd /Users/jens/Documents/Coding/Synthesizer
 
 ## Run
 ```bash
-./build/synth_host
+./scripts/run.sh
 ```
 
-Optional args:
+## Optional run args
 ```bash
-./build/synth_host \
-  --module build/modules/libhighpass_module.dylib \
-  --sample-rate 48000 \
-  --channels 2 \
-  --buffer 256 \
-  --osc-port 9000
+./scripts/run.sh --frequency 110 --gain 0.2 --sample-rate 48000 --buffer 256 --channels 2
 ```
 
-## Dynamic module swapping
-1. Start host with a module path (e.g. lowpass).
-2. Rebuild a module: `cmake --build build --target highpass_module`.
-3. Replace or point to different module file.
-4. Host auto-reloads when the module file timestamp changes.
-5. Shortcut script: `./scripts/swap-module.sh highpass_module`
+## Learning roadmap (next)
+1. Add ADSR envelope class
+2. Add MIDI note input
+3. Add one filter module
+4. Add polyphony (multiple voices)
 
-Detailed workflow: `docs/MODULES.md`
-
-## MIDI mappings
-- Note on/off: plays oscillator
-- CC7: master gain
-- CC74: cutoff (maps 20Hz to 20kHz)
-- CC71: resonance parameter passthrough
-
-## OSC mappings
-- `/noteOn` with `,if` (note, velocity)
-- `/noteOff` with `,i` (note)
-- `/cutoff` with `,f`
-- `/gain` with `,f`
-- `/resonance` with `,f`
-
-## Notes
-- Audio and MIDI runtime implementations are macOS-first in this scaffold.
-- The architecture is intentionally simple and explicit for learning.
+## Note
+Advanced files from the earlier scaffold are still in the repo, but they are not part of the default build path now.

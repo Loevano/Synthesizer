@@ -1,36 +1,23 @@
-# Architecture
+# Architecture (Current MVP)
 
-## Runtime graph
-`MIDI + OSC -> SynthEngine params -> Oscillator -> DSP ModuleHost -> AudioDriver callback -> Output`
+## Signal flow
+`SynthEngine -> AudioDriver callback -> speakers`
 
-## Core layers
-- `AudioEngine`: starts/stops audio backend and drives block rendering.
-- `SynthEngine`: simple mono voice (oscillator + envelope + gain).
-- `ModuleHost`: loads shared library modules and calls `processSample()`.
-- `MidiInput`: receives hardware/controller MIDI messages.
-- `OscServer`: listens on UDP and parses OSC messages.
-- `Logger`: thread-safe console + file logs.
+## Runtime pieces
+- `Logger`: writes to console and `logs/`
+- `SynthEngine`: oscillator + gain
+- `IAudioDriver` + `CoreAudioDriver`: audio device output
+- `main.cpp`: wiring and process lifecycle
 
-## DSP module contract
-All modules export three C symbols:
-- `createModule`
-- `destroyModule`
-- `getModuleName`
+## Why this is minimal
+This layout keeps the first learning loop small:
+- edit one DSP class
+- rebuild
+- run
+- hear result
 
-And implement `synth::dsp::IDspModule`:
-- `prepare(sampleRate)`
-- `processSample(input)`
-- `setParameter(name, value)`
-
-## Swapping module strategy
-- Modules are separate dynamic libraries in `build/modules/`.
-- Host tracks selected module file timestamp.
-- If changed, host unloads old library and loads new one.
-- This enables quick A/B filter iteration by rebuilding/replacing module binary.
-
-## Next learning extensions
-- Polyphony + voice allocation class
-- ADSR class and modulation matrix
-- Better realtime-safe lock-free parameter updates
-- Anti-aliased oscillators
-- More filters (SVF, ladder) and effects
+## Next step candidates
+- ADSR envelope
+- MIDI note input
+- Simple low-pass filter
+- Polyphony

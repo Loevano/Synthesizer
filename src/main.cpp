@@ -28,6 +28,8 @@ struct RuntimeConfig {
     // uint32_t = unsigned interger of 32 bits (max value of 4,294,967,295). Standard to declare in 32 bits.
     std::uint32_t channels = 2;
     std::uint32_t framesPerBuffer = 256;
+    std::uint32_t voiceCount = 16;
+    std::uint32_t oscillatorsPerVoice = 6;
     float frequency = 400.0f;
     float gain = 0.15f;
     synth::dsp::Waveform waveform = synth::dsp::Waveform::Sine;
@@ -67,6 +69,9 @@ void printUsage(const char* programName) {
         << "  --sample-rate <hz>     Sample rate, default 48000\n"
         << "  --channels <count>     Output channel count, default 2\n"
         << "  --buffer <frames>      Requested frames per buffer, default 256\n"
+        << "  --voices <count>       Voice capacity, default 16\n"
+        << "  --oscillators-per-voice <count>\n"
+        << "                         Oscillator slots per voice, default 6\n"
         << "  --frequency <hz>       Oscillator frequency, default 400\n"
         << "  --gain <0..1>          Output gain, default 0.15\n"
         << "  --waveform <name>      sine, square, triangle, saw, noise\n";
@@ -97,6 +102,10 @@ RuntimeConfig parseArgs(int argc, char** argv) {
             config.channels = static_cast<std::uint32_t>(std::stoul(argv[++i]));
         } else if (arg == "--buffer" && i + 1 < argc) {
             config.framesPerBuffer = static_cast<std::uint32_t>(std::stoul(argv[++i]));
+        } else if (arg == "--voices" && i + 1 < argc) {
+            config.voiceCount = static_cast<std::uint32_t>(std::stoul(argv[++i]));
+        } else if (arg == "--oscillators-per-voice" && i + 1 < argc) {
+            config.oscillatorsPerVoice = static_cast<std::uint32_t>(std::stoul(argv[++i]));
         } else if (arg == "--frequency" && i + 1 < argc) {
             config.frequency = std::stof(argv[++i]);
         } else if (arg == "--gain" && i + 1 < argc) {
@@ -142,6 +151,10 @@ int main(int argc, char** argv) {
 
     // Configure the synth object that will generate samples when the audio system asks for them.
     synth::audio::Synth synth;
+    synth::audio::SynthConfig synthConfig;
+    synthConfig.voiceCount = config.voiceCount;
+    synthConfig.oscillatorsPerVoice = config.oscillatorsPerVoice;
+    synth.configure(synthConfig);
     synth.setSampleRate(config.sampleRate);
     synth.setWaveform(config.waveform);
     synth.setFrequency(config.frequency);

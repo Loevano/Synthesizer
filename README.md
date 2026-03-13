@@ -7,13 +7,14 @@ This is now a beginner-friendly MVP focused on learning:
 
 ## Current minimal architecture
 - `src/main.cpp`: app lifecycle and audio start/stop
-- `src/audio/Synth.cpp`: top-level synth instrument
+- `src/audio/Synth.cpp`: top-level synth instrument and voice pool
+- `src/audio/Voice.cpp`: one voice with a pool of oscillator slots
 - `src/dsp/Oscillator.cpp`: waveform generator (`Sine`, `Square`, `Triangle`, `Saw`, `Noise`)
 - `src/interfaces/AudioDriverCoreAudio.cpp`: CoreAudio driver backend
 - `src/core/Logger.cpp`: console + file logging
 
 ## Current code path
-`main -> AudioDriver -> Synth -> Oscillator -> output buffer`
+`main -> AudioDriver -> Synth -> Voice -> Oscillator -> output buffer`
 
 ## Build
 ```bash
@@ -33,10 +34,18 @@ cd /Users/jens/Documents/Coding/Synthesizer
 
 ## Optional run args
 ```bash
-./scripts/run.sh --frequency 110 --gain 0.2 --waveform square --sample-rate 48000 --buffer 256 --channels 2
+./scripts/run.sh --frequency 110 --gain 0.2 --waveform square --sample-rate 48000 --buffer 256 --channels 2 --voices 16 --oscillators-per-voice 6
 ```
 
 Supported waveforms: `sine`, `square`, `triangle`, `saw`, `noise`
+
+Default capacity:
+- `16` voices
+- `6` oscillator slots per voice
+
+Default active sound:
+- only voice `0` is active
+- only oscillator slot `0` inside that voice is active
 
 ## Learning roadmap (next)
 1. Add ADSR envelope class

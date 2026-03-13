@@ -4,16 +4,45 @@
 
 namespace synth::audio {
 
+Synth::Synth() {
+    configure({});
+}
+
+void Synth::configure(const SynthConfig& config) {
+    const std::uint32_t voiceCount = std::max<std::uint32_t>(1, config.voiceCount);
+    const std::uint32_t oscillatorsPerVoice = std::max<std::uint32_t>(1, config.oscillatorsPerVoice);
+
+    voices_.clear();
+    voices_.reserve(voiceCount);
+
+    for (std::uint32_t i = 0; i < voiceCount; ++i) {
+        voices_.emplace_back();
+        auto& voice = voices_.back();
+        voice.configure(oscillatorsPerVoice);
+        voice.setSampleRate(sampleRate_);
+        voice.setFrequency(frequencyHz_.load());
+        voice.setWaveform(waveform_);
+        voice.setActive(i == 0);
+    }
+}
+
 void Synth::setSampleRate(double sampleRate) {
     if (sampleRate <= 0.0) {
         return;
     }
 
-    oscillator_.setSampleRate(sampleRate);
+    sampleRate_ = sampleRate;
+    for (auto& voice : voices_) {
+        voice.setSampleRate(sampleRate_);
+    }
 }
 
 void Synth::setFrequency(float frequencyHz) {
-    frequencyHz_.store(std::max(1.0f, frequencyHz));
+    const float clampedFrequency = std::max(1.0f, frequencyHz);
+    frequencyHz_.store(clampedFrequency);
+    for (auto& voice : voices_) {
+        voice.setFrequency(clampedFrequency);
+    }
 }
 
 void Synth::setGain(float gain) {
@@ -21,7 +50,10 @@ void Synth::setGain(float gain) {
 }
 
 void Synth::setWaveform(dsp::Waveform waveform) {
-    oscillator_.setWaveform(waveform);
+    waveform_ = waveform;
+    for (auto& voice : voices_) {
+        voice.setWaveform(waveform_);
+    }
 }
 
 void Synth::render(float* output, std::uint32_t frames, std::uint32_t channels) {
@@ -29,17 +61,13 @@ void Synth::render(float* output, std::uint32_t frames, std::uint32_t channels) 
         return;
     }
 
-    // Grab the current synth settings once for this whole audio block.
-    oscillator_.setFrequency(frequencyHz_.load());
+    const std::size_t sampleCount = static_cast<std::size_t>(frames) * channels;
+    std::fill(output, output + sampleCount, 0.0f);
+
     const float gain = gain_.load();
 
-    for (std::uint32_t frame = 0; frame < frames; ++frame) {
-        // Generate one sample for this moment in time...
-        const float sample = oscillator_.nextSample() * gain;
-        for (std::uint32_t channel = 0; channel < channels; ++channel) {
-            // ...then write that same sample into every channel for this frame.
-            output[(frame * channels) + channel] = sample;
-        }
+    for (auto& voice : voices_) {
+        voice.renderAdd(output, frames, channels, gain);
     }
 }
 

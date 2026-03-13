@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.5 - 2026-03-13
+- Added a `Voice` layer between `Synth` and `Oscillator`
+- Added configurable synth capacity with defaults of `16` voices and `6` oscillators per voice
+- Added `--voices` and `--oscillators-per-voice` init-time flags
+- Made only the first voice and first oscillator slot active by default
+
 ## 0.1.4 - 2026-03-13
 - Added `--help` output for the current CLI flags
 - Added `--waveform` flag with `sine`, `square`, `triangle`, `saw`, and `noise`

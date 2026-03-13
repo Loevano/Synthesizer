@@ -7,7 +7,9 @@
 
 namespace synth::audio {
 
-class SynthEngine {
+// Synth is the instrument object. It owns the DSP building blocks that
+// generate sound, starting with a single oscillator in this MVP.
+class Synth {
 public:
     void setSampleRate(double sampleRate);
     void setFrequency(float frequencyHz);

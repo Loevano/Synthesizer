@@ -6,7 +6,8 @@ enum class Waveform {
     Sine,
     Saw,
     Square,
-    Triangle
+    Triangle,
+    Noise
 };
 
 class Oscillator {

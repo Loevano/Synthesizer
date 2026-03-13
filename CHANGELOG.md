@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.3 - 2026-03-13
+- Removed leftover module-host, MIDI, OSC, and unused audio-wrapper code from the repo
+- Removed module example files and module swap script to match the simplified architecture
+- Updated docs to reflect the lean `main -> AudioDriver -> Synth -> Oscillator` path
+
+## 0.1.2 - 2026-03-13
+- Renamed `SynthEngine` to `Synth` to make the instrument role clearer
+- Added `Noise` as an oscillator waveform option
+- Updated comments and docs to reflect `main -> AudioDriver -> Synth -> Oscillator`
+
 ## 0.1.1 - 2026-03-12
 - Simplified default project to a beginner MVP
 - Reduced build path to logger, oscillator, synth engine, and CoreAudio driver

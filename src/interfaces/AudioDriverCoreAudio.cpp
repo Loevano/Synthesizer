@@ -29,6 +29,7 @@ public:
             return true;
         }
 
+        // Store the synth callback and config so CoreAudio can trigger them later.
         callback_ = std::move(callback);
         config_ = config;
 
@@ -76,6 +77,7 @@ public:
             return false;
         }
 
+        // Register the static bridge function CoreAudio will call on every audio block.
         AURenderCallbackStruct callbackStruct{};
         callbackStruct.inputProc = &CoreAudioDriver::renderCallback;
         callbackStruct.inputProcRefCon = this;
@@ -141,11 +143,13 @@ private:
         UInt32 /*inBusNumber*/,
         UInt32 inNumberFrames,
         AudioBufferList* ioData) {
+        // CoreAudio gives us a generic pointer back; cast it to our driver instance.
         auto* self = static_cast<CoreAudioDriver*>(inRefCon);
         if (self == nullptr || ioData == nullptr) {
             return noErr;
         }
 
+        // Forward the request into the instance method that adapts CoreAudio buffers.
         self->render(ioData, inNumberFrames);
         return noErr;
     }
@@ -159,6 +163,7 @@ private:
         }
 
         if (ioData->mNumberBuffers == 1) {
+            // Fast path: CoreAudio already gave us one interleaved float buffer.
             auto* output = static_cast<float*>(ioData->mBuffers[0].mData);
             callback_(output, frames, config_.channels);
             return;
@@ -172,8 +177,10 @@ private:
             return;
         }
 
+        // Slow path: render into a temporary interleaved buffer first...
         callback_(scratchBuffer_.data(), frames, config_.channels);
 
+        // ...then copy each channel into CoreAudio's separate output buffers.
         const UInt32 outputChannels = std::min(ioData->mNumberBuffers, config_.channels);
         for (UInt32 channel = 0; channel < outputChannels; ++channel) {
             auto* channelBuffer = static_cast<float*>(ioData->mBuffers[channel].mData);

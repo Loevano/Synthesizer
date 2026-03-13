@@ -1,4 +1,4 @@
-#include "synth/audio/SynthEngine.hpp"
+#include "synth/audio/Synth.hpp"
 #include "synth/core/Logger.hpp"
 #include "synth/interfaces/IAudioDriver.hpp"
 
@@ -26,7 +26,7 @@ struct RuntimeConfig {
     // uint32_t = unsigned interger of 32 bits (max value of 4,294,967,295). Standard to declare in 32 bits.
     std::uint32_t channels = 2;
     std::uint32_t framesPerBuffer = 256;
-    float frequency = 220.0f;
+    float frequency = 400.0f;
     float gain = 0.15f;
 };
 
@@ -57,42 +57,49 @@ RuntimeConfig parseArgs(int argc, char** argv) {
 
 }  // namespace
 
-// Main functions that gets called and gets handed the inputs of the OS
+// Program entry point. The OS passes command-line arguments in argc/argv.
 int main(int argc, char** argv) {
-    // Handles Ctrl + c to quit.
+    // Register signal handlers so Ctrl+C can stop the app cleanly.
     std::signal(SIGINT, handleSignal);
     std::signal(SIGTERM, handleSignal);
 
-    // Create a Runtime config and send the terminal inputs to the parseArgs function.
+    // Parse command-line flags into one config object for this run.
     const RuntimeConfig config = parseArgs(argc, argv);
 
-    // Logs events for debugging -> no toggle at runtime yet.
+    // Create logging before any audio setup so startup failures are visible.
     synth::core::Logger logger("logs");
     if (!logger.initialize()) {
         return 1;
     }
 
-    // Creates a driver and logs if driver is not created.
+    // Create the audio backend wrapper (CoreAudio on macOS).
     auto driver = synth::interfaces::createAudioDriver(logger);
     if (!driver) {
         logger.error("Could not create audio driver.");
         return 1;
     }
 
-    // Create obj synthEngine and audioCongfig and initialize with set and get functions.
-    synth::audio::SynthEngine synthEngine;
-    synthEngine.setSampleRate(config.sampleRate);
-    synthEngine.setFrequency(config.frequency);
-    synthEngine.setGain(config.gain);
+    // Configure the synth object that will generate samples when the audio system asks for them.
+    synth::audio::Synth synth;
+    synth.setSampleRate(config.sampleRate);
+    synth.setWaveform(synth::dsp::Waveform::Sine);
+    synth.setFrequency(config.frequency);
+    synth.setGain(config.gain);
 
     synth::interfaces::AudioConfig audioConfig;
     audioConfig.sampleRate = config.sampleRate;
     audioConfig.channels = config.channels;
     audioConfig.framesPerBuffer = config.framesPerBuffer;
-
     logger.info("Starting audio...");
-    if (!driver->start(audioConfig, [&](float* output, std::uint32_t frames, std::uint32_t channels) {
-            synthEngine.render(output, frames, channels);
+
+    // Flow:
+    // 1. main passes audio settings + a callback lambda into driver->start(...)
+    // 2. the driver stores that callback and registers its CoreAudio render callback
+    // 3. later, CoreAudio asks for audio and the driver calls this lambda
+    // 4. the lambda forwards the buffer pointer, frame count, and channel count into Synth::render(...)
+    if (!driver->start(
+        audioConfig, [&](float* output, std::uint32_t frames, std::uint32_t channels) {
+            synth.render(output, frames, channels);
         })) {
         logger.error("Audio failed to start.");
         return 1;

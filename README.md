@@ -7,9 +7,13 @@ This is now a beginner-friendly MVP focused on learning:
 
 ## Current minimal architecture
 - `src/main.cpp`: app lifecycle and audio start/stop
-- `src/audio/SynthEngine.cpp`: generates audio samples
+- `src/audio/Synth.cpp`: top-level synth instrument
+- `src/dsp/Oscillator.cpp`: waveform generator (`Sine`, `Square`, `Triangle`, `Saw`, `Noise`)
 - `src/interfaces/AudioDriverCoreAudio.cpp`: CoreAudio driver backend
 - `src/core/Logger.cpp`: console + file logging
+
+## Current code path
+`main -> AudioDriver -> Synth -> Oscillator -> output buffer`
 
 ## Build
 ```bash
@@ -29,9 +33,6 @@ cd /Users/jens/Documents/Coding/Synthesizer
 
 ## Learning roadmap (next)
 1. Add ADSR envelope class
-2. Add MIDI note input
-3. Add one filter module
+2. Add one filter class inside `Synth`
+3. Add MIDI note input
 4. Add polyphony (multiple voices)
-
-## Note
-Advanced files from the earlier scaffold are still in the repo, but they are not part of the default build path now.

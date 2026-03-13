@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(synth_core
     src/core/Logger.cpp
     src/dsp/Oscillator.cpp
-    src/audio/SynthEngine.cpp
+    src/audio/Synth.cpp
     src/interfaces/AudioDriverCoreAudio.cpp
 )
 

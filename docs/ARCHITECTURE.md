@@ -27,7 +27,7 @@ This layout keeps the first learning loop small:
 - hear result
 
 ## Next step candidates
-- ADSR envelope
-- MIDI note input
-- Simple low-pass filter
-- Polyphony
+- Platform + feature roadmap:
+  - [ROADMAP.md](/Users/jens/Documents/Coding/Synthesizer/docs/ROADMAP.md)
+- Target feature notes:
+  - [What should it do?.md](/Users/jens/Documents/Coding/Synthesizer/What%20should%20it%20do%3F.md)

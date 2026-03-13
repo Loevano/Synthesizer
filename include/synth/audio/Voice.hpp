@@ -11,6 +11,8 @@ struct OscillatorSlot {
     dsp::Oscillator oscillator;
     bool enabled = false;
     float gain = 1.0f;
+    bool relativeToVoice = true;
+    float frequencyValue = 1.0f;
 };
 
 class Voice {
@@ -19,16 +21,32 @@ public:
     void setSampleRate(double sampleRate);
     void setFrequency(float frequencyHz);
     void setWaveform(dsp::Waveform waveform);
+    void setOscillatorEnabled(std::uint32_t oscillatorIndex, bool enabled);
+    void setOscillatorGain(std::uint32_t oscillatorIndex, float gain);
+    void setOscillatorFrequency(std::uint32_t oscillatorIndex, float frequencyValue);
+    void setOscillatorRelativeToVoice(std::uint32_t oscillatorIndex, bool relativeToVoice);
+    void setOscillatorWaveform(std::uint32_t oscillatorIndex, dsp::Waveform waveform);
+    void setGain(float gain);
+    void setOutputChannelCount(std::uint32_t outputChannelCount);
+    void setOutputEnabled(std::uint32_t outputChannel, bool enabled);
     void setActive(bool active);
 
-    void renderAdd(float* output, std::uint32_t frames, std::uint32_t channels, float voiceGain);
+    void renderAdd(float* output,
+                   std::uint32_t frames,
+                   std::uint32_t channels,
+                   float masterGain,
+                   const float* outputModulation);
 
 private:
+    void updateOscillatorFrequency(OscillatorSlot& slot);
+
     std::vector<OscillatorSlot> oscillators_;
+    std::vector<bool> outputEnabled_;
     double sampleRate_ = 48000.0;
     float frequencyHz_ = 440.0f;
     dsp::Waveform waveform_ = dsp::Waveform::Sine;
     bool active_ = false;
+    float gain_ = 1.0f;
 };
 
 }  // namespace synth::audio

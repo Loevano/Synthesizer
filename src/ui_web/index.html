@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Synthesizer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <p class="eyebrow">Milestone 3</p>
+      <h1>Synthesizer</h1>
+      <p class="lede">
+        Browser-driven synth control inside a native macOS app. This milestone adds separate Synth, Voices,
+        and Oscillators pages backed by structured C++ state.
+      </p>
+    </header>
+
+    <nav class="page-tabs" aria-label="Pages">
+      <button type="button" class="page-tab is-active" data-page="settings">Settings</button>
+      <button type="button" class="page-tab" data-page="synth">Synth</button>
+      <button type="button" class="page-tab" data-page="lfo">LFO</button>
+      <button type="button" class="page-tab" data-page="voices">Voices</button>
+      <button type="button" class="page-tab" data-page="oscillators">Oscillators</button>
+    </nav>
+
+    <section id="page-settings" class="page is-active">
+      <div class="grid">
+        <article class="panel controls">
+          <div class="panel-header">
+            <h2>Settings</h2>
+            <button id="refreshButton" type="button" class="ghost-button">Refresh</button>
+          </div>
+
+          <div class="kv-list">
+            <div class="kv-row">
+              <span>Audio Backend</span>
+              <strong id="audioBackendValue">Loading…</strong>
+            </div>
+            <div class="kv-row">
+              <span>Output Device</span>
+              <strong id="outputDeviceValue">Loading…</strong>
+            </div>
+            <div class="kv-row">
+              <span>Audio Running</span>
+              <strong id="audioRunningValue">No</strong>
+            </div>
+            <div class="kv-row">
+              <span>MIDI Input</span>
+              <strong id="midiStatusValue">Off</strong>
+            </div>
+            <div class="kv-row">
+              <span>MIDI Sources</span>
+              <strong id="midiSourcesValue">0</strong>
+            </div>
+            <div class="kv-row">
+              <span>OSC</span>
+              <strong id="oscStatusValue">Off</strong>
+            </div>
+            <div class="kv-row">
+              <span>OSC Port</span>
+              <strong id="oscPortValue">9000</strong>
+            </div>
+            <div class="kv-row">
+              <span>Last MIDI Note</span>
+              <strong id="lastMidiNoteValue">None</strong>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Voice Count</span>
+            <input id="voiceCount" type="range" min="1" max="32" step="1">
+            <output id="voiceCountValue">16</output>
+          </label>
+
+          <label class="field">
+            <span>Oscillator Slots / Voice</span>
+            <input id="oscillatorsPerVoice" type="range" min="1" max="8" step="1">
+            <output id="oscillatorsPerVoiceValue">6</output>
+          </label>
+
+          <label class="field">
+            <span>Output Routing Policy</span>
+            <select id="routingPreset">
+              <option value="round-robin">Round Robin</option>
+              <option value="first-output">First Output</option>
+              <option value="all-outputs">All Outputs</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+        </article>
+
+        <article class="panel">
+          <h2>Audio Config</h2>
+          <div class="kv-list">
+            <div class="kv-row">
+              <span>Sample Rate</span>
+              <strong id="sampleRateValue">48000 Hz</strong>
+            </div>
+            <div class="kv-row">
+              <span>Output Channels</span>
+              <strong id="channelsValue">2</strong>
+            </div>
+            <div class="kv-row">
+              <span>Frames / Buffer</span>
+              <strong id="bufferValue">256</strong>
+            </div>
+          </div>
+          <p class="note">
+            This page is for app and host configuration. Sound-shaping controls stay on the `Synth`,
+            `Voices`, and `Oscillators` pages.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section id="page-synth" class="page">
+      <div class="grid">
+        <article class="panel controls">
+          <div class="panel-header">
+            <h2>Synth</h2>
+          </div>
+
+          <label class="field">
+            <span>Global Frequency</span>
+            <input id="frequency" type="range" min="20" max="20000" step="1">
+            <output id="frequencyValue">400 Hz</output>
+          </label>
+
+          <label class="field">
+            <span>Master Gain</span>
+            <input id="gain" type="range" min="0" max="1" step="0.01">
+            <output id="gainValue">0.15</output>
+          </label>
+
+          <label class="field">
+            <span>Global Waveform</span>
+            <select id="waveform">
+              <option value="sine">Sine</option>
+              <option value="square">Square</option>
+              <option value="triangle">Triangle</option>
+              <option value="saw">Saw</option>
+              <option value="noise">Noise</option>
+            </select>
+          </label>
+        </article>
+
+        <article class="panel">
+          <h2>Synth State</h2>
+          <p class="note">
+            This is the live state coming back from the native host. It is useful while the parameter model is
+            still evolving.
+          </p>
+          <pre id="stateView" class="state-view">Loading…</pre>
+        </article>
+      </div>
+    </section>
+
+    <section id="page-lfo" class="page">
+      <div class="grid">
+        <article class="panel controls">
+          <div class="panel-header">
+            <h2>LFO Core</h2>
+          </div>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input id="lfoEnabled" type="checkbox">
+            <span>Enable Global LFO</span>
+          </label>
+
+          <label class="field">
+            <span>LFO Waveform</span>
+            <select id="lfoWaveform">
+              <option value="sine">Sine</option>
+              <option value="triangle">Triangle</option>
+              <option value="saw-down">Saw Down</option>
+              <option value="saw-up">Saw Up</option>
+              <option value="random">Random</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Depth</span>
+            <input id="lfoDepth" type="range" min="0" max="1" step="0.01">
+            <output id="lfoDepthValue">0.50</output>
+          </label>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input id="lfoClockLinked" type="checkbox">
+            <span>Clock Linked</span>
+          </label>
+
+          <label class="field">
+            <span>Tempo</span>
+            <input id="lfoTempo" type="range" min="20" max="300" step="1">
+            <output id="lfoTempoValue">120 BPM</output>
+          </label>
+
+          <label class="field">
+            <span>Rate Multiplier</span>
+            <input id="lfoRateMultiplier" type="range" min="0.125" max="8" step="0.125">
+            <output id="lfoRateMultiplierValue">1.00x</output>
+          </label>
+
+          <label class="field">
+            <span>Fixed Frequency</span>
+            <input id="lfoFixedFrequency" type="range" min="0.01" max="40" step="0.01">
+            <output id="lfoFixedFrequencyValue">2.00 Hz</output>
+          </label>
+        </article>
+
+        <article class="panel controls">
+          <div class="panel-header">
+            <h2>Output Spread</h2>
+          </div>
+
+          <label class="field">
+            <span>Phase Spread</span>
+            <input id="lfoPhaseSpread" type="range" min="0" max="360" step="1">
+            <output id="lfoPhaseSpreadValue">0°</output>
+          </label>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input id="lfoPolarityFlip" type="checkbox">
+            <span>Polarity Flip Across Outputs</span>
+          </label>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input id="lfoUnlinkedOutputs" type="checkbox">
+            <span>Unlinked Outputs</span>
+          </label>
+
+          <p class="note">
+            This first LFO implementation modulates the summed oscillator output level per channel.
+            Phase spread and unlinked mode are therefore channel-aware immediately. Routing the LFO to
+            pitch or filters should happen later via a modulation matrix.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section id="page-voices" class="page">
+      <div class="panel panel-intro">
+        <h2>Voices</h2>
+        <p>
+          Each voice has its own active state, base frequency, gain, and output matrix. Routing is additive,
+          so a voice can send to more than one output channel at the same time. Manual routing changes switch
+          the synth routing preset to <strong>Custom</strong>.
+        </p>
+      </div>
+      <div id="voicesGrid" class="voices-grid"></div>
+    </section>
+
+    <section id="page-oscillators" class="page">
+      <div class="panel panel-intro">
+        <div class="panel-header">
+          <h2>Oscillators</h2>
+          <label class="select-field">
+            <span>Voice</span>
+            <select id="voiceSelect"></select>
+          </label>
+        </div>
+        <p>
+          Oscillator controls are scoped to the selected voice. Each slot can be enabled, gain staged, and given
+          its own waveform.
+        </p>
+      </div>
+      <div id="oscillatorRows" class="oscillator-rows"></div>
+    </section>
+
+    <section class="panel status-panel">
+      <h2>Bridge Status</h2>
+      <p id="statusText">Waiting for native bridge…</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

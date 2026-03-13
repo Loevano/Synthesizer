@@ -6,7 +6,9 @@
 #include <chrono>
 #include <cstdint>
 #include <csignal>
+#include <iostream>
 #include <string>
+#include <string_view>
 #include <thread>
 
 // use namespace to make all function and variable names unique
@@ -28,7 +30,47 @@ struct RuntimeConfig {
     std::uint32_t framesPerBuffer = 256;
     float frequency = 400.0f;
     float gain = 0.15f;
+    synth::dsp::Waveform waveform = synth::dsp::Waveform::Sine;
+    bool showHelp = false;
+    std::string errorMessage;
 };
+
+bool tryParseWaveform(std::string_view value, synth::dsp::Waveform& waveform) {
+    if (value == "sine") {
+        waveform = synth::dsp::Waveform::Sine;
+        return true;
+    }
+    if (value == "square") {
+        waveform = synth::dsp::Waveform::Square;
+        return true;
+    }
+    if (value == "triangle") {
+        waveform = synth::dsp::Waveform::Triangle;
+        return true;
+    }
+    if (value == "saw") {
+        waveform = synth::dsp::Waveform::Saw;
+        return true;
+    }
+    if (value == "noise") {
+        waveform = synth::dsp::Waveform::Noise;
+        return true;
+    }
+    return false;
+}
+
+void printUsage(const char* programName) {
+    std::cout
+        << "Usage: " << programName << " [options]\n"
+        << "Options:\n"
+        << "  --help                 Show this help text\n"
+        << "  --sample-rate <hz>     Sample rate, default 48000\n"
+        << "  --channels <count>     Output channel count, default 2\n"
+        << "  --buffer <frames>      Requested frames per buffer, default 256\n"
+        << "  --frequency <hz>       Oscillator frequency, default 400\n"
+        << "  --gain <0..1>          Output gain, default 0.15\n"
+        << "  --waveform <name>      sine, square, triangle, saw, noise\n";
+}
 
 // Frist line is a function declaration. The function is named RuntimeConfig and will return a struct of type RuntimeConfig with argumens int argc and char** argv.
 RuntimeConfig parseArgs(int argc, char** argv) {
@@ -39,7 +81,17 @@ RuntimeConfig parseArgs(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         // Converts inputs into a normal cpp string and fill the temp config.
         const std::string arg = argv[i];
-        if (arg == "--sample-rate" && i + 1 < argc) {
+        if (arg == "--help" || arg == "-h") {
+            config.showHelp = true;
+        } else if (arg == "--waveform" && i + 1 < argc) {
+            if (!tryParseWaveform(argv[++i], config.waveform)) {
+                config.errorMessage = "Invalid waveform. Use: sine, square, triangle, saw, or noise.";
+                return config;
+            }
+        } else if (arg == "--waveform") {
+            config.errorMessage = "Missing value for --waveform.";
+            return config;
+        } else if (arg == "--sample-rate" && i + 1 < argc) {
             config.sampleRate = std::stod(argv[++i]);
         } else if (arg == "--channels" && i + 1 < argc) {
             config.channels = static_cast<std::uint32_t>(std::stoul(argv[++i]));
@@ -65,6 +117,15 @@ int main(int argc, char** argv) {
 
     // Parse command-line flags into one config object for this run.
     const RuntimeConfig config = parseArgs(argc, argv);
+    if (!config.errorMessage.empty()) {
+        std::cerr << config.errorMessage << '\n';
+        printUsage(argv[0]);
+        return 1;
+    }
+    if (config.showHelp) {
+        printUsage(argv[0]);
+        return 0;
+    }
 
     // Create logging before any audio setup so startup failures are visible.
     synth::core::Logger logger("logs");
@@ -82,7 +143,7 @@ int main(int argc, char** argv) {
     // Configure the synth object that will generate samples when the audio system asks for them.
     synth::audio::Synth synth;
     synth.setSampleRate(config.sampleRate);
-    synth.setWaveform(synth::dsp::Waveform::Sine);
+    synth.setWaveform(config.waveform);
     synth.setFrequency(config.frequency);
     synth.setGain(config.gain);
 

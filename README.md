@@ -26,10 +26,17 @@ cd /Users/jens/Documents/Coding/Synthesizer
 ./scripts/run.sh
 ```
 
+## Help
+```bash
+./scripts/run.sh --help
+```
+
 ## Optional run args
 ```bash
-./scripts/run.sh --frequency 110 --gain 0.2 --sample-rate 48000 --buffer 256 --channels 2
+./scripts/run.sh --frequency 110 --gain 0.2 --waveform square --sample-rate 48000 --buffer 256 --channels 2
 ```
+
+Supported waveforms: `sine`, `square`, `triangle`, `saw`, `noise`
 
 ## Learning roadmap (next)
 1. Add ADSR envelope class

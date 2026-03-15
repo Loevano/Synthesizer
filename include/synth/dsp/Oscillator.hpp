@@ -19,6 +19,8 @@ public:
     float nextSample();
 
 private:
+    float maxStableFrequencyHz() const;
+
     double sampleRate_ = 44100.0;
     float frequencyHz_ = 440.0f;
     Waveform waveform_ = Waveform::Sine;

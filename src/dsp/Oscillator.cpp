@@ -7,6 +7,8 @@ namespace synth::dsp {
 
 namespace {
 constexpr double kTwoPi = 6.28318530717958647692;
+constexpr float kMinFrequencyHz = 1.0f;
+constexpr float kNyquistSafety = 0.49f;
 
 float nextNoiseSample() {
     thread_local std::minstd_rand generator{std::random_device{}()};
@@ -18,12 +20,13 @@ float nextNoiseSample() {
 void Oscillator::setSampleRate(double sampleRate) {
     if (sampleRate > 0.0) {
         sampleRate_ = sampleRate;
+        frequencyHz_ = std::clamp(frequencyHz_, kMinFrequencyHz, maxStableFrequencyHz());
     }
 }
 
 void Oscillator::setFrequency(float frequencyHz) {
     if (frequencyHz > 0.0f) {
-        frequencyHz_ = frequencyHz;
+        frequencyHz_ = std::clamp(frequencyHz, kMinFrequencyHz, maxStableFrequencyHz());
     }
 }
 
@@ -34,8 +37,11 @@ void Oscillator::setWaveform(Waveform waveform) {
 float Oscillator::nextSample() {
     const double phaseIncrement = kTwoPi * static_cast<double>(frequencyHz_) / sampleRate_;
     phase_ += phaseIncrement;
-    if (phase_ >= kTwoPi) {
+    while (phase_ >= kTwoPi) {
         phase_ -= kTwoPi;
+    }
+    while (phase_ < 0.0) {
+        phase_ += kTwoPi;
     }
 
     switch (waveform_) {
@@ -55,6 +61,10 @@ float Oscillator::nextSample() {
         default:
             return 0.0f;
     }
+}
+
+float Oscillator::maxStableFrequencyHz() const {
+    return std::max(kMinFrequencyHz, static_cast<float>(sampleRate_ * kNyquistSafety));
 }
 
 }  // namespace synth::dsp

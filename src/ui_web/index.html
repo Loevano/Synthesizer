@@ -1,0 +1,836 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Synthesizer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div class="hero__copy">
+        <p class="eyebrow">Multichannel Framework Scaffold</p>
+        <h1>Audio Engine, two mixers, playable sources, and per-output processors.</h1>
+        <p class="lede">
+          The app now exposes the framework shape directly: CoreAudio and engine config at the top, a source mixer
+          for performance, an output mixer for system tuning, `Robin` as the main live synth, `Test` as a simplified
+          debug source, and scaffold slots for `Decor`, `Pieces`, and linked-control FX.
+        </p>
+      </div>
+
+      <div class="hero__stats">
+        <article class="stat-chip">
+          <span>Outputs</span>
+          <strong id="heroOutputCount">0</strong>
+        </article>
+        <article class="stat-chip">
+          <span>Robin Voices</span>
+          <strong id="heroVoiceCount">0</strong>
+        </article>
+        <article class="stat-chip">
+          <span>Routing</span>
+          <strong id="heroRoutingValue">Loading...</strong>
+        </article>
+      </div>
+    </header>
+
+    <nav class="page-tabs" aria-label="Pages">
+      <button type="button" class="page-tab is-active" data-page="program">Program</button>
+      <button type="button" class="page-tab" data-page="midi">MIDI</button>
+      <button type="button" class="page-tab" data-page="source-mixer">Source Mixer</button>
+      <button type="button" class="page-tab" data-page="output-mixer">Output Mixer</button>
+      <button type="button" class="page-tab" data-page="robin">Robin</button>
+      <button type="button" class="page-tab" data-page="test">Test</button>
+      <button type="button" class="page-tab" data-page="decor">Decor</button>
+      <button type="button" class="page-tab" data-page="pieces">Pieces</button>
+      <button type="button" class="page-tab" data-page="fx">FX</button>
+      <button type="button" class="page-tab" data-page="lfo">LFO</button>
+    </nav>
+
+    <section id="page-program" class="page is-active">
+      <div class="grid">
+        <article class="panel panel--wide">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Framework View</p>
+              <h2>Signal Stack</h2>
+            </div>
+            <button id="refreshButton" type="button" class="ghost-button">Refresh</button>
+          </div>
+
+          <div class="stack-diagram">
+            <article class="stack-card stack-card--live">
+              <div class="stack-card__header">
+                <h3>1. Audio Engine</h3>
+                <span class="status-tag status-tag--live">Live</span>
+              </div>
+              <p>Owns CoreAudio, sample rate, output count, buffer size, MIDI, OSC, and the native bridge.</p>
+            </article>
+
+            <article class="stack-card stack-card--live">
+              <div class="stack-card__header">
+                <h3>2. Source Mixer</h3>
+                <span class="status-tag status-tag--live">Robin + Test Live</span>
+              </div>
+              <p>Performance VCA layer. Levels whole devices instead of individual outputs.</p>
+            </article>
+
+            <article class="stack-card stack-card--live">
+              <div class="stack-card__header">
+                <h3>3. Output Mixer</h3>
+                <span class="status-tag status-tag--live">Trim + Delay + EQ Live</span>
+              </div>
+              <p>Per-output trim, delay, and fixed-band EQ are active now.</p>
+            </article>
+
+            <article class="stack-card stack-card--live">
+              <div class="stack-card__header">
+                <h3>4. Sound Sources</h3>
+                <span class="status-tag status-tag--live">Robin + Test Live</span>
+              </div>
+              <p>`Robin` is the main source, `Test` is a simplified debug tone, and `Decor` / `Pieces` stay visible as placeholders.</p>
+            </article>
+
+            <article class="stack-card stack-card--planned">
+              <div class="stack-card__header">
+                <h3>5. Sound Processors</h3>
+                <span class="status-tag status-tag--planned">Scaffold</span>
+              </div>
+              <p>FX are modeled as per-output inserts with linked global controls and per-output route switches.</p>
+            </article>
+          </div>
+        </article>
+
+        <article class="panel controls">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Engine State</p>
+              <h2>Program</h2>
+            </div>
+          </div>
+
+          <div class="kv-list">
+            <div class="kv-row">
+              <span>Audio Backend</span>
+              <strong id="audioBackendValue">Loading...</strong>
+            </div>
+            <div class="kv-row">
+              <span>Output Device</span>
+              <strong id="outputDeviceValue">Loading...</strong>
+            </div>
+            <div class="kv-row">
+              <span>Audio Running</span>
+              <strong id="audioRunningValue">No</strong>
+            </div>
+            <div class="kv-row">
+              <span>Sample Rate</span>
+              <strong id="sampleRateValue">48000 Hz</strong>
+            </div>
+            <div class="kv-row">
+              <span>Output Channels</span>
+              <strong id="channelsValue">2</strong>
+            </div>
+            <div class="kv-row">
+              <span>Frames / Buffer</span>
+              <strong id="bufferValue">256</strong>
+            </div>
+            <div class="kv-row">
+              <span>MIDI Input</span>
+              <strong id="midiStatusValue">Off</strong>
+            </div>
+            <div class="kv-row">
+              <span>MIDI Sources</span>
+              <strong id="midiSourcesValue">0</strong>
+            </div>
+            <div class="kv-row">
+              <span>MIDI Connected</span>
+              <strong id="midiConnectedSourcesValue">0</strong>
+            </div>
+            <div class="kv-row">
+              <span>OSC</span>
+              <strong id="oscStatusValue">Off</strong>
+            </div>
+            <div class="kv-row">
+              <span>OSC Port</span>
+              <strong id="oscPortValue">9000</strong>
+            </div>
+            <div class="kv-row">
+              <span>Last MIDI Note</span>
+              <strong id="lastMidiNoteValue">None</strong>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Output Device</span>
+            <select id="engineOutputDevice"></select>
+          </label>
+
+          <label class="field">
+            <span>Outputs Used</span>
+            <select id="engineOutputChannels"></select>
+          </label>
+
+          <p class="note">
+            Changing the output device or output count restarts the audio engine and resizes the multichannel graph.
+          </p>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Debug Surface</p>
+              <h2>Nested State</h2>
+            </div>
+          </div>
+          <p class="note">
+            The controller now returns scaffold state grouped as `engine`, `graph`, `sourceMixer`,
+            `outputMixer`, `sources`, and `processors`.
+          </p>
+          <pre id="stateView" class="state-view">Loading...</pre>
+        </article>
+
+      </div>
+    </section>
+
+    <section id="page-midi" class="page">
+      <div class="panel panel-intro">
+        <h2>MIDI</h2>
+        <p>
+          Select which incoming CoreMIDI devices are connected to the host, then decide which synths each device
+          should drive. `Robin` and `Test` are routeable now; `Decor` and `Pieces` stay visible as future targets.
+        </p>
+      </div>
+      <div id="midiDeviceGrid" class="output-overview-grid"></div>
+    </section>
+
+    <section id="page-source-mixer" class="page">
+      <div class="panel panel-intro">
+        <h2>Source Mixer</h2>
+        <p>
+          This is the performance mixer. It controls the level of complete devices before they hit the output
+          correction stage. `Robin` and `Test` are active today; `Decor` and `Pieces` remain scaffold slots.
+        </p>
+      </div>
+      <div id="sourceMixerGrid" class="output-overview-grid"></div>
+    </section>
+
+    <section id="page-output-mixer" class="page">
+      <div class="panel panel-intro">
+        <h2>Output Mixer</h2>
+        <p>
+          This is the system engineer layer. Output trim, delay, and fixed-band EQ are active in the DSP path now.
+        </p>
+      </div>
+      <div id="outputMixerGrid" class="output-overview-grid"></div>
+    </section>
+
+    <section id="page-robin" class="page">
+      <div class="panel panel-intro">
+        <div class="panel-header">
+          <div>
+            <h2>Robin</h2>
+            <p>
+              Dial in one master sound first, then steer variation with routing and local voice overrides.
+            </p>
+          </div>
+          <span id="robinLinkBadge" class="status-tag status-tag--live">Master bank linked</span>
+        </div>
+        <p id="robinLinkNote" class="note">
+          Today the amp envelope and oscillator bank stay master-linked across voices. Section modulators and
+          per-section unlink are the next layer.
+        </p>
+      </div>
+
+      <div class="grid">
+        <article class="panel controls">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Master Layout</p>
+              <h2>Voice Scaffold</h2>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Voice Count</span>
+            <input id="voiceCount" type="range" min="1" max="32" step="1">
+            <output id="voiceCountValue">16</output>
+          </label>
+
+          <label class="field">
+            <span>Oscillator Slots / Voice</span>
+            <input id="oscillatorsPerVoice" type="range" min="1" max="8" step="1">
+            <output id="oscillatorsPerVoiceValue">6</output>
+          </label>
+
+          <label class="field">
+            <span>Output Routing Algorithm</span>
+            <select id="routingPreset">
+              <option value="forward">Forward</option>
+              <option value="backward">Backward</option>
+              <option value="random">Random</option>
+              <option value="round-robin">Round Robin</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+
+          <p class="note">
+            This chooser only controls how notes are distributed across outputs. Future section algorithms should sit
+            on top of the master sound as modulators, not replace it.
+          </p>
+        </article>
+
+        <article class="panel controls">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Master Pitch</p>
+              <h2>Root + Shared Shape</h2>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Master Root Frequency</span>
+            <input id="frequency" type="range" min="20" max="20000" step="1">
+            <output id="frequencyValue">400 Hz</output>
+          </label>
+
+          <label class="field">
+            <span>Master Waveform</span>
+            <select id="waveform">
+              <option value="sine">Sine</option>
+              <option value="square">Square</option>
+              <option value="triangle">Triangle</option>
+              <option value="saw">Saw</option>
+              <option value="noise">Noise</option>
+            </select>
+          </label>
+
+          <p class="note">
+            Robin source gain lives on the Source Mixer page. These master values push across all voices before any
+            local overrides.
+          </p>
+        </article>
+
+        <article class="panel controls">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Master ENV VCA</p>
+              <h2>Amp Contour</h2>
+            </div>
+            <span class="status-tag status-tag--live">Linked Across Voices</span>
+          </div>
+
+          <label class="field">
+            <span>Attack</span>
+            <input id="robinAttack" type="range" min="0" max="5000" step="1">
+            <output id="robinAttackValue">10 ms</output>
+          </label>
+
+          <label class="field">
+            <span>Decay</span>
+            <input id="robinDecay" type="range" min="0" max="5000" step="1">
+            <output id="robinDecayValue">80 ms</output>
+          </label>
+
+          <label class="field">
+            <span>Sustain</span>
+            <input id="robinSustain" type="range" min="0" max="1" step="0.01">
+            <output id="robinSustainValue">0.80</output>
+          </label>
+
+          <label class="field">
+            <span>Release</span>
+            <input id="robinRelease" type="range" min="0" max="5000" step="1">
+            <output id="robinReleaseValue">200 ms</output>
+          </label>
+
+          <p class="note">
+            This is the shared amplitude contour today. VCF, ENV VCF, and section-specific amounts are still planned.
+          </p>
+        </article>
+      </div>
+
+      <article class="panel panel--wide robin-model-panel">
+        <div class="panel-header">
+          <div>
+            <p class="section-kicker">Control Model</p>
+            <h2>Master, Modulate, Override</h2>
+          </div>
+        </div>
+        <div class="robin-section-grid">
+          <article class="robin-section-card robin-section-card--live">
+            <div class="robin-section-card__header">
+              <h3>Master Sections Live Now</h3>
+              <span class="status-tag status-tag--live">Current</span>
+            </div>
+            <p>
+              Dial in the core sound once, then let Robin mirror that shape across the active voice pool.
+            </p>
+            <div class="token-row">
+              <span class="token">Master Pitch</span>
+              <span class="token">ENV VCA</span>
+              <span class="token">Oscillator Bank</span>
+              <span class="token">Output Routing</span>
+            </div>
+          </article>
+
+          <article class="robin-section-card robin-section-card--planned">
+            <div class="robin-section-card__header">
+              <h3>Modulators Next</h3>
+              <span class="status-tag status-tag--planned">Planned</span>
+            </div>
+            <p>
+              Spread algorithms should add offsets on top of the master values so big master moves still read
+              musically.
+            </p>
+            <div class="token-row">
+              <span class="token">Linear Ramps</span>
+              <span class="token">Section Spread</span>
+              <span class="token">Offset Modulation</span>
+            </div>
+          </article>
+
+          <article class="robin-section-card robin-section-card--live">
+            <div class="robin-section-card__header">
+              <h3>Local Overrides</h3>
+              <span class="status-tag status-tag--warning">Partial</span>
+            </div>
+            <p>
+              Voice enable, root, level, and manual output targets already exist. Section unlink will tighten this
+              into a cleaner override layer later.
+            </p>
+            <div class="token-row">
+              <span class="token">Voice Enable</span>
+              <span class="token">Voice Root</span>
+              <span class="token">Voice Level</span>
+              <span class="token">Output Map</span>
+            </div>
+          </article>
+        </div>
+      </article>
+
+      <div class="panel panel-intro">
+        <div class="panel-header">
+          <div>
+            <p class="section-kicker">Local Layer</p>
+            <h2>Voice Overrides</h2>
+          </div>
+          <span class="status-tag status-tag--live">Per Voice Overrides</span>
+        </div>
+        <p>
+          Each voice already exposes its own active state, root frequency, level, and output assignment. Manual
+          output edits switch the routing algorithm to <strong>Custom</strong>. Future section unlink can land here
+          without breaking the master-first workflow above.
+        </p>
+      </div>
+      <div id="voicesGrid" class="voices-grid"></div>
+
+      <article class="panel panel--wide">
+        <div class="panel-header">
+          <div>
+            <p class="section-kicker">Master OSC</p>
+            <h2>Oscillator Bank</h2>
+          </div>
+          <span class="status-tag status-tag--live">Linked By Default</span>
+        </div>
+        <p class="note">
+          Edit the shared oscillator bank from one surface. If voices have drifted apart, touching a row here pushes
+          that row back across the full voice stack.
+        </p>
+        <div id="oscillatorRows" class="oscillator-bank"></div>
+      </article>
+    </section>
+
+    <section id="page-test" class="page">
+      <div class="grid">
+        <article class="panel panel--wide">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Debug Source</p>
+              <h2>Test</h2>
+            </div>
+            <span class="status-tag status-tag--live">Live</span>
+          </div>
+          <p class="note">
+            Test is a simplified single-oscillator source for checking routing, output trims, speaker wiring, and
+            general engine behavior without Robin&apos;s full voice engine.
+          </p>
+        </article>
+
+        <article class="panel controls">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Single Voice</p>
+              <h2>Debug Controls</h2>
+            </div>
+          </div>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input id="testActive" type="checkbox">
+            <span>Continuous Tone Active</span>
+          </label>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input id="testMidiEnabled" type="checkbox">
+            <span>Respond to MIDI</span>
+          </label>
+
+          <label class="field">
+            <span>Frequency</span>
+            <input id="testFrequency" type="range" min="20" max="20000" step="1">
+            <output id="testFrequencyValue">220 Hz</output>
+          </label>
+
+          <label class="field">
+            <span>Internal Gain</span>
+            <input id="testGain" type="range" min="0" max="1" step="0.01">
+            <output id="testGainValue">0.40</output>
+          </label>
+
+          <label class="field">
+            <span>Waveform</span>
+            <select id="testWaveform">
+              <option value="sine">Sine</option>
+              <option value="square">Square</option>
+              <option value="triangle">Triangle</option>
+              <option value="saw">Saw</option>
+              <option value="noise">Noise</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Attack</span>
+            <input id="testAttack" type="range" min="0" max="5000" step="1">
+            <output id="testAttackValue">10 ms</output>
+          </label>
+
+          <label class="field">
+            <span>Decay</span>
+            <input id="testDecay" type="range" min="0" max="5000" step="1">
+            <output id="testDecayValue">80 ms</output>
+          </label>
+
+          <label class="field">
+            <span>Sustain</span>
+            <input id="testSustain" type="range" min="0" max="1" step="0.01">
+            <output id="testSustainValue">0.80</output>
+          </label>
+
+          <label class="field">
+            <span>Release</span>
+            <input id="testRelease" type="range" min="0" max="5000" step="1">
+            <output id="testReleaseValue">200 ms</output>
+          </label>
+
+          <p class="note">
+            Source level still lives on the Source Mixer page. This source now has a simple shared envelope so MIDI
+            note-on and note-off can be tested without the full Robin voice system.
+          </p>
+        </article>
+
+        <article class="panel panel--wide">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Manual Routing</p>
+              <h2>Output Targets</h2>
+            </div>
+          </div>
+          <p class="note">
+            Select which outputs receive the debug tone. This is useful for verifying channel mapping, output mixer
+            trims, and speaker-by-speaker behavior.
+          </p>
+          <div id="testOutputGrid" class="output-overview-grid"></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="page-decor" class="page">
+      <div class="grid">
+        <article class="panel panel--wide">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Sound Source</p>
+              <h2>Decor</h2>
+            </div>
+            <span class="status-tag status-tag--planned">Scaffold Only</span>
+          </div>
+          <p class="note">
+            Decor should create a large immersive field by matching voice count to output count and locking each
+            voice to a single speaker.
+          </p>
+        </article>
+
+        <article class="panel">
+          <div class="kv-list">
+            <div class="kv-row">
+              <span>Voice Count</span>
+              <strong id="decorVoiceCountValue">Matches outputs</strong>
+            </div>
+            <div class="kv-row">
+              <span>Routing</span>
+              <strong>1 voice -> 1 output</strong>
+            </div>
+            <div class="kv-row">
+              <span>Status</span>
+              <strong>State scaffold only</strong>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Expected Layout</p>
+              <h2>Output Map</h2>
+            </div>
+          </div>
+          <div id="decorOutputGrid" class="output-overview-grid"></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="page-pieces" class="page">
+      <div class="grid">
+        <article class="panel panel--wide">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Sound Source</p>
+              <h2>Pieces</h2>
+            </div>
+            <span class="status-tag status-tag--planned">Scaffold Only</span>
+          </div>
+          <p class="note">
+            Pieces is reserved for a playable granular source that routes voices algorithmically across the speaker
+            system.
+          </p>
+        </article>
+
+        <article class="panel">
+          <div class="kv-list">
+            <div class="kv-row">
+              <span>Voice Count</span>
+              <strong id="piecesVoiceCountValue">Follows Robin for now</strong>
+            </div>
+            <div class="kv-row">
+              <span>Routing</span>
+              <strong>Algorithmic</strong>
+            </div>
+            <div class="kv-row">
+              <span>Status</span>
+              <strong>Granular engine pending</strong>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="page-fx" class="page">
+      <div class="grid">
+        <article class="panel controls">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Linked Controls</p>
+              <h2>Saturator</h2>
+            </div>
+            <span class="status-tag status-tag--planned">Scaffold</span>
+          </div>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input id="fxSaturatorEnabled" type="checkbox">
+            <span>Enable Saturator</span>
+          </label>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input id="fxSaturatorLinkedLevels" type="checkbox">
+            <span>Link In / Out Levels</span>
+          </label>
+
+          <label class="field">
+            <span>Input Level</span>
+            <input id="fxSaturatorInputLevel" type="range" min="0" max="2" step="0.01">
+            <output id="fxSaturatorInputLevelValue">1.00</output>
+          </label>
+
+          <label class="field">
+            <span>Output Level</span>
+            <input id="fxSaturatorOutputLevel" type="range" min="0" max="2" step="0.01">
+            <output id="fxSaturatorOutputLevelValue">1.00</output>
+          </label>
+        </article>
+
+        <article class="panel controls">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Linked Controls</p>
+              <h2>Chorus</h2>
+            </div>
+            <span class="status-tag status-tag--live">Live</span>
+          </div>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input id="fxChorusEnabled" type="checkbox">
+            <span>Enable Chorus</span>
+          </label>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input id="fxChorusLinkedControls" type="checkbox">
+            <span>Link Chorus Controls</span>
+          </label>
+
+          <label class="field">
+            <span>Depth</span>
+            <input id="fxChorusDepth" type="range" min="0" max="1" step="0.01">
+            <output id="fxChorusDepthValue">0.50</output>
+          </label>
+
+          <label class="field">
+            <span>Speed</span>
+            <input id="fxChorusSpeed" type="range" min="0.01" max="20" step="0.01">
+            <output id="fxChorusSpeedValue">0.25 Hz</output>
+          </label>
+
+          <label class="field">
+            <span>Phase Spread</span>
+            <input id="fxChorusPhaseSpread" type="range" min="0" max="360" step="1">
+            <output id="fxChorusPhaseSpreadValue">0 deg</output>
+          </label>
+
+          <p class="note">
+            Chorus is now live as a per-output insert effect. Its controls stay linked, while phase spread offsets
+            each output instance across the speaker array.
+          </p>
+        </article>
+
+        <article class="panel controls">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Independent FX</p>
+              <h2>Sidechain</h2>
+            </div>
+            <span class="status-tag status-tag--planned">Scaffold</span>
+          </div>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input id="fxSidechainEnabled" type="checkbox">
+            <span>Enable Sidechain Placeholder</span>
+          </label>
+
+          <p class="note">
+            Sidechain is a separate processor, not part of chorus. It still needs its own detector and routing
+            design, so this remains a placeholder toggle for now.
+          </p>
+        </article>
+
+        <article class="panel panel--wide">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Per Output Insert</p>
+              <h2>FX Routing</h2>
+            </div>
+          </div>
+          <p class="note">
+            Each output has its own insert path. Controls above stay linked across all instances; the switches
+            below decide which outputs actually route through the chain.
+          </p>
+          <div id="fxOutputGrid" class="output-overview-grid"></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="page-lfo" class="page">
+      <div class="grid">
+        <article class="panel controls">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Robin Modulation</p>
+              <h2>LFO Core</h2>
+            </div>
+          </div>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input id="lfoEnabled" type="checkbox">
+            <span>Enable Robin LFO</span>
+          </label>
+
+          <label class="field">
+            <span>LFO Waveform</span>
+            <select id="lfoWaveform">
+              <option value="sine">Sine</option>
+              <option value="triangle">Triangle</option>
+              <option value="saw-down">Saw Down</option>
+              <option value="saw-up">Saw Up</option>
+              <option value="random">Random</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Depth</span>
+            <input id="lfoDepth" type="range" min="0" max="1" step="0.01">
+            <output id="lfoDepthValue">0.50</output>
+          </label>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input id="lfoClockLinked" type="checkbox">
+            <span>Clock Linked</span>
+          </label>
+
+          <label class="field">
+            <span>Tempo</span>
+            <input id="lfoTempo" type="range" min="20" max="300" step="1">
+            <output id="lfoTempoValue">120 BPM</output>
+          </label>
+
+          <label class="field">
+            <span>Rate Multiplier</span>
+            <input id="lfoRateMultiplier" type="range" min="0.125" max="8" step="0.125">
+            <output id="lfoRateMultiplierValue">1.00x</output>
+          </label>
+
+          <label class="field">
+            <span>Fixed Frequency</span>
+            <input id="lfoFixedFrequency" type="range" min="0.01" max="40" step="0.01">
+            <output id="lfoFixedFrequencyValue">2.00 Hz</output>
+          </label>
+        </article>
+
+        <article class="panel controls">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Output Motion</p>
+              <h2>Spread Across Outputs</h2>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Phase Spread</span>
+            <input id="lfoPhaseSpread" type="range" min="0" max="360" step="1">
+            <output id="lfoPhaseSpreadValue">0 deg</output>
+          </label>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input id="lfoPolarityFlip" type="checkbox">
+            <span>Polarity Flip Across Outputs</span>
+          </label>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input id="lfoUnlinkedOutputs" type="checkbox">
+            <span>Unlinked Outputs</span>
+          </label>
+
+          <p class="note">
+            This LFO is still the current live modulation system for Robin. It already distributes motion over the
+            output array.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel status-panel">
+      <h2>Bridge Status</h2>
+      <p id="statusText">Waiting for native bridge...</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

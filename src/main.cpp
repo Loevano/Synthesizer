@@ -54,7 +54,7 @@ void printUsage(const char* programName) {
         << "  --sample-rate <hz>     Sample rate, default 48000\n"
         << "  --channels <count>     Output channel count, default 2\n"
         << "  --buffer <frames>      Requested frames per buffer, default 256\n"
-        << "  --voices <count>       Voice capacity, default 16\n"
+        << "  --voices <count>       Voice capacity, default 8\n"
         << "  --oscillators-per-voice <count>\n"
         << "                         Oscillator slots per voice, default 6\n"
         << "  --frequency <hz>       Oscillator frequency, default 400\n"

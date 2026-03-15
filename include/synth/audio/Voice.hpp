@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "synth/dsp/Envelope.hpp"
 #include "synth/dsp/Oscillator.hpp"
 
 namespace synth::audio {
@@ -26,10 +27,16 @@ public:
     void setOscillatorFrequency(std::uint32_t oscillatorIndex, float frequencyValue);
     void setOscillatorRelativeToVoice(std::uint32_t oscillatorIndex, bool relativeToVoice);
     void setOscillatorWaveform(std::uint32_t oscillatorIndex, dsp::Waveform waveform);
+    void setEnvelopeAttackSeconds(float attackSeconds);
+    void setEnvelopeDecaySeconds(float decaySeconds);
+    void setEnvelopeSustainLevel(float sustainLevel);
+    void setEnvelopeReleaseSeconds(float releaseSeconds);
     void setGain(float gain);
     void setOutputChannelCount(std::uint32_t outputChannelCount);
     void setOutputEnabled(std::uint32_t outputChannel, bool enabled);
     void setActive(bool active);
+    void noteOn();
+    void noteOff();
 
     void renderAdd(float* output,
                    std::uint32_t frames,
@@ -42,10 +49,12 @@ private:
 
     std::vector<OscillatorSlot> oscillators_;
     std::vector<bool> outputEnabled_;
+    dsp::Envelope envelope_;
     double sampleRate_ = 48000.0;
     float frequencyHz_ = 440.0f;
     dsp::Waveform waveform_ = dsp::Waveform::Sine;
     bool active_ = false;
+    bool pendingDeactivate_ = false;
     float gain_ = 1.0f;
 };
 

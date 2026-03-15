@@ -10,7 +10,9 @@ This is now a beginner-friendly MVP focused on learning:
 - `src/main.cpp`: app lifecycle and audio start/stop
 - `src/app/SynthController.cpp`: reusable host/controller layer shared by CLI and app shells
 - `src/audio/Synth.cpp`: top-level synth instrument and voice pool
+- `src/audio/TestSynth.cpp`: simplified single-oscillator debug source
 - `src/audio/Voice.cpp`: one voice with a pool of oscillator slots
+- `src/graph/`: concrete live graph owner and graph-stage modules
 - `src/dsp/Oscillator.cpp`: waveform generator (`Sine`, `Square`, `Triangle`, `Saw`, `Noise`)
 - `src/interfaces/AudioDriverCoreAudio.cpp`: CoreAudio driver backend
 - `src/core/Logger.cpp`: console + file logging
@@ -18,7 +20,22 @@ This is now a beginner-friendly MVP focused on learning:
 - `src/ui_web/`: bundled web assets loaded by the macOS app shell
 
 ## Current code path
-`main -> AudioDriver -> Synth -> Voice -> Oscillator -> output buffer`
+`main -> SynthController -> AudioDriver -> source graph -> output processor graph -> output buffer`
+
+## Current interface model
+`Audio Engine -> Source Mixer -> Output Mixer -> Sources -> FX -> outputs`
+
+This interface model is intentionally ahead of the engine in two places:
+- `Robin` is the main active source in the DSP path today
+- `Test` is a simplified active debug source in the same path
+- `Decor`, `Pieces`, and `FX` are scaffolded in controller state and the UI so the multichannel build order stays explicit
+
+Current internal graph note:
+- the controller now builds a `LiveGraph` from concrete graph modules instead of directly owning the live render path
+- current live graph modules are `RobinSourceNode`, `TestSourceNode`, and `OutputMixerNode`
+- the source-stage order remains `Robin -> Test -> Decor -> Pieces`
+- output processing remains routed through an explicit output-processor stage order, currently just `Output Mixer`
+- the raw bridge state now exposes this under `graph`
 
 ## Build
 ```bash
@@ -63,16 +80,39 @@ Default active sound:
   - `getState()`
   - `setParam(path, value)`
 - current web UI pages:
-  - `Settings`: audio/backend/device info, voice count, oscillator slots per voice, routing preset, MIDI/OSC status
-  - `Synth`: global frequency, gain, waveform
-  - `LFO`: waveform, depth, phase spread, polarity flip, linked/unlinked outputs, clock/fixed-rate controls
-  - `Voices`: per-voice active, frequency, gain, output routing matrix
-  - `Oscillators`: per-voice oscillator enable, waveform, gain, frequency, relative-to-voice-root toggle
+  - `Program`: engine/CoreAudio state, output device selection, output count selection, MIDI/OSC status, and raw scaffold state
+  - `MIDI`: CoreMIDI device connection and per-device routing into the synths
+  - `Source Mixer`: source-level VCA control for `Robin`, `Test`, `Decor`, and `Pieces`
+  - `Output Mixer`: per-output trim, delay, and fixed-band EQ
+  - `Robin`: playable voice source with master pitch, master `ENV VCA`, output routing, and one linked oscillator bank across all voices
+  - `Test`: simplified single-oscillator debug source with manual output routing
+  - `Decor`: scaffold for the future one-voice-per-output immersive source
+  - `Pieces`: scaffold for the future granular algorithmic source
+  - `FX`: linked-control per-output insert routing, with live `Chorus` plus scaffold `Saturator` and `Sidechain`
+  - `LFO`: current Robin LFO controls
+
+`Robin` note:
+- the current control model is master-first: the amp envelope and oscillator bank are shared across all voices, while voice tuning, level, and output assignment remain local overrides
+- section modulators and per-section unlink are planned next; they should layer on top of master values instead of replacing them
+
+`Test` note:
+- it is intentionally simple: one oscillator, one reusable ADSR-style envelope, manual output routing, optional continuous tone activation, and switchable MIDI response
+
+Current scaffold note:
+- output mixer `level` is active in the audio path now
+- output mixer `delay` is active in the audio path now
+- output mixer `EQ` is active in the audio path now
+- `Robin` and `Test` do process audio now
+- `Decor` and `Pieces` do not process audio yet
+- `Chorus` is now live in the FX path
+- `Saturator` and `Sidechain` remain scaffold-only
 
 ## MIDI and OSC status
 - CoreMIDI input is now started with the host on macOS
 - current MIDI behavior:
-  - note-on updates the current synth pitch
+  - the MIDI page now exposes CoreMIDI sources and lets you enable them individually
+  - each connected MIDI source can be routed independently to `Robin` and `Test`
+  - note-on updates Robin pitch and drives the Test source note/envelope
   - if no voice is active, voice `0` is auto-enabled for preview
   - note-off disables that auto-enabled preview voice
 - OSC UDP server is now started with the host on port `9000`
@@ -99,8 +139,12 @@ Default active sound:
   - the LFO is not yet part of a general modulation matrix, so it does not route to pitch or filters yet
 
 ## Roadmap
+- Project overview:
+  - [docs/PROJECT_OVERVIEW.md](/Users/jens/Documents/Coding/Synthesizer/docs/PROJECT_OVERVIEW.md)
 - Generic platform and synth-feature roadmap:
   - [docs/ROADMAP.md](/Users/jens/Documents/Coding/Synthesizer/docs/ROADMAP.md)
+- Implementation step plan:
+  - [docs/IMPLEMENTATION_PLAN.md](/Users/jens/Documents/Coding/Synthesizer/docs/IMPLEMENTATION_PLAN.md)
 - Current architecture summary:
   - [docs/ARCHITECTURE.md](/Users/jens/Documents/Coding/Synthesizer/docs/ARCHITECTURE.md)
 - Long-form target feature notes:

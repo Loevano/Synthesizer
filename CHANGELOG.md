@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.6 - 2026-03-15
+- Added the multichannel scaffold app structure around `LiveGraph`, `Robin`, `Test`, `Output Mixer`, `FX`, and the embedded web UI
+- Reframed `Robin` around a master-first control model in the UI and docs
+- Enabled all configured Robin voices by default so polyphony works immediately
+- Moved master oscillator edits onto a single native controller path instead of one UI bridge round-trip per voice
+
 ## 0.1.5 - 2026-03-13
 - Added a `Voice` layer between `Synth` and `Oscillator`
 - Added configurable synth capacity with defaults of `16` voices and `6` oscillators per voice

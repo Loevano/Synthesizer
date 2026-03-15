@@ -7,10 +7,20 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(synth_core
     src/core/Logger.cpp
+    src/dsp/Envelope.cpp
+    src/dsp/ThreeBandEq.cpp
     src/dsp/Oscillator.cpp
+    src/dsp/DelayLine.cpp
+    src/dsp/Chorus.cpp
     src/dsp/Lfo.cpp
     src/audio/Voice.cpp
+    src/audio/TestSynth.cpp
     src/audio/Synth.cpp
+    src/graph/RobinSourceNode.cpp
+    src/graph/TestSourceNode.cpp
+    src/graph/FxRackNode.cpp
+    src/graph/OutputMixerNode.cpp
+    src/graph/LiveGraph.cpp
     src/app/SynthController.cpp
     src/io/MidiInput.cpp
     src/io/OscServer.cpp

@@ -12,12 +12,22 @@ The goal is to avoid mixing infrastructure work, DSP work, and UI work in one st
 The project already has:
 
 - a C++ synth engine: `Synth -> Voice -> Oscillator`
+- a simplified debug source: `TestSynth -> Oscillator`
 - a CoreAudio backend on macOS
 - a native macOS app shell with embedded `WKWebView`
 - a small JS/native bridge:
   - `getState()`
   - `setParam(path, value)`
-- a browser UI with `Synth`, `Voices`, and `Oscillators` pages
+- a browser UI organized around:
+  - `Program`
+  - `Source Mixer`
+  - `Output Mixer`
+  - `Robin`
+  - `Test`
+  - `Decor`
+  - `Pieces`
+  - `FX`
+  - `LFO`
 
 What is still missing is a stable note/event model, a proper routing model, modulation, FX, and external control.
 
@@ -25,10 +35,10 @@ What is still missing is a stable note/event model, a proper routing model, modu
 
 These milestones are not synth-specific. They make the app easier to extend safely.
 
-### 1. Settings and system surface
+### 1. Program and system surface
 
 Goal:
-- give the app a dedicated `Settings` page instead of mixing system concerns into synth controls
+- keep system concerns in a dedicated `Program` layer instead of mixing them into source controls
 
 Scope:
 - current audio config view:
@@ -196,8 +206,8 @@ This is the sequence that keeps the project buildable while still moving toward 
 
 ### Phase 1
 
-- `Settings` page
-- stable settings state in the controller
+- `Program` page
+- stable host/system state in the controller
 - play mode enum and controller surface
 
 ### Phase 2
@@ -238,9 +248,10 @@ This is the sequence that keeps the project buildable while still moving toward 
 
 The next implementation slice should be:
 
-1. add a `Settings` page
-2. expose audio/system state cleanly through the controller
-3. add play mode state to the controller and UI
-4. then start `Phase 2` from the synth feature roadmap
+1. keep `engine`, `sourceMixer`, `outputMixer`, `sources`, and `processors` as stable controller concepts
+2. make `Source Mixer` an explicit graph stage
+3. add routing and output-mixer regression tests around the live graph
+4. keep `Robin` stable as the reference concrete source node
+5. then implement `Decor`, `Pieces`, and FX on top of that graph
 
-That keeps the app shell stable before adding deeper DSP features.
+That keeps the app shell and mental model stable before adding deeper DSP features.

@@ -28,6 +28,8 @@ void Voice::configure(std::uint32_t oscillatorCount) {
         oscillators_.push_back(slot);
     }
 
+    envelope_.setSampleRate(sampleRate_);
+
     if (outputEnabled_.empty()) {
         outputEnabled_.push_back(true);
     }
@@ -39,6 +41,7 @@ void Voice::setSampleRate(double sampleRate) {
     }
 
     sampleRate_ = sampleRate;
+    envelope_.setSampleRate(sampleRate_);
     for (auto& slot : oscillators_) {
         slot.oscillator.setSampleRate(sampleRate_);
         updateOscillatorFrequency(slot);
@@ -116,6 +119,22 @@ void Voice::setOscillatorWaveform(std::uint32_t oscillatorIndex, dsp::Waveform w
     oscillators_[oscillatorIndex].oscillator.setWaveform(waveform);
 }
 
+void Voice::setEnvelopeAttackSeconds(float attackSeconds) {
+    envelope_.setAttackSeconds(attackSeconds);
+}
+
+void Voice::setEnvelopeDecaySeconds(float decaySeconds) {
+    envelope_.setDecaySeconds(decaySeconds);
+}
+
+void Voice::setEnvelopeSustainLevel(float sustainLevel) {
+    envelope_.setSustainLevel(sustainLevel);
+}
+
+void Voice::setEnvelopeReleaseSeconds(float releaseSeconds) {
+    envelope_.setReleaseSeconds(releaseSeconds);
+}
+
 void Voice::setGain(float gain) {
     gain_ = std::clamp(gain, 0.0f, 1.0f);
 }
@@ -140,7 +159,35 @@ void Voice::setOutputEnabled(std::uint32_t outputChannel, bool enabled) {
 }
 
 void Voice::setActive(bool active) {
-    active_ = active;
+    if (active) {
+        active_ = true;
+        pendingDeactivate_ = false;
+        return;
+    }
+
+    if (envelope_.isActive()) {
+        pendingDeactivate_ = true;
+        return;
+    }
+
+    active_ = false;
+    pendingDeactivate_ = false;
+    if (!active_) {
+        envelope_.reset();
+    }
+}
+
+void Voice::noteOn() {
+    if (!active_) {
+        return;
+    }
+
+    pendingDeactivate_ = false;
+    envelope_.noteOn();
+}
+
+void Voice::noteOff() {
+    envelope_.noteOff();
 }
 
 void Voice::updateOscillatorFrequency(OscillatorSlot& slot) {
@@ -155,7 +202,11 @@ void Voice::renderAdd(float* output,
                       std::uint32_t channels,
                       float masterGain,
                       const float* outputModulation) {
-    if (!active_ || output == nullptr || channels == 0 || oscillators_.empty()) {
+    if (output == nullptr || channels == 0 || oscillators_.empty()) {
+        return;
+    }
+
+    if ((!active_ && !pendingDeactivate_) || !envelope_.isActive()) {
         return;
     }
 
@@ -190,7 +241,16 @@ void Voice::renderAdd(float* output,
             continue;
         }
 
-        sample = (sample / static_cast<float>(activeOscillatorCount)) * gain_ * masterGain;
+        const float envelopeValue = envelope_.nextValue();
+        if (envelopeValue <= 0.0f && !envelope_.isActive()) {
+            if (pendingDeactivate_) {
+                active_ = false;
+                pendingDeactivate_ = false;
+            }
+            continue;
+        }
+
+        sample = (sample / static_cast<float>(activeOscillatorCount)) * gain_ * masterGain * envelopeValue;
 
         const std::uint32_t frameOffset = frame * channels;
         for (std::uint32_t channel = 0; channel < routedChannelCount; ++channel) {
@@ -203,6 +263,11 @@ void Voice::renderAdd(float* output,
                 : 1.0f;
             output[frameOffset + channel] += sample * modulation;
         }
+    }
+
+    if (pendingDeactivate_ && !envelope_.isActive()) {
+        active_ = false;
+        pendingDeactivate_ = false;
     }
 }
 

@@ -24,11 +24,15 @@ void Synth::configure(const SynthConfig& config) {
         voice.setFrequency(frequencyHz_.load());
         voice.setWaveform(waveform_);
         voice.setGain(1.0f);
+        voice.setEnvelopeAttackSeconds(attackSeconds_);
+        voice.setEnvelopeDecaySeconds(decaySeconds_);
+        voice.setEnvelopeSustainLevel(sustainLevel_);
+        voice.setEnvelopeReleaseSeconds(releaseSeconds_);
         voice.setOutputChannelCount(outputChannelCount_);
         for (std::uint32_t outputIndex = 0; outputIndex < outputChannelCount_; ++outputIndex) {
             voice.setOutputEnabled(outputIndex, outputIndex == (i % outputChannelCount_));
         }
-        voice.setActive(i == 0);
+        voice.setActive(true);
     }
 
     lfo_.setSampleRate(sampleRate_);
@@ -150,6 +154,34 @@ void Synth::setOscillatorWaveform(std::uint32_t voiceIndex,
     voices_[voiceIndex].setOscillatorWaveform(oscillatorIndex, waveform);
 }
 
+void Synth::setEnvelopeAttackSeconds(float attackSeconds) {
+    attackSeconds_ = std::max(0.0f, attackSeconds);
+    for (auto& voice : voices_) {
+        voice.setEnvelopeAttackSeconds(attackSeconds_);
+    }
+}
+
+void Synth::setEnvelopeDecaySeconds(float decaySeconds) {
+    decaySeconds_ = std::max(0.0f, decaySeconds);
+    for (auto& voice : voices_) {
+        voice.setEnvelopeDecaySeconds(decaySeconds_);
+    }
+}
+
+void Synth::setEnvelopeSustainLevel(float sustainLevel) {
+    sustainLevel_ = std::clamp(sustainLevel, 0.0f, 1.0f);
+    for (auto& voice : voices_) {
+        voice.setEnvelopeSustainLevel(sustainLevel_);
+    }
+}
+
+void Synth::setEnvelopeReleaseSeconds(float releaseSeconds) {
+    releaseSeconds_ = std::max(0.0f, releaseSeconds);
+    for (auto& voice : voices_) {
+        voice.setEnvelopeReleaseSeconds(releaseSeconds_);
+    }
+}
+
 void Synth::setLfoEnabled(bool enabled) {
     lfo_.setEnabled(enabled);
 }
@@ -198,7 +230,16 @@ void Synth::render(float* output, std::uint32_t frames, std::uint32_t channels) 
     const std::size_t sampleCount = static_cast<std::size_t>(frames) * channels;
     std::fill(output, output + sampleCount, 0.0f);
 
+    renderAdd(output, frames, channels);
+}
+
+void Synth::renderAdd(float* output, std::uint32_t frames, std::uint32_t channels) {
+    if (output == nullptr || channels == 0) {
+        return;
+    }
+
     const float gain = gain_.load();
+    const std::size_t sampleCount = static_cast<std::size_t>(frames) * channels;
     lfoModulationBuffer_.assign(sampleCount, 1.0f);
 
     for (std::uint32_t frame = 0; frame < frames; ++frame) {
@@ -208,6 +249,22 @@ void Synth::render(float* output, std::uint32_t frames, std::uint32_t channels) 
     for (auto& voice : voices_) {
         voice.renderAdd(output, frames, channels, gain, lfoModulationBuffer_.data());
     }
+}
+
+void Synth::noteOn(std::uint32_t voiceIndex) {
+    if (voiceIndex >= voices_.size()) {
+        return;
+    }
+
+    voices_[voiceIndex].noteOn();
+}
+
+void Synth::noteOff(std::uint32_t voiceIndex) {
+    if (voiceIndex >= voices_.size()) {
+        return;
+    }
+
+    voices_[voiceIndex].noteOff();
 }
 
 }  // namespace synth::audio

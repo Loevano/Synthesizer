@@ -10,7 +10,7 @@
 namespace synth::audio {
 
 struct SynthConfig {
-    std::uint32_t voiceCount = 16;
+    std::uint32_t voiceCount = 8;
     std::uint32_t oscillatorsPerVoice = 6;
 };
 
@@ -37,6 +37,10 @@ public:
                                       std::uint32_t oscillatorIndex,
                                       bool relativeToVoice);
     void setOscillatorWaveform(std::uint32_t voiceIndex, std::uint32_t oscillatorIndex, dsp::Waveform waveform);
+    void setEnvelopeAttackSeconds(float attackSeconds);
+    void setEnvelopeDecaySeconds(float decaySeconds);
+    void setEnvelopeSustainLevel(float sustainLevel);
+    void setEnvelopeReleaseSeconds(float releaseSeconds);
     void setLfoEnabled(bool enabled);
     void setLfoWaveform(dsp::LfoWaveform waveform);
     void setLfoDepth(float depth);
@@ -49,6 +53,9 @@ public:
     void setLfoFixedFrequencyHz(float frequencyHz);
 
     void render(float* output, std::uint32_t frames, std::uint32_t channels);
+    void renderAdd(float* output, std::uint32_t frames, std::uint32_t channels);
+    void noteOn(std::uint32_t voiceIndex);
+    void noteOff(std::uint32_t voiceIndex);
 
 private:
     std::vector<Voice> voices_;
@@ -59,6 +66,10 @@ private:
     std::uint32_t outputChannelCount_ = 2;
     dsp::Waveform waveform_ = dsp::Waveform::Sine;
     std::uint32_t oscillatorsPerVoice_ = 6;
+    float attackSeconds_ = 0.01f;
+    float decaySeconds_ = 0.08f;
+    float sustainLevel_ = 0.8f;
+    float releaseSeconds_ = 0.2f;
     dsp::Lfo lfo_;
     std::vector<float> lfoModulationBuffer_;
 };

@@ -7,6 +7,7 @@
 #include <charconv>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <sstream>
 #include <utility>
@@ -51,6 +52,16 @@ bool containsIgnoreCase(std::string_view haystack, std::string_view needle) {
 
 bool isPreferredMidiSource(std::string_view sourceName) {
     return containsIgnoreCase(sourceName, "behringer swing");
+}
+
+bool envFlagEnabled(const char* name) {
+    const char* value = std::getenv(name);
+    if (value == nullptr || *value == '\0') {
+        return false;
+    }
+
+    const std::string_view flag{value};
+    return flag != "0" && flag != "false" && flag != "FALSE" && flag != "off" && flag != "OFF";
 }
 
 void assignDefaultTestOutputs(std::vector<bool>& outputs) {
@@ -130,7 +141,8 @@ std::string queryDefaultOutputDeviceName() {
 
 SynthController::SynthController(RuntimeConfig config)
     : config_(std::move(config)),
-      logger_(config_.logDirectory) {}
+      logger_(config_.logDirectory),
+      debugRobinOscillatorParams_(envFlagEnabled("SYNTH_DEBUG_ROBIN")) {}
 
 SynthController::~SynthController() {
     stopAudio();
@@ -1065,6 +1077,11 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
             return false;
         }
 
+        if (debugRobinOscillatorParams_) {
+            std::ostringstream valueDescription;
+            valueDescription << value;
+            logRobinMasterOscillatorUpdateLocked(path, valueDescription.str());
+        }
         return true;
     }
 
@@ -1274,6 +1291,9 @@ bool SynthController::setParam(std::string_view path, std::string_view value, st
             voices_[voiceIndex].oscillators[oscillatorIndex].waveform = waveform;
             robinSource_.synth().setOscillatorWaveform(voiceIndex, oscillatorIndex, waveform);
         }
+        if (debugRobinOscillatorParams_) {
+            logRobinMasterOscillatorUpdateLocked(path, value);
+        }
         return true;
     }
 
@@ -1326,6 +1346,21 @@ core::Logger& SynthController::logger() {
 
 const RuntimeConfig& SynthController::config() const {
     return config_;
+}
+
+void SynthController::logRobinMasterOscillatorUpdateLocked(std::string_view path,
+                                                           std::string_view valueDescription) {
+    if (!debugRobinOscillatorParams_) {
+        return;
+    }
+
+    logger_.debug(
+        "Robin debug: "
+        + std::string(path)
+        + "=" + std::string(valueDescription)
+        + " activeMidiNote=" + std::to_string(activeMidiNote_)
+        + " heldNotes=" + std::to_string(heldMidiNotes_.size())
+        + " activeAssignments=" + std::to_string(robinVoiceAssignments_.size()));
 }
 
 const char* SynthController::waveformToString(dsp::Waveform waveform) {

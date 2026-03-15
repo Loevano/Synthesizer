@@ -155,6 +155,95 @@ function getFx() {
   return state?.processors?.fx ?? null;
 }
 
+function clampValue(value, min, max) {
+  return Math.min(max, Math.max(min, Number(value)));
+}
+
+function updateStateView() {
+  elements.stateView.textContent = state ? JSON.stringify(state, null, 2) : "";
+}
+
+function drainQueuedParam(path) {
+  if (!queuedParams.has(path)) {
+    return;
+  }
+
+  const nextRequest = queuedParams.get(path);
+  queuedParams.delete(path);
+
+  if (nextRequest.mode === "fast") {
+    dispatchParamFast(path, nextRequest.value, {
+      silent: nextRequest.silent,
+      onSuccess: nextRequest.onSuccess,
+    });
+    return;
+  }
+
+  dispatchParam(path, nextRequest.value, { silent: nextRequest.silent });
+}
+
+function renderRobinOscillatorUi() {
+  renderRobinLinkState();
+  renderOscillators();
+}
+
+function applyRobinMasterOscillatorUpdate(oscillatorIndex, field, rawValue) {
+  const robin = getRobin();
+  if (!robin?.voices?.length) {
+    return;
+  }
+
+  robin.voices.forEach((voice) => {
+    const oscillator = voice.oscillators?.[oscillatorIndex];
+    if (!oscillator) {
+      return;
+    }
+
+    if (field === "enabled") {
+      oscillator.enabled = Boolean(rawValue);
+      return;
+    }
+
+    if (field === "gain") {
+      oscillator.gain = clampValue(rawValue, 0, 1);
+      return;
+    }
+
+    if (field === "waveform") {
+      oscillator.waveform = String(rawValue);
+      return;
+    }
+
+    if (field === "relative") {
+      const nextRelative = Boolean(rawValue);
+      if (oscillator.relativeToVoice !== nextRelative) {
+        if (nextRelative) {
+          oscillator.frequencyValue = clampValue(
+            Number(oscillator.frequencyValue) / Math.max(1, Number(voice.frequency)),
+            0.01,
+            8,
+          );
+        } else {
+          oscillator.frequencyValue = clampValue(
+            Number(oscillator.frequencyValue) * Math.max(1, Number(voice.frequency)),
+            1,
+            20000,
+          );
+        }
+      }
+
+      oscillator.relativeToVoice = nextRelative;
+      return;
+    }
+
+    if (field === "frequency") {
+      oscillator.frequencyValue = oscillator.relativeToVoice
+        ? clampValue(rawValue, 0.01, 8)
+        : clampValue(rawValue, 1, 20000);
+    }
+  });
+}
+
 function setStatus(message) {
   elements.statusText.textContent = message;
 }
@@ -981,7 +1070,7 @@ function applyStateToUi(nextState) {
 
   elements.piecesVoiceCountValue.textContent = `${pieces.voiceCount} voices`;
 
-  elements.stateView.textContent = JSON.stringify(nextState, null, 2);
+  updateStateView();
 
   renderRobinLinkState();
   renderMidiDevices();
@@ -1005,18 +1094,22 @@ function renderState(nextState) {
   applyStateToUi(nextState);
 }
 
-async function refreshState() {
+async function refreshState({ silent = false } = {}) {
   if (!window.synth) {
     setStatus("Native bridge unavailable.");
     return;
   }
 
-  setStatus("Loading state from native host...");
+  if (!silent) {
+    setStatus("Loading state from native host...");
+  }
   try {
     const nextState = await window.synth.getState();
     latestRenderedSequence = nextMutationSequence++;
     renderState(nextState);
-    setStatus(`Connected. Audio running: ${nextState.engine.running ? "yes" : "no"}.`);
+    if (!silent) {
+      setStatus(`Connected. Audio running: ${nextState.engine.running ? "yes" : "no"}.`);
+    }
   } catch (error) {
     setStatus(`State request failed: ${error.message}`);
   }
@@ -1052,11 +1145,50 @@ async function dispatchParam(path, value, { silent = false } = {}) {
     setStatus(`Failed to update ${path}: ${error.message}`);
     return null;
   } finally {
-    if (queuedParams.has(path)) {
-      const nextValue = queuedParams.get(path);
-      queuedParams.delete(path);
-      dispatchParam(path, nextValue, { silent: true });
+    drainQueuedParam(path);
+  }
+}
+
+async function dispatchParamFast(path, value, { silent = false, onSuccess = null } = {}) {
+  if (!window.synth) {
+    return null;
+  }
+
+  if (inFlightParams.has(path)) {
+    queuedParams.set(path, {
+      mode: "fast",
+      value,
+      silent,
+      onSuccess,
+    });
+    return null;
+  }
+
+  const sequence = nextMutationSequence++;
+  inFlightParams.set(path, sequence);
+
+  try {
+    await window.synth.setParamFast(path, value);
+    if (inFlightParams.get(path) !== sequence) {
+      return true;
     }
+
+    inFlightParams.delete(path);
+    if (typeof onSuccess === "function") {
+      onSuccess();
+    }
+    if (!silent) {
+      setStatus(`Updated ${path}.`);
+    }
+    return true;
+  } catch (error) {
+    if (inFlightParams.get(path) === sequence) {
+      inFlightParams.delete(path);
+    }
+    setStatus(`Failed to update ${path}: ${error.message}`);
+    return null;
+  } finally {
+    drainQueuedParam(path);
   }
 }
 
@@ -1066,7 +1198,11 @@ function setParam(path, value) {
 
 function setParamLive(path, value) {
   if (inFlightParams.has(path)) {
-    queuedParams.set(path, value);
+    queuedParams.set(path, {
+      mode: "state",
+      value,
+      silent: true,
+    });
     return;
   }
 
@@ -1075,6 +1211,17 @@ function setParamLive(path, value) {
 
 function setLinkedOscillatorParam(oscillatorIndex, field, value) {
   dispatchParam(`sources.robin.oscillator.${oscillatorIndex}.${field}`, value);
+}
+
+function setLinkedOscillatorParamFast(oscillatorIndex, field, value) {
+  const path = `sources.robin.oscillator.${oscillatorIndex}.${field}`;
+  const numericOscillatorIndex = Number(oscillatorIndex);
+  dispatchParamFast(path, value, {
+    onSuccess: () => {
+      applyRobinMasterOscillatorUpdate(numericOscillatorIndex, field, value);
+      renderRobinOscillatorUi();
+    },
+  });
 }
 
 function bindSourceMixerControls() {
@@ -1155,19 +1302,19 @@ function bindVoiceControls() {
 function bindOscillatorControls() {
   document.querySelectorAll("[data-osc-enabled]").forEach((input) => {
     input.addEventListener("change", () => {
-      setLinkedOscillatorParam(input.dataset.oscEnabled, "enabled", input.checked);
+      setLinkedOscillatorParamFast(input.dataset.oscEnabled, "enabled", input.checked);
     });
   });
 
   document.querySelectorAll("[data-osc-waveform]").forEach((select) => {
     select.addEventListener("change", () => {
-      setLinkedOscillatorParam(select.dataset.oscWaveform, "waveform", select.value);
+      setLinkedOscillatorParamFast(select.dataset.oscWaveform, "waveform", select.value);
     });
   });
 
   document.querySelectorAll("[data-osc-relative]").forEach((input) => {
     input.addEventListener("change", () => {
-      setLinkedOscillatorParam(input.dataset.oscRelative, "relative", input.checked);
+      setLinkedOscillatorParamFast(input.dataset.oscRelative, "relative", input.checked);
     });
   });
 
@@ -1177,7 +1324,7 @@ function bindOscillatorControls() {
       output.textContent = Number(input.value).toFixed(2);
     });
     input.addEventListener("change", () => {
-      setLinkedOscillatorParam(input.dataset.oscGain, "gain", Number(input.value));
+      setLinkedOscillatorParamFast(input.dataset.oscGain, "gain", Number(input.value));
     });
   });
 
@@ -1196,7 +1343,7 @@ function bindOscillatorControls() {
         : `${Math.round(Number(input.value))} Hz`;
     });
     input.addEventListener("change", () => {
-      setLinkedOscillatorParam(input.dataset.oscFrequency, "frequency", Number(input.value));
+      setLinkedOscillatorParamFast(input.dataset.oscFrequency, "frequency", Number(input.value));
     });
   });
 }

@@ -3,7 +3,10 @@
 
 #include "synth/app/SynthController.hpp"
 
+#include <chrono>
+#include <cstdlib>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -40,10 +43,23 @@ constexpr const char* kBridgeScript = R"JS(
     },
     setParam(path, value) {
       return request("setParam", { path, value });
+    },
+    setParamFast(path, value) {
+      return request("setParamFast", { path, value });
     }
   };
 })();
 )JS";
+
+bool envFlagEnabled(const char* name) {
+    const char* value = std::getenv(name);
+    if (value == nullptr || *value == '\0') {
+        return false;
+    }
+
+    const std::string_view flag{value};
+    return flag != "0" && flag != "false" && flag != "FALSE" && flag != "off" && flag != "OFF";
+}
 
 std::string escapeJavaScriptString(const std::string& value) {
     std::string escaped;
@@ -84,6 +100,7 @@ std::string escapeJavaScriptString(const std::string& value) {
     NSWindow* window_;
     WKWebView* webView_;
     std::unique_ptr<synth::app::SynthController> controller_;
+    BOOL debugBridge_;
 }
 
 - (void)sendResponse:(NSInteger)requestId
@@ -102,17 +119,29 @@ std::string escapeJavaScriptString(const std::string& value) {
     script += ");";
 
     NSString* source = [NSString stringWithUTF8String:script.c_str()];
-    [webView_ evaluateJavaScript:source completionHandler:nil];
+    [webView_ evaluateJavaScript:source
+               completionHandler:^(id result, NSError* error) {
+                   (void)result;
+                   if (error != nil && controller_ != nullptr) {
+                       controller_->logger().error(
+                           "Bridge evaluateJavaScript failed: " + std::string([[error localizedDescription] UTF8String]));
+                   }
+               }];
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification*)notification {
     (void)notification;
+    debugBridge_ = envFlagEnabled("SYNTH_DEBUG_BRIDGE") || envFlagEnabled("SYNTH_DEBUG_ROBIN");
 
     controller_ = std::make_unique<synth::app::SynthController>();
     if (!controller_->startAudio()) {
         NSLog(@"Failed to start synth audio.");
         [NSApp terminate:nil];
         return;
+    }
+
+    if (debugBridge_ && controller_ != nullptr) {
+        controller_->logger().debug("SYNTH_DEBUG_BRIDGE enabled.");
     }
 
     const NSRect frame = NSMakeRect(0.0, 0.0, 1240.0, 860.0);
@@ -181,7 +210,7 @@ std::string escapeJavaScriptString(const std::string& value) {
         return;
     }
 
-    if ([type isEqualToString:@"setParam"]) {
+    if ([type isEqualToString:@"setParam"] || [type isEqualToString:@"setParamFast"]) {
         NSString* path = payload[@"path"];
         id rawValue = payload[@"value"];
         if (path == nil || rawValue == nil) {
@@ -189,8 +218,10 @@ std::string escapeJavaScriptString(const std::string& value) {
             return;
         }
 
+        const bool wantsState = [type isEqualToString:@"setParam"];
         std::string errorMessage;
         bool success = false;
+        const auto paramStart = std::chrono::steady_clock::now();
 
         if ([rawValue isKindOfClass:[NSNumber class]]) {
             success = controller_->setParam(
@@ -211,7 +242,26 @@ std::string escapeJavaScriptString(const std::string& value) {
             return;
         }
 
-        [self sendResponse:requestId ok:YES payload:controller_->stateJson() error:""];
+        const auto afterParam = std::chrono::steady_clock::now();
+        std::string payloadJson = "true";
+        if (wantsState) {
+            payloadJson = controller_->stateJson();
+        }
+        const auto afterPayload = std::chrono::steady_clock::now();
+
+        if (debugBridge_) {
+            const auto paramMs = std::chrono::duration<double, std::milli>(afterParam - paramStart).count();
+            const auto payloadMs = std::chrono::duration<double, std::milli>(afterPayload - afterParam).count();
+            if (controller_ != nullptr) {
+                controller_->logger().debug(
+                    "Bridge " + std::string([type UTF8String])
+                    + " " + std::string([path UTF8String])
+                    + " paramMs=" + std::to_string(paramMs)
+                    + " payloadMs=" + std::to_string(payloadMs));
+            }
+        }
+
+        [self sendResponse:requestId ok:YES payload:payloadJson error:""];
     }
 }
 

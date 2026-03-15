@@ -185,6 +185,7 @@ private:
     static std::string escapeJson(std::string_view value);
     static bool tryParseIndex(std::string_view value, std::uint32_t& index);
     static float midiNoteToFrequency(int noteNumber);
+    void logRobinMasterOscillatorUpdateLocked(std::string_view path, std::string_view valueDescription);
 
     void buildLiveGraphLocked();
     void buildDefaultStateLocked();
@@ -264,6 +265,7 @@ private:
     std::uint32_t robinNextVoiceCursor_ = 0;
     std::minstd_rand robinRoutingRandom_{std::random_device{}()};
     bool autoActivatedVoice0_ = false;
+    bool debugRobinOscillatorParams_ = false;
     mutable std::mutex mutex_;
     bool initialized_ = false;
 };

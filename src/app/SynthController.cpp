@@ -741,6 +741,13 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
         if (parts[2] == "enabled") {
             sourceState->enabled = value >= 0.5;
             if (parts[1] == "robin") {
+                if (!sourceState->enabled) {
+                    robinSource_.synth().clearNotes();
+                    robinVoiceAssignments_.clear();
+                    robinNextVoiceCursor_ = 0;
+                    autoActivatedVoice0_ = false;
+                    resetRobinRoutingStateLocked();
+                }
                 applyRobinLevelLocked(sourceState->level);
             }
             return true;
@@ -2133,10 +2140,10 @@ void SynthController::handleMidiNoteOnLocked(std::uint32_t sourceIndex, int note
         return;
     }
 
-    if (routeState->robin) {
+    if (routeState->robin && robinMixerState_.enabled) {
         handleRobinNoteOnLocked(noteNumber, velocity);
     }
-    if (routeState->test) {
+    if (routeState->test && testMixerState_.enabled) {
         handleTestNoteOnLocked(noteNumber, velocity);
     }
 }
@@ -2155,10 +2162,10 @@ void SynthController::handleMidiNoteOffLocked(std::uint32_t sourceIndex, int not
         return;
     }
 
-    if (routeState->robin) {
+    if (routeState->robin && robinMixerState_.enabled) {
         handleRobinNoteOffLocked(noteNumber);
     }
-    if (routeState->test) {
+    if (routeState->test && testMixerState_.enabled) {
         handleTestNoteOffLocked(noteNumber);
     }
 }

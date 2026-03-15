@@ -190,6 +190,11 @@ void Voice::noteOff() {
     envelope_.noteOff();
 }
 
+void Voice::clearNote() {
+    pendingDeactivate_ = false;
+    envelope_.reset();
+}
+
 void Voice::updateOscillatorFrequency(OscillatorSlot& slot) {
     const float resolvedFrequency = slot.relativeToVoice
         ? std::max(1.0f, frequencyHz_ * std::max(kMinOscillatorRatio, slot.frequencyValue))

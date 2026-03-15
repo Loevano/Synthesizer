@@ -267,4 +267,10 @@ void Synth::noteOff(std::uint32_t voiceIndex) {
     voices_[voiceIndex].noteOff();
 }
 
+void Synth::clearNotes() {
+    for (auto& voice : voices_) {
+        voice.clearNote();
+    }
+}
+
 }  // namespace synth::audio

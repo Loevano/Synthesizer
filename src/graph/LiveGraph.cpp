@@ -59,6 +59,12 @@ void LiveGraph::render(float* output, std::uint32_t frames, std::uint32_t channe
 
 void LiveGraph::noteOn(int noteNumber, float velocity) {
     for (auto& node : sourceNodes_) {
+        if (node.isImplemented && !node.isImplemented()) {
+            continue;
+        }
+        if (node.isEnabled && !node.isEnabled()) {
+            continue;
+        }
         if (node.noteOn) {
             node.noteOn(noteNumber, velocity);
         }
@@ -67,6 +73,12 @@ void LiveGraph::noteOn(int noteNumber, float velocity) {
 
 void LiveGraph::noteOff(int noteNumber) {
     for (auto& node : sourceNodes_) {
+        if (node.isImplemented && !node.isImplemented()) {
+            continue;
+        }
+        if (node.isEnabled && !node.isEnabled()) {
+            continue;
+        }
         if (node.noteOff) {
             node.noteOff(noteNumber);
         }

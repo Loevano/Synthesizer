@@ -56,6 +56,7 @@ public:
     void renderAdd(float* output, std::uint32_t frames, std::uint32_t channels);
     void noteOn(std::uint32_t voiceIndex);
     void noteOff(std::uint32_t voiceIndex);
+    void clearNotes();
 
 private:
     std::vector<Voice> voices_;

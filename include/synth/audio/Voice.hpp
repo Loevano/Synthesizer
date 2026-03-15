@@ -37,6 +37,7 @@ public:
     void setActive(bool active);
     void noteOn();
     void noteOff();
+    void clearNote();
 
     void renderAdd(float* output,
                    std::uint32_t frames,

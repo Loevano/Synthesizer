@@ -112,6 +112,19 @@ static void handleUncaughtNsException(NSException* exception) {
     BOOL debugCrash_;
 }
 
+- (void)bringMainWindowToFront {
+    if (window_ == nil) {
+        return;
+    }
+
+    [window_ setIsVisible:YES];
+    [window_ deminiaturize:nil];
+    [window_ makeKeyAndOrderFront:nil];
+    [window_ orderFrontRegardless];
+    [window_ orderWindow:NSWindowAbove relativeTo:0];
+    [NSApp activateIgnoringOtherApps:YES];
+}
+
 - (void)sendResponse:(NSInteger)requestId
                   ok:(BOOL)ok
               payload:(const std::string&)payloadJson
@@ -143,6 +156,8 @@ static void handleUncaughtNsException(NSException* exception) {
     debugBridge_ = envFlagEnabled("SYNTH_DEBUG_BRIDGE") || envFlagEnabled("SYNTH_DEBUG_ROBIN");
     debugCrash_ = envFlagEnabled("SYNTH_DEBUG_CRASH");
 
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+
     controller_ = std::make_unique<synth::app::SynthController>();
     if (!controller_->startAudio()) {
         NSLog(@"Failed to start synth audio.");
@@ -165,6 +180,9 @@ static void handleUncaughtNsException(NSException* exception) {
                                               defer:NO];
     [window_ setTitle:@"Synthesizer"];
     [window_ center];
+    [window_ setReleasedWhenClosed:NO];
+    [window_ setRestorable:NO];
+    [window_ setCollectionBehavior:NSWindowCollectionBehaviorMoveToActiveSpace];
 
     WKUserContentController* userContentController = [[WKUserContentController alloc] init];
     [userContentController addScriptMessageHandler:self name:@"synth"];
@@ -193,7 +211,20 @@ static void handleUncaughtNsException(NSException* exception) {
         [webView_ loadHTMLString:fallbackHtml baseURL:nil];
     }
 
-    [window_ makeKeyAndOrderFront:nil];
+    [self bringMainWindowToFront];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self bringMainWindowToFront];
+    });
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self bringMainWindowToFront];
+    });
+}
+
+- (void)applicationDidBecomeActive:(NSNotification*)notification {
+    (void)notification;
+    [self bringMainWindowToFront];
 }
 
 - (void)userContentController:(WKUserContentController*)userContentController
@@ -295,6 +326,24 @@ static void handleUncaughtNsException(NSException* exception) {
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
     (void)sender;
+    return YES;
+}
+
+- (BOOL)applicationShouldSaveApplicationState:(NSApplication*)sender {
+    (void)sender;
+    return NO;
+}
+
+- (BOOL)applicationShouldRestoreApplicationState:(NSApplication*)sender {
+    (void)sender;
+    return NO;
+}
+
+- (BOOL)applicationShouldHandleReopen:(NSApplication*)sender hasVisibleWindows:(BOOL)flag {
+    (void)sender;
+    if (!flag && window_ != nil) {
+        [self bringMainWindowToFront];
+    }
     return YES;
 }
 

@@ -18,6 +18,10 @@ namespace synth::interfaces {
 
 namespace {
 
+std::string formatStatusMessage(std::string_view message, OSStatus status) {
+    return std::string(message) + " (OSStatus " + std::to_string(static_cast<int>(status)) + ").";
+}
+
 struct OutputDeviceDescriptor {
     AudioDeviceID deviceId = kAudioObjectUnknown;
     OutputDeviceInfo info;
@@ -238,20 +242,22 @@ public:
             return false;
         }
 
-        if (AudioComponentInstanceNew(component, &audioUnit_) != noErr) {
-            logger_.error("CoreAudio: failed to create output instance.");
+        const OSStatus instanceStatus = AudioComponentInstanceNew(component, &audioUnit_);
+        if (instanceStatus != noErr) {
+            logger_.error(formatStatusMessage("CoreAudio: failed to create output instance", instanceStatus));
             return false;
         }
 
         UInt32 enableOutput = 1;
-        if (AudioUnitSetProperty(
+        const OSStatus enableOutputStatus = AudioUnitSetProperty(
                 audioUnit_,
                 kAudioOutputUnitProperty_EnableIO,
                 kAudioUnitScope_Output,
                 0,
                 &enableOutput,
-                sizeof(enableOutput)) != noErr) {
-            logger_.error("CoreAudio: failed to enable HAL output.");
+                sizeof(enableOutput));
+        if (enableOutputStatus != noErr) {
+            logger_.error(formatStatusMessage("CoreAudio: failed to enable HAL output", enableOutputStatus));
             AudioComponentInstanceDispose(audioUnit_);
             audioUnit_ = nullptr;
             return false;
@@ -267,14 +273,15 @@ public:
             sizeof(disableInput));
 
         AudioDeviceID deviceId = selectedDevice->deviceId;
-        if (AudioUnitSetProperty(
+        const OSStatus bindDeviceStatus = AudioUnitSetProperty(
                 audioUnit_,
                 kAudioOutputUnitProperty_CurrentDevice,
                 kAudioUnitScope_Global,
                 0,
                 &deviceId,
-                sizeof(deviceId)) != noErr) {
-            logger_.error("CoreAudio: failed to bind selected output device.");
+                sizeof(deviceId));
+        if (bindDeviceStatus != noErr) {
+            logger_.error(formatStatusMessage("CoreAudio: failed to bind selected output device", bindDeviceStatus));
             AudioComponentInstanceDispose(audioUnit_);
             audioUnit_ = nullptr;
             return false;
@@ -298,7 +305,7 @@ public:
             &format,
             sizeof(format));
         if (formatStatus != noErr) {
-            logger_.error("CoreAudio: failed to set stream format.");
+            logger_.error(formatStatusMessage("CoreAudio: failed to set stream format", formatStatus));
             AudioComponentInstanceDispose(audioUnit_);
             audioUnit_ = nullptr;
             return false;
@@ -317,14 +324,15 @@ public:
             &callbackStruct,
             sizeof(callbackStruct));
         if (callbackStatus != noErr) {
-            logger_.error("CoreAudio: failed to set render callback.");
+            logger_.error(formatStatusMessage("CoreAudio: failed to set render callback", callbackStatus));
             AudioComponentInstanceDispose(audioUnit_);
             audioUnit_ = nullptr;
             return false;
         }
 
-        if (AudioUnitInitialize(audioUnit_) != noErr) {
-            logger_.error("CoreAudio: failed to initialize audio unit.");
+        const OSStatus initializeStatus = AudioUnitInitialize(audioUnit_);
+        if (initializeStatus != noErr) {
+            logger_.error(formatStatusMessage("CoreAudio: failed to initialize audio unit", initializeStatus));
             AudioComponentInstanceDispose(audioUnit_);
             audioUnit_ = nullptr;
             return false;
@@ -332,8 +340,9 @@ public:
 
         scratchBuffer_.assign(8192 * config_.channels, 0.0f);
 
-        if (AudioOutputUnitStart(audioUnit_) != noErr) {
-            logger_.error("CoreAudio: failed to start output unit.");
+        const OSStatus startStatus = AudioOutputUnitStart(audioUnit_);
+        if (startStatus != noErr) {
+            logger_.error(formatStatusMessage("CoreAudio: failed to start output unit", startStatus));
             AudioUnitUninitialize(audioUnit_);
             AudioComponentInstanceDispose(audioUnit_);
             audioUnit_ = nullptr;

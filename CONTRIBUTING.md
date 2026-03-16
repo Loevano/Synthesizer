@@ -20,7 +20,7 @@ The current reference instrument is `Robin`, a multivoice spatial synth with a m
 
 Required:
 - macOS
-- Xcode Command Line Tools
+- Xcode Command Line Tools (basically an IDE like VSCode or Cursor)
 - CMake 3.21+
 - Git
 
@@ -34,7 +34,7 @@ Install Xcode Command Line Tools if needed:
 xcode-select --install
 ```
 
-Clone and build:
+To get tje project on your hard drive and start collaborating:
 
 ```bash
 git clone <your-repo-url>
@@ -96,6 +96,8 @@ For synth behavior or DSP work, say:
 - whether audio was playing
 - whether MIDI or OSC was active
 - exact control path if possible
+
+If you want to edit specific DSP Behaviour, discuss that first.
 
 Good example:
 - Hold a note in Robin

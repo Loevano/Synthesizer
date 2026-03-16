@@ -57,6 +57,12 @@ cd /Users/jens/Documents/Coding/Synthesizer
 ./scripts/build.sh
 ```
 
+## Clean generated files
+
+```bash
+./scripts/clean.sh
+```
+
 ## Run the CLI host
 
 ```bash

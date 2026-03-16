@@ -99,7 +99,7 @@ float Chorus::processSample(float inputSample) {
     const float phaseIncrement = (kTwoPi * currentRateHz_) / static_cast<float>(sampleRate_);
     phaseAccumulator_ = wrapPhase(phaseAccumulator_ + phaseIncrement);
 
-    return (inputSample * kDryMix) + (delayedSample * kWetMix);
+    return inputSample + (delayedSample * kWetMix);
 }
 
 void Chorus::smoothParameters() {

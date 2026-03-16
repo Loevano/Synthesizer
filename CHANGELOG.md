@@ -15,6 +15,7 @@
   - smoothed source-mixer level changes
   - improved Robin voice reuse so release tails are less likely to be cut off early
   - reduced retrigger clicks in the Robin voice path
+- Replaced naive oscillator waveform generation with band-limited wavetable playback for lower aliasing and better steady-state scalability
 - Added crash diagnostics with:
   - fatal signal and terminate logging
   - uncaught macOS exception logging

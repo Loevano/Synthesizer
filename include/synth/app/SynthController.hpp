@@ -37,7 +37,7 @@ struct RuntimeConfig {
     float frequency = 400.0f;
     float gain = 0.15f;
     dsp::Waveform waveform = dsp::Waveform::Sine;
-    std::filesystem::path logDirectory = "logs";
+    std::filesystem::path logDirectory;
 };
 
 struct OscillatorState {
@@ -219,6 +219,7 @@ private:
     void syncLinkedRobinVoicesLocked(bool syncFrequency = false);
     void syncRobinVoiceFrequencyLocked(std::uint32_t voiceIndex);
     void syncAllRobinVoiceFrequenciesLocked();
+    void syncAssignedRobinVoiceFrequenciesLocked();
 
     void buildLiveGraphLocked();
     void buildDefaultStateLocked();

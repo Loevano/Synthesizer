@@ -20,8 +20,7 @@ private:
 
     static constexpr float kBaseDelayMs = 12.0f;
     static constexpr float kMaxDepthMs = 8.0f;
-    static constexpr float kDryMix = 0.6f;
-    static constexpr float kWetMix = 0.4f;
+    static constexpr float kWetMix = 0.35f;
     static constexpr float kParameterSmoothingSeconds = 0.02f;
 
     std::vector<float> buffer_;

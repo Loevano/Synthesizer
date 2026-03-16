@@ -64,6 +64,27 @@ bool envFlagEnabled(const char* name) {
     return flag != "0" && flag != "false" && flag != "FALSE" && flag != "off" && flag != "OFF";
 }
 
+std::filesystem::path defaultLogDirectory() {
+#if defined(SYNTH_PLATFORM_MACOS)
+    if (const char* overridePath = std::getenv("SYNTH_LOG_DIR"); overridePath != nullptr && *overridePath != '\0') {
+        return std::filesystem::path(overridePath);
+    }
+
+    if (const char* home = std::getenv("HOME"); home != nullptr && *home != '\0') {
+        return std::filesystem::path(home) / "Library" / "Logs" / "Synthesizer";
+    }
+#endif
+
+    return std::filesystem::path("logs");
+}
+
+RuntimeConfig resolveRuntimeConfig(RuntimeConfig config) {
+    if (config.logDirectory.empty() || config.logDirectory.is_relative()) {
+        config.logDirectory = defaultLogDirectory();
+    }
+    return config;
+}
+
 void assignDefaultTestOutputs(std::vector<bool>& outputs) {
     std::fill(outputs.begin(), outputs.end(), false);
     if (!outputs.empty()) {
@@ -140,7 +161,7 @@ std::string queryDefaultOutputDeviceName() {
 }  // namespace
 
 SynthController::SynthController(RuntimeConfig config)
-    : config_(std::move(config)),
+    : config_(resolveRuntimeConfig(std::move(config))),
       logger_(config_.logDirectory),
       crashDiagnostics_(config_.logDirectory),
       debugRobinOscillatorParams_(envFlagEnabled("SYNTH_DEBUG_ROBIN")),
@@ -725,13 +746,13 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
 
     if (path == "sources.robin.transposeSemitones") {
         robinPitchState_.transposeSemitones = static_cast<float>(std::clamp(value, -12.0, 12.0));
-        syncAllRobinVoiceFrequenciesLocked();
+        syncAssignedRobinVoiceFrequenciesLocked();
         return true;
     }
 
     if (path == "sources.robin.fineTuneCents") {
         robinPitchState_.fineTuneCents = static_cast<float>(std::clamp(value, -100.0, 100.0));
-        syncAllRobinVoiceFrequenciesLocked();
+        syncAssignedRobinVoiceFrequenciesLocked();
         return true;
     }
 
@@ -1645,6 +1666,12 @@ void SynthController::syncRobinVoiceFrequencyLocked(std::uint32_t voiceIndex) {
 void SynthController::syncAllRobinVoiceFrequenciesLocked() {
     for (std::uint32_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
         syncRobinVoiceFrequencyLocked(voiceIndex);
+    }
+}
+
+void SynthController::syncAssignedRobinVoiceFrequenciesLocked() {
+    for (const auto& assignment : robinVoiceAssignments_) {
+        syncRobinVoiceFrequencyLocked(assignment.voiceIndex);
     }
 }
 

@@ -74,7 +74,7 @@ If the change is crash-related, run:
 ./scripts/run-app.sh --debug-crash
 ```
 
-and attach the newest `logs/synth_*.log` and `logs/crash_*.log`.
+and attach the newest `~/Library/Logs/Synthesizer/synth_*.log` and `~/Library/Logs/Synthesizer/crash_*.log`.
 
 ## Optional devlog
 
@@ -86,5 +86,5 @@ If you want to keep a working note for a slice of work:
 
 ## Related docs
 
-- Contributor setup and prompting guide: [CONTRIBUTING.md](/Users/jens/Documents/Coding/Synthesizer/CONTRIBUTING.md)
-- Architecture: [docs/ARCHITECTURE.md](/Users/jens/Documents/Coding/Synthesizer/docs/ARCHITECTURE.md)
+- Contributor setup and prompting guide: [CONTRIBUTING.md](../CONTRIBUTING.md)
+- Architecture: [docs/ARCHITECTURE.md](ARCHITECTURE.md)

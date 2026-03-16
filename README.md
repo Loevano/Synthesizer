@@ -53,7 +53,8 @@ Optional:
 ## Build
 
 ```bash
-cd /Users/jens/Documents/Coding/Synthesizer
+git clone <your-repo-url>
+cd Synthesizer
 ./scripts/build.sh
 ```
 
@@ -110,7 +111,10 @@ This enables:
 - controller and bridge breadcrumbs for recent param changes
 - fatal signal, terminate, and uncaught Objective-C exception logging
 
-Logs are written under `logs/`:
+On macOS app runs, logs are written under `~/Library/Logs/Synthesizer/` by default.
+You can override that with `SYNTH_LOG_DIR`.
+
+Log files:
 - `synth_*.log` for normal runtime logs
 - `crash_*.log` for crash diagnostics and breadcrumbs
 
@@ -127,13 +131,13 @@ Logs are written under `logs/`:
 
 ## Documentation
 
-- Overview: [docs/PROJECT_OVERVIEW.md](/Users/jens/Documents/Coding/Synthesizer/docs/PROJECT_OVERVIEW.md)
-- Architecture: [docs/ARCHITECTURE.md](/Users/jens/Documents/Coding/Synthesizer/docs/ARCHITECTURE.md)
-- Roadmap: [docs/ROADMAP.md](/Users/jens/Documents/Coding/Synthesizer/docs/ROADMAP.md)
-- Implementation plan: [docs/IMPLEMENTATION_PLAN.md](/Users/jens/Documents/Coding/Synthesizer/docs/IMPLEMENTATION_PLAN.md)
-- Feature notes: [What should it do?.md](/Users/jens/Documents/Coding/Synthesizer/What%20should%20it%20do%3F.md)
-- GitHub workflow: [docs/GITHUB.md](/Users/jens/Documents/Coding/Synthesizer/docs/GITHUB.md)
+- Overview: [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)
+- Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md)
+- Implementation plan: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
+- Feature notes: [What should it do?.md](What%20should%20it%20do%3F.md)
+- GitHub workflow: [docs/GITHUB.md](docs/GITHUB.md)
 
 ## Contributing
 
-Contributor setup and workflow notes are in [CONTRIBUTING.md](/Users/jens/Documents/Coding/Synthesizer/CONTRIBUTING.md).
+Contributor setup and workflow notes are in [CONTRIBUTING.md](CONTRIBUTING.md).

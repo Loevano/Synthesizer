@@ -121,7 +121,10 @@ This enables:
 - `std::terminate` logging
 - uncaught macOS exception logging
 
-Logs are written under `logs/`:
+On macOS app runs, logs are written under `~/Library/Logs/Synthesizer/` by default.
+You can override that with `SYNTH_LOG_DIR`.
+
+Log files:
 - `synth_*.log` for normal runtime logs
 - `crash_*.log` for crash diagnostics and recent breadcrumbs
 
@@ -129,8 +132,8 @@ If you report a crash, include:
 - the exact repro steps
 - whether audio was playing
 - whether MIDI or OSC was active
-- the newest `logs/synth_*.log`
-- the newest `logs/crash_*.log`
+- the newest `~/Library/Logs/Synthesizer/synth_*.log`
+- the newest `~/Library/Logs/Synthesizer/crash_*.log`
 
 ## Branch Workflow
 

@@ -1,6 +1,8 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
+#include <vector>
 
 #include "synth/audio/Synth.hpp"
 
@@ -18,6 +20,9 @@ public:
 
 private:
     audio::Synth synth_;
+    std::atomic<float> targetGain_{0.0f};
+    float currentGain_ = 0.0f;
+    std::vector<float> renderBuffer_;
 };
 
 }  // namespace synth::graph

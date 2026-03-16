@@ -9,11 +9,22 @@ namespace synth::graph {
 
 class LiveGraph {
 public:
+    enum class SourceRenderTarget : std::uint8_t {
+        Dry,
+        FxBus,
+    };
+
+    enum class OutputProcessTarget : std::uint8_t {
+        Main,
+        FxBus,
+    };
+
     struct SourceNode {
         std::string_view name;
         std::function<void(double, std::uint32_t)> prepare;
         std::function<bool()> isImplemented;
         std::function<bool()> isEnabled;
+        std::function<SourceRenderTarget()> renderTarget;
         std::function<void(float*, std::uint32_t, std::uint32_t)> renderAdd;
         std::function<void(int, float)> noteOn;
         std::function<void(int)> noteOff;
@@ -21,6 +32,7 @@ public:
 
     struct OutputProcessorNode {
         std::string_view name;
+        OutputProcessTarget target = OutputProcessTarget::Main;
         std::function<void(double, std::uint32_t)> prepare;
         std::function<void(float*, std::uint32_t, std::uint32_t)> process;
     };
@@ -40,6 +52,7 @@ public:
 private:
     std::vector<SourceNode> sourceNodes_;
     std::vector<OutputProcessorNode> outputProcessorNodes_;
+    std::vector<float> fxBusBuffer_;
 };
 
 }  // namespace synth::graph

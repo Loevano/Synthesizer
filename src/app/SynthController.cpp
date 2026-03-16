@@ -430,25 +430,29 @@ std::string SynthController::stateJson() const {
          << "\"available\":" << (robinMixerState_.available ? "true" : "false") << ","
          << "\"implemented\":" << (robinMixerState_.implemented ? "true" : "false") << ","
          << "\"enabled\":" << (robinMixerState_.enabled ? "true" : "false") << ","
-         << "\"level\":" << robinMixerState_.level
+         << "\"level\":" << robinMixerState_.level << ","
+         << "\"routeTarget\":\"" << escapeJson(sourceRouteTargetToString(robinMixerState_.routeTarget)) << "\""
          << "},"
          << "\"test\":{"
          << "\"available\":" << (testMixerState_.available ? "true" : "false") << ","
          << "\"implemented\":" << (testMixerState_.implemented ? "true" : "false") << ","
          << "\"enabled\":" << (testMixerState_.enabled ? "true" : "false") << ","
-         << "\"level\":" << testMixerState_.level
+         << "\"level\":" << testMixerState_.level << ","
+         << "\"routeTarget\":\"" << escapeJson(sourceRouteTargetToString(testMixerState_.routeTarget)) << "\""
          << "},"
          << "\"decor\":{"
          << "\"available\":" << (decorMixerState_.available ? "true" : "false") << ","
          << "\"implemented\":" << (decorMixerState_.implemented ? "true" : "false") << ","
          << "\"enabled\":" << (decorMixerState_.enabled ? "true" : "false") << ","
-         << "\"level\":" << decorMixerState_.level
+         << "\"level\":" << decorMixerState_.level << ","
+         << "\"routeTarget\":\"" << escapeJson(sourceRouteTargetToString(decorMixerState_.routeTarget)) << "\""
          << "},"
          << "\"pieces\":{"
          << "\"available\":" << (piecesMixerState_.available ? "true" : "false") << ","
          << "\"implemented\":" << (piecesMixerState_.implemented ? "true" : "false") << ","
          << "\"enabled\":" << (piecesMixerState_.enabled ? "true" : "false") << ","
-         << "\"level\":" << piecesMixerState_.level
+         << "\"level\":" << piecesMixerState_.level << ","
+         << "\"routeTarget\":\"" << escapeJson(sourceRouteTargetToString(piecesMixerState_.routeTarget)) << "\""
          << "}"
          << "},"
          << "\"outputMixer\":{"
@@ -505,8 +509,21 @@ std::string SynthController::stateJson() const {
          << "\"voiceCount\":" << config_.voiceCount << ","
          << "\"oscillatorsPerVoice\":" << config_.oscillatorsPerVoice << ","
          << "\"frequency\":" << config_.frequency << ","
-         << "\"waveform\":\"" << escapeJson(waveformToString(config_.waveform)) << "\","
+         << "\"gain\":" << robinMasterVoiceGain_ << ","
+         << "\"transposeSemitones\":" << robinPitchState_.transposeSemitones << ","
+         << "\"fineTuneCents\":" << robinPitchState_.fineTuneCents << ","
          << "\"routingPreset\":\"" << escapeJson(routingPresetToString(routingPreset_)) << "\","
+         << "\"vcf\":{"
+         << "\"cutoffHz\":" << robinVcfState_.cutoffHz << ","
+         << "\"resonance\":" << robinVcfState_.resonance
+         << "},"
+         << "\"envVcf\":{"
+         << "\"attackMs\":" << robinEnvVcfState_.attackMs << ","
+         << "\"decayMs\":" << robinEnvVcfState_.decayMs << ","
+         << "\"sustain\":" << robinEnvVcfState_.sustain << ","
+         << "\"releaseMs\":" << robinEnvVcfState_.releaseMs << ","
+         << "\"amount\":" << robinEnvVcfState_.amount
+         << "},"
          << "\"envelope\":{"
          << "\"attackMs\":" << robinEnvelopeState_.attackMs << ","
          << "\"decayMs\":" << robinEnvelopeState_.decayMs << ","
@@ -525,6 +542,25 @@ std::string SynthController::stateJson() const {
          << "\"fixedFrequencyHz\":" << lfoState_.fixedFrequencyHz << ","
          << "\"waveform\":\"" << escapeJson(lfoWaveformToString(lfoState_.waveform)) << "\""
          << "},"
+         << "\"masterOscillators\":[";
+
+    for (std::size_t oscillatorIndex = 0; oscillatorIndex < masterOscillators_.size(); ++oscillatorIndex) {
+        if (oscillatorIndex > 0) {
+            json << ",";
+        }
+
+        const auto& oscillator = masterOscillators_[oscillatorIndex];
+        json << "{"
+             << "\"index\":" << oscillatorIndex << ","
+             << "\"enabled\":" << (oscillator.enabled ? "true" : "false") << ","
+             << "\"gain\":" << oscillator.gain << ","
+             << "\"relativeToVoice\":" << (oscillator.relativeToVoice ? "true" : "false") << ","
+             << "\"frequencyValue\":" << oscillator.frequencyValue << ","
+             << "\"waveform\":\"" << escapeJson(waveformToString(oscillator.waveform)) << "\""
+             << "}";
+    }
+
+    json << "],"
          << "\"voices\":[";
 
     for (std::size_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
@@ -536,8 +572,26 @@ std::string SynthController::stateJson() const {
         json << "{"
              << "\"index\":" << voiceIndex << ","
              << "\"active\":" << (voice.active ? "true" : "false") << ","
+             << "\"linkedToMaster\":" << (voice.linkedToMaster ? "true" : "false") << ","
              << "\"frequency\":" << voice.frequency << ","
              << "\"gain\":" << voice.gain << ","
+             << "\"vcf\":{"
+             << "\"cutoffHz\":" << voice.vcf.cutoffHz << ","
+             << "\"resonance\":" << voice.vcf.resonance
+             << "},"
+             << "\"envVcf\":{"
+             << "\"attackMs\":" << voice.envVcf.attackMs << ","
+             << "\"decayMs\":" << voice.envVcf.decayMs << ","
+             << "\"sustain\":" << voice.envVcf.sustain << ","
+             << "\"releaseMs\":" << voice.envVcf.releaseMs << ","
+             << "\"amount\":" << voice.envVcf.amount
+             << "},"
+             << "\"envelope\":{"
+             << "\"attackMs\":" << voice.envelope.attackMs << ","
+             << "\"decayMs\":" << voice.envelope.decayMs << ","
+             << "\"sustain\":" << voice.envelope.sustain << ","
+             << "\"releaseMs\":" << voice.envelope.releaseMs
+             << "},"
              << "\"outputs\":[";
 
         for (std::size_t outputIndex = 0; outputIndex < voice.outputs.size(); ++outputIndex) {
@@ -587,13 +641,11 @@ std::string SynthController::stateJson() const {
          << "\"parallelSupported\":false,"
          << "\"saturator\":{"
          << "\"enabled\":" << (saturatorState_.enabled ? "true" : "false") << ","
-         << "\"linkedLevels\":" << (saturatorState_.linkedLevels ? "true" : "false") << ","
          << "\"inputLevel\":" << saturatorState_.inputLevel << ","
          << "\"outputLevel\":" << saturatorState_.outputLevel
          << "},"
          << "\"chorus\":{"
          << "\"enabled\":" << (chorusState_.enabled ? "true" : "false") << ","
-         << "\"linkedControls\":" << (chorusState_.linkedControls ? "true" : "false") << ","
          << "\"depth\":" << chorusState_.depth << ","
          << "\"speedHz\":" << chorusState_.speedHz << ","
          << "\"phaseSpreadDegrees\":" << chorusState_.phaseSpreadDegrees
@@ -603,14 +655,15 @@ std::string SynthController::stateJson() const {
          << "},"
          << "\"outputs\":[";
 
-    for (std::size_t outputIndex = 0; outputIndex < fxOutputRoutes_.size(); ++outputIndex) {
+    for (std::size_t outputIndex = 0; outputIndex < outputMixerChannels_.size(); ++outputIndex) {
         if (outputIndex > 0) {
             json << ",";
         }
 
         json << "{"
              << "\"index\":" << outputIndex << ","
-             << "\"routeThroughFx\":" << (fxOutputRoutes_[outputIndex].routeThroughFx ? "true" : "false")
+             << "\"hasDryPath\":true,"
+             << "\"hasFxPath\":true"
              << "}";
     }
 
@@ -645,25 +698,84 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
         return true;
     }
 
+    if (path == "sources.robin.gain") {
+        robinMasterVoiceGain_ = static_cast<float>(std::clamp(value, 0.0, 1.0));
+        syncLinkedRobinVoicesLocked();
+        return true;
+    }
+
+    if (path == "sources.robin.transposeSemitones") {
+        robinPitchState_.transposeSemitones = static_cast<float>(std::clamp(value, -12.0, 12.0));
+        syncAllRobinVoiceFrequenciesLocked();
+        return true;
+    }
+
+    if (path == "sources.robin.fineTuneCents") {
+        robinPitchState_.fineTuneCents = static_cast<float>(std::clamp(value, -100.0, 100.0));
+        syncAllRobinVoiceFrequenciesLocked();
+        return true;
+    }
+
+    if (parts.size() == 4 && parts[0] == "sources" && parts[1] == "robin" && parts[2] == "vcf") {
+        if (parts[3] == "cutoffHz") {
+            robinVcfState_.cutoffHz = static_cast<float>(std::clamp(value, 20.0, 20000.0));
+            syncLinkedRobinVoicesLocked();
+            return true;
+        }
+        if (parts[3] == "resonance") {
+            robinVcfState_.resonance = static_cast<float>(std::clamp(value, 0.1, 10.0));
+            syncLinkedRobinVoicesLocked();
+            return true;
+        }
+    }
+
+    if (parts.size() == 4 && parts[0] == "sources" && parts[1] == "robin" && parts[2] == "envVcf") {
+        if (parts[3] == "attackMs") {
+            robinEnvVcfState_.attackMs = static_cast<float>(std::clamp(value, 0.0, 5000.0));
+            syncLinkedRobinVoicesLocked();
+            return true;
+        }
+        if (parts[3] == "decayMs") {
+            robinEnvVcfState_.decayMs = static_cast<float>(std::clamp(value, 0.0, 5000.0));
+            syncLinkedRobinVoicesLocked();
+            return true;
+        }
+        if (parts[3] == "sustain") {
+            robinEnvVcfState_.sustain = static_cast<float>(std::clamp(value, 0.0, 1.0));
+            syncLinkedRobinVoicesLocked();
+            return true;
+        }
+        if (parts[3] == "releaseMs") {
+            robinEnvVcfState_.releaseMs = static_cast<float>(std::clamp(value, 0.0, 5000.0));
+            syncLinkedRobinVoicesLocked();
+            return true;
+        }
+        if (parts[3] == "amount") {
+            robinEnvVcfState_.amount = static_cast<float>(std::clamp(value, 0.0, 1.0));
+            syncLinkedRobinVoicesLocked();
+            return true;
+        }
+    }
+
     if (parts.size() == 4 && parts[0] == "sources" && parts[1] == "robin" && parts[2] == "envelope") {
         if (parts[3] == "attackMs") {
             robinEnvelopeState_.attackMs = static_cast<float>(std::clamp(value, 0.0, 5000.0));
-            robinSource_.synth().setEnvelopeAttackSeconds(robinEnvelopeState_.attackMs / 1000.0f);
+            syncLinkedRobinVoicesLocked();
             return true;
         }
         if (parts[3] == "decayMs") {
             robinEnvelopeState_.decayMs = static_cast<float>(std::clamp(value, 0.0, 5000.0));
-            robinSource_.synth().setEnvelopeDecaySeconds(robinEnvelopeState_.decayMs / 1000.0f);
+            syncLinkedRobinVoicesLocked();
             return true;
         }
         if (parts[3] == "sustain") {
             robinEnvelopeState_.sustain = static_cast<float>(std::clamp(value, 0.0, 1.0));
-            robinSource_.synth().setEnvelopeSustainLevel(robinEnvelopeState_.sustain);
+            syncLinkedRobinVoicesLocked();
             return true;
         }
         if (parts[3] == "releaseMs") {
             robinEnvelopeState_.releaseMs = static_cast<float>(std::clamp(value, 0.0, 5000.0));
-            robinSource_.synth().setEnvelopeReleaseSeconds(robinEnvelopeState_.releaseMs / 1000.0f);
+            syncLinkedRobinVoicesLocked();
             return true;
         }
     }
@@ -939,10 +1051,6 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
             saturatorState_.enabled = value >= 0.5;
             return true;
         }
-        if (parts[3] == "linkedLevels") {
-            saturatorState_.linkedLevels = value >= 0.5;
-            return true;
-        }
         if (parts[3] == "inputLevel") {
             saturatorState_.inputLevel = static_cast<float>(std::clamp(value, 0.0, 2.0));
             return true;
@@ -957,11 +1065,6 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
         if (parts[3] == "enabled") {
             chorusState_.enabled = value >= 0.5;
             fxRackNode_.setChorusEnabled(chorusState_.enabled);
-            return true;
-        }
-        if (parts[3] == "linkedControls") {
-            chorusState_.linkedControls = value >= 0.5;
-            fxRackNode_.setChorusLinkedControls(chorusState_.linkedControls);
             return true;
         }
         if (parts[3] == "depth") {
@@ -988,22 +1091,6 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
         }
     }
 
-    if (parts.size() == 5 && parts[0] == "processors" && parts[1] == "fx" && parts[2] == "output") {
-        std::uint32_t outputIndex = 0;
-        if (!tryParseIndex(parts[3], outputIndex) || outputIndex >= fxOutputRoutes_.size()) {
-            if (errorMessage != nullptr) {
-                *errorMessage = "Invalid FX output index.";
-            }
-            return false;
-        }
-
-        if (parts[4] == "routeThroughFx") {
-            fxOutputRoutes_[outputIndex].routeThroughFx = value >= 0.5;
-            fxRackNode_.setOutputRoute(outputIndex, fxOutputRoutes_[outputIndex].routeThroughFx);
-            return true;
-        }
-    }
-
     std::size_t rootOffset = 0;
     if (parts.size() >= 3 && parts[0] == "sources" && parts[1] == "robin") {
         rootOffset = 2;
@@ -1012,69 +1099,56 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
     if (rootOffset == 2 && parts.size() == 5 && parts[rootOffset] == "oscillator") {
         std::uint32_t oscillatorIndex = 0;
         if (!tryParseIndex(parts[rootOffset + 1], oscillatorIndex)
-            || voices_.empty()
-            || oscillatorIndex >= voices_.front().oscillators.size()) {
+            || oscillatorIndex >= masterOscillators_.size()) {
             if (errorMessage != nullptr) {
                 *errorMessage = "Invalid oscillator index.";
             }
             return false;
         }
 
-        for (std::uint32_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
-            auto& voice = voices_[voiceIndex];
-            auto& oscillator = voice.oscillators[oscillatorIndex];
+        auto& oscillator = masterOscillators_[oscillatorIndex];
 
-            if (parts[rootOffset + 2] == "enabled") {
-                oscillator.enabled = value >= 0.5;
-                robinSource_.synth().setOscillatorEnabled(voiceIndex, oscillatorIndex, oscillator.enabled);
-                continue;
-            }
-
-            if (parts[rootOffset + 2] == "gain") {
-                oscillator.gain = static_cast<float>(std::clamp(value, 0.0, 1.0));
-                robinSource_.synth().setOscillatorGain(voiceIndex, oscillatorIndex, oscillator.gain);
-                continue;
-            }
-
-            if (parts[rootOffset + 2] == "relative") {
-                const bool nextRelative = value >= 0.5;
-                if (oscillator.relativeToVoice != nextRelative) {
-                    if (nextRelative) {
-                        oscillator.frequencyValue =
-                            static_cast<float>(std::clamp(
-                                oscillator.frequencyValue / std::max(1.0f, voice.frequency),
-                                0.01f,
-                                8.0f));
-                    } else {
-                        oscillator.frequencyValue =
-                            static_cast<float>(std::clamp(
-                                oscillator.frequencyValue * std::max(1.0f, voice.frequency),
-                                1.0f,
-                                20000.0f));
-                    }
+        if (parts[rootOffset + 2] == "enabled") {
+            oscillator.enabled = value >= 0.5;
+        } else if (parts[rootOffset + 2] == "gain") {
+            oscillator.gain = static_cast<float>(std::clamp(value, 0.0, 1.0));
+        } else if (parts[rootOffset + 2] == "relative") {
+            const bool nextRelative = value >= 0.5;
+            if (oscillator.relativeToVoice != nextRelative) {
+                if (nextRelative) {
+                    oscillator.frequencyValue = static_cast<float>(std::clamp(
+                        oscillator.frequencyValue / std::max(1.0f, config_.frequency),
+                        0.01f,
+                        8.0f));
+                } else {
+                    oscillator.frequencyValue = static_cast<float>(std::clamp(
+                        oscillator.frequencyValue * std::max(1.0f, config_.frequency),
+                        1.0f,
+                        20000.0f));
                 }
-
-                oscillator.relativeToVoice = nextRelative;
-                robinSource_.synth().setOscillatorRelativeToVoice(
-                    voiceIndex,
-                    oscillatorIndex,
-                    oscillator.relativeToVoice);
-                robinSource_.synth().setOscillatorFrequency(voiceIndex, oscillatorIndex, oscillator.frequencyValue);
-                continue;
             }
 
-            if (parts[rootOffset + 2] == "frequency") {
-                oscillator.frequencyValue = oscillator.relativeToVoice
-                    ? static_cast<float>(std::clamp(value, 0.01, 8.0))
-                    : static_cast<float>(std::clamp(value, 1.0, 20000.0));
-                robinSource_.synth().setOscillatorFrequency(voiceIndex, oscillatorIndex, oscillator.frequencyValue);
-                continue;
-            }
-
+            oscillator.relativeToVoice = nextRelative;
+        } else if (parts[rootOffset + 2] == "frequency") {
+            oscillator.frequencyValue = oscillator.relativeToVoice
+                ? static_cast<float>(std::clamp(value, 0.01, 8.0))
+                : static_cast<float>(std::clamp(value, 1.0, 20000.0));
+        } else {
             if (errorMessage != nullptr) {
                 *errorMessage = "Unsupported master oscillator parameter.";
             }
             return false;
+        }
+
+        for (std::uint32_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
+            if (!voices_[voiceIndex].linkedToMaster) {
+                continue;
+            }
+
+            robinSource_.synth().setOscillatorEnabled(voiceIndex, oscillatorIndex, oscillator.enabled);
+            robinSource_.synth().setOscillatorGain(voiceIndex, oscillatorIndex, oscillator.gain);
+            robinSource_.synth().setOscillatorRelativeToVoice(voiceIndex, oscillatorIndex, oscillator.relativeToVoice);
+            robinSource_.synth().setOscillatorFrequency(voiceIndex, oscillatorIndex, oscillator.frequencyValue);
         }
 
         if (debugRobinOscillatorParams_) {
@@ -1102,13 +1176,40 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
             return true;
         }
 
+        if (parts.size() == rootOffset + 3 && parts[rootOffset + 2] == "linkedToMaster") {
+            const bool nextLinkedToMaster = value >= 0.5;
+            voice.linkedToMaster = nextLinkedToMaster;
+            syncVoiceStateLocked(voiceIndex);
+            return true;
+        }
+
+        if (parts.size() == rootOffset + 3 && parts[rootOffset + 2] == "resetToMasterState") {
+            copyMasterStateToVoiceLocked(voice);
+            if (!voice.linkedToMaster) {
+                syncVoiceStateLocked(voiceIndex);
+            }
+            return true;
+        }
+
         if (parts.size() == rootOffset + 3 && parts[rootOffset + 2] == "frequency") {
+            if (voice.linkedToMaster) {
+                if (errorMessage != nullptr) {
+                    *errorMessage = "Voice is linked to the master template.";
+                }
+                return false;
+            }
             voice.frequency = static_cast<float>(std::clamp(value, 20.0, 20000.0));
-            robinSource_.synth().setVoiceFrequency(voiceIndex, voice.frequency);
+            syncRobinVoiceFrequencyLocked(voiceIndex);
             return true;
         }
 
         if (parts.size() == rootOffset + 3 && parts[rootOffset + 2] == "gain") {
+            if (voice.linkedToMaster) {
+                if (errorMessage != nullptr) {
+                    *errorMessage = "Voice is linked to the master template.";
+                }
+                return false;
+            }
             voice.gain = static_cast<float>(std::clamp(value, 0.0, 1.0));
             robinSource_.synth().setVoiceGain(voiceIndex, voice.gain);
             return true;
@@ -1130,7 +1231,99 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
             return true;
         }
 
+        if (parts.size() == rootOffset + 4 && parts[rootOffset + 2] == "vcf") {
+            if (voice.linkedToMaster) {
+                if (errorMessage != nullptr) {
+                    *errorMessage = "Voice is linked to the master template.";
+                }
+                return false;
+            }
+
+            if (parts[rootOffset + 3] == "cutoffHz") {
+                voice.vcf.cutoffHz = static_cast<float>(std::clamp(value, 20.0, 20000.0));
+                robinSource_.synth().setVoiceFilterCutoffHz(voiceIndex, voice.vcf.cutoffHz);
+                return true;
+            }
+            if (parts[rootOffset + 3] == "resonance") {
+                voice.vcf.resonance = static_cast<float>(std::clamp(value, 0.1, 10.0));
+                robinSource_.synth().setVoiceFilterResonance(voiceIndex, voice.vcf.resonance);
+                return true;
+            }
+        }
+
+        if (parts.size() == rootOffset + 4 && parts[rootOffset + 2] == "envVcf") {
+            if (voice.linkedToMaster) {
+                if (errorMessage != nullptr) {
+                    *errorMessage = "Voice is linked to the master template.";
+                }
+                return false;
+            }
+
+            if (parts[rootOffset + 3] == "attackMs") {
+                voice.envVcf.attackMs = static_cast<float>(std::clamp(value, 0.0, 5000.0));
+                robinSource_.synth().setVoiceFilterEnvelopeAttackSeconds(voiceIndex, voice.envVcf.attackMs / 1000.0f);
+                return true;
+            }
+            if (parts[rootOffset + 3] == "decayMs") {
+                voice.envVcf.decayMs = static_cast<float>(std::clamp(value, 0.0, 5000.0));
+                robinSource_.synth().setVoiceFilterEnvelopeDecaySeconds(voiceIndex, voice.envVcf.decayMs / 1000.0f);
+                return true;
+            }
+            if (parts[rootOffset + 3] == "sustain") {
+                voice.envVcf.sustain = static_cast<float>(std::clamp(value, 0.0, 1.0));
+                robinSource_.synth().setVoiceFilterEnvelopeSustainLevel(voiceIndex, voice.envVcf.sustain);
+                return true;
+            }
+            if (parts[rootOffset + 3] == "releaseMs") {
+                voice.envVcf.releaseMs = static_cast<float>(std::clamp(value, 0.0, 5000.0));
+                robinSource_.synth().setVoiceFilterEnvelopeReleaseSeconds(voiceIndex, voice.envVcf.releaseMs / 1000.0f);
+                return true;
+            }
+            if (parts[rootOffset + 3] == "amount") {
+                voice.envVcf.amount = static_cast<float>(std::clamp(value, 0.0, 1.0));
+                robinSource_.synth().setVoiceFilterEnvelopeAmount(voiceIndex, voice.envVcf.amount);
+                return true;
+            }
+        }
+
+        if (parts.size() == rootOffset + 4 && parts[rootOffset + 2] == "envelope") {
+            if (voice.linkedToMaster) {
+                if (errorMessage != nullptr) {
+                    *errorMessage = "Voice is linked to the master template.";
+                }
+                return false;
+            }
+
+            if (parts[rootOffset + 3] == "attackMs") {
+                voice.envelope.attackMs = static_cast<float>(std::clamp(value, 0.0, 5000.0));
+                robinSource_.synth().setVoiceEnvelopeAttackSeconds(voiceIndex, voice.envelope.attackMs / 1000.0f);
+                return true;
+            }
+            if (parts[rootOffset + 3] == "decayMs") {
+                voice.envelope.decayMs = static_cast<float>(std::clamp(value, 0.0, 5000.0));
+                robinSource_.synth().setVoiceEnvelopeDecaySeconds(voiceIndex, voice.envelope.decayMs / 1000.0f);
+                return true;
+            }
+            if (parts[rootOffset + 3] == "sustain") {
+                voice.envelope.sustain = static_cast<float>(std::clamp(value, 0.0, 1.0));
+                robinSource_.synth().setVoiceEnvelopeSustainLevel(voiceIndex, voice.envelope.sustain);
+                return true;
+            }
+            if (parts[rootOffset + 3] == "releaseMs") {
+                voice.envelope.releaseMs = static_cast<float>(std::clamp(value, 0.0, 5000.0));
+                robinSource_.synth().setVoiceEnvelopeReleaseSeconds(voiceIndex, voice.envelope.releaseMs / 1000.0f);
+                return true;
+            }
+        }
+
         if (parts.size() == rootOffset + 5 && parts[rootOffset + 2] == "oscillator") {
+            if (voice.linkedToMaster) {
+                if (errorMessage != nullptr) {
+                    *errorMessage = "Voice is linked to the master template.";
+                }
+                return false;
+            }
+
             std::uint32_t oscillatorIndex = 0;
             if (!tryParseIndex(parts[rootOffset + 3], oscillatorIndex)
                 || oscillatorIndex >= voice.oscillators.size()) {
@@ -1219,19 +1412,6 @@ bool SynthController::setParam(std::string_view path, std::string_view value, st
         return true;
     }
 
-    if (path == "waveform" || path == "sources.robin.waveform") {
-        dsp::Waveform waveform;
-        if (!tryParseWaveform(value, waveform)) {
-            if (errorMessage != nullptr) {
-                *errorMessage = "Invalid waveform value.";
-            }
-            return false;
-        }
-
-        applyGlobalWaveformLocked(waveform);
-        return true;
-    }
-
     if (path == "lfo.waveform" || path == "sources.robin.lfo.waveform") {
         dsp::LfoWaveform waveform;
         if (!tryParseLfoWaveform(value, waveform)) {
@@ -1260,6 +1440,37 @@ bool SynthController::setParam(std::string_view path, std::string_view value, st
         return true;
     }
 
+    if (parts.size() == 3 && parts[0] == "sourceMixer" && parts[2] == "routeTarget") {
+        SourceMixerSlotState* sourceState = nullptr;
+        if (parts[1] == "robin") {
+            sourceState = &robinMixerState_;
+        } else if (parts[1] == "test") {
+            sourceState = &testMixerState_;
+        } else if (parts[1] == "decor") {
+            sourceState = &decorMixerState_;
+        } else if (parts[1] == "pieces") {
+            sourceState = &piecesMixerState_;
+        }
+
+        if (sourceState == nullptr) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "Unsupported source mixer target.";
+            }
+            return false;
+        }
+
+        SourceMixerSlotState::RouteTarget routeTarget;
+        if (!tryParseSourceRouteTarget(value, routeTarget)) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "Invalid source route target.";
+            }
+            return false;
+        }
+
+        sourceState->routeTarget = routeTarget;
+        return true;
+    }
+
     std::size_t rootOffset = 0;
     if (parts.size() >= 3 && parts[0] == "sources" && parts[1] == "robin") {
         rootOffset = 2;
@@ -1271,8 +1482,7 @@ bool SynthController::setParam(std::string_view path, std::string_view value, st
         && parts[rootOffset + 2] == "waveform") {
         std::uint32_t oscillatorIndex = 0;
         if (!tryParseIndex(parts[rootOffset + 1], oscillatorIndex)
-            || voices_.empty()
-            || oscillatorIndex >= voices_.front().oscillators.size()) {
+            || oscillatorIndex >= masterOscillators_.size()) {
             if (errorMessage != nullptr) {
                 *errorMessage = "Invalid oscillator index.";
             }
@@ -1287,8 +1497,11 @@ bool SynthController::setParam(std::string_view path, std::string_view value, st
             return false;
         }
 
+        masterOscillators_[oscillatorIndex].waveform = waveform;
         for (std::uint32_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
-            voices_[voiceIndex].oscillators[oscillatorIndex].waveform = waveform;
+            if (!voices_[voiceIndex].linkedToMaster) {
+                continue;
+            }
             robinSource_.synth().setOscillatorWaveform(voiceIndex, oscillatorIndex, waveform);
         }
         if (debugRobinOscillatorParams_) {
@@ -1313,6 +1526,13 @@ bool SynthController::setParam(std::string_view path, std::string_view value, st
             || oscillatorIndex >= voices_[voiceIndex].oscillators.size()) {
             if (errorMessage != nullptr) {
                 *errorMessage = "Invalid oscillator index.";
+            }
+            return false;
+        }
+
+        if (voices_[voiceIndex].linkedToMaster) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "Voice is linked to the master template.";
             }
             return false;
         }
@@ -1346,6 +1566,58 @@ core::Logger& SynthController::logger() {
 
 const RuntimeConfig& SynthController::config() const {
     return config_;
+}
+
+float SynthController::tunedRobinFrequencyLocked(float baseFrequencyHz) const {
+    const float clampedBaseFrequency = std::clamp(baseFrequencyHz, 20.0f, 20000.0f);
+    const float semitoneOffset = robinPitchState_.transposeSemitones + (robinPitchState_.fineTuneCents / 100.0f);
+    const float tunedFrequency = clampedBaseFrequency * std::pow(2.0f, semitoneOffset / 12.0f);
+    return std::clamp(tunedFrequency, 20.0f, 20000.0f);
+}
+
+void SynthController::copyMasterStateToVoiceLocked(VoiceState& voice) const {
+    voice.frequency = config_.frequency;
+    voice.gain = robinMasterVoiceGain_;
+    voice.vcf = robinVcfState_;
+    voice.envVcf = robinEnvVcfState_;
+    voice.envelope = robinEnvelopeState_;
+    voice.oscillators = masterOscillators_;
+}
+
+void SynthController::syncLinkedRobinVoicesLocked(bool syncFrequency) {
+    for (std::uint32_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
+        if (!voices_[voiceIndex].linkedToMaster) {
+            continue;
+        }
+        syncVoiceStateLocked(voiceIndex, syncFrequency);
+    }
+}
+
+void SynthController::syncRobinVoiceFrequencyLocked(std::uint32_t voiceIndex) {
+    if (voiceIndex >= voices_.size()) {
+        return;
+    }
+
+    const auto& voice = voices_[voiceIndex];
+    float baseFrequency = voice.linkedToMaster ? config_.frequency : voice.frequency;
+
+    const auto assignment = std::find_if(
+        robinVoiceAssignments_.begin(),
+        robinVoiceAssignments_.end(),
+        [voiceIndex](const RobinVoiceAssignment& currentAssignment) {
+            return currentAssignment.voiceIndex == voiceIndex;
+        });
+    if (assignment != robinVoiceAssignments_.end()) {
+        baseFrequency = midiNoteToFrequency(assignment->noteNumber);
+    }
+
+    robinSource_.synth().setVoiceFrequency(voiceIndex, tunedRobinFrequencyLocked(baseFrequency));
+}
+
+void SynthController::syncAllRobinVoiceFrequenciesLocked() {
+    for (std::uint32_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
+        syncRobinVoiceFrequencyLocked(voiceIndex);
+    }
 }
 
 void SynthController::logRobinMasterOscillatorUpdateLocked(std::string_view path,
@@ -1443,6 +1715,28 @@ bool SynthController::tryParseLfoWaveform(std::string_view value, dsp::LfoWavefo
     return false;
 }
 
+const char* SynthController::sourceRouteTargetToString(SourceMixerSlotState::RouteTarget routeTarget) {
+    switch (routeTarget) {
+        case SourceMixerSlotState::RouteTarget::Fx:
+            return "fx";
+        case SourceMixerSlotState::RouteTarget::Dry:
+        default:
+            return "dry";
+    }
+}
+
+bool SynthController::tryParseSourceRouteTarget(std::string_view value, SourceMixerSlotState::RouteTarget& routeTarget) {
+    if (value == "dry") {
+        routeTarget = SourceMixerSlotState::RouteTarget::Dry;
+        return true;
+    }
+    if (value == "fx") {
+        routeTarget = SourceMixerSlotState::RouteTarget::Fx;
+        return true;
+    }
+    return false;
+}
+
 const char* SynthController::routingPresetToString(RoutingPreset preset) {
     switch (preset) {
         case RoutingPreset::Forward:
@@ -1451,6 +1745,8 @@ const char* SynthController::routingPresetToString(RoutingPreset preset) {
             return "backward";
         case RoutingPreset::Random:
             return "random";
+        case RoutingPreset::AllOutputs:
+            return "all-outputs";
         case RoutingPreset::Custom:
             return "custom";
         case RoutingPreset::RoundRobin:
@@ -1474,6 +1770,10 @@ bool SynthController::tryParseRoutingPreset(std::string_view value, RoutingPrese
     }
     if (value == "round-robin") {
         preset = RoutingPreset::RoundRobin;
+        return true;
+    }
+    if (value == "all-outputs") {
+        preset = RoutingPreset::AllOutputs;
         return true;
     }
     if (value == "custom") {
@@ -1546,6 +1846,11 @@ void SynthController::buildLiveGraphLocked() {
         },
         [this]() { return robinMixerState_.implemented; },
         [this]() { return robinMixerState_.enabled; },
+        [this]() {
+            return robinMixerState_.routeTarget == SourceMixerSlotState::RouteTarget::Fx
+                ? graph::LiveGraph::SourceRenderTarget::FxBus
+                : graph::LiveGraph::SourceRenderTarget::Dry;
+        },
         [this](float* output, std::uint32_t frames, std::uint32_t channels) {
             robinSource_.renderAdd(output, frames, channels);
         },
@@ -1560,6 +1865,11 @@ void SynthController::buildLiveGraphLocked() {
         },
         [this]() { return testMixerState_.implemented; },
         [this]() { return testMixerState_.enabled; },
+        [this]() {
+            return testMixerState_.routeTarget == SourceMixerSlotState::RouteTarget::Fx
+                ? graph::LiveGraph::SourceRenderTarget::FxBus
+                : graph::LiveGraph::SourceRenderTarget::Dry;
+        },
         [this](float* output, std::uint32_t frames, std::uint32_t channels) {
             testSource_.renderAdd(output, frames, channels, testMixerState_.enabled, testMixerState_.level);
         },
@@ -1572,6 +1882,11 @@ void SynthController::buildLiveGraphLocked() {
         nullptr,
         [this]() { return decorMixerState_.implemented; },
         [this]() { return decorMixerState_.enabled; },
+        [this]() {
+            return decorMixerState_.routeTarget == SourceMixerSlotState::RouteTarget::Fx
+                ? graph::LiveGraph::SourceRenderTarget::FxBus
+                : graph::LiveGraph::SourceRenderTarget::Dry;
+        },
         nullptr,
         nullptr,
         nullptr,
@@ -1582,6 +1897,11 @@ void SynthController::buildLiveGraphLocked() {
         nullptr,
         [this]() { return piecesMixerState_.implemented; },
         [this]() { return piecesMixerState_.enabled; },
+        [this]() {
+            return piecesMixerState_.routeTarget == SourceMixerSlotState::RouteTarget::Fx
+                ? graph::LiveGraph::SourceRenderTarget::FxBus
+                : graph::LiveGraph::SourceRenderTarget::Dry;
+        },
         nullptr,
         nullptr,
         nullptr,
@@ -1589,6 +1909,7 @@ void SynthController::buildLiveGraphLocked() {
 
     liveGraph_.addOutputProcessorNode({
         "fx-rack",
+        graph::LiveGraph::OutputProcessTarget::FxBus,
         [this](double sampleRate, std::uint32_t outputChannels) {
             fxRackNode_.resize(outputChannels);
             fxRackNode_.prepare(sampleRate);
@@ -1600,6 +1921,7 @@ void SynthController::buildLiveGraphLocked() {
 
     liveGraph_.addOutputProcessorNode({
         "output-mixer",
+        graph::LiveGraph::OutputProcessTarget::Main,
         [this](double sampleRate, std::uint32_t outputChannels) {
             outputMixerNode_.resize(outputChannels);
             outputMixerNode_.prepare(sampleRate);
@@ -1638,29 +1960,32 @@ void SynthController::syncOutputDeviceSelectionLocked(
 }
 
 void SynthController::buildDefaultStateLocked() {
+    masterOscillators_.clear();
+    masterOscillators_.resize(config_.oscillatorsPerVoice);
+    for (std::uint32_t oscillatorIndex = 0; oscillatorIndex < config_.oscillatorsPerVoice; ++oscillatorIndex) {
+        auto& oscillator = masterOscillators_[oscillatorIndex];
+        oscillator.enabled = (oscillatorIndex == 0);
+        oscillator.gain = 1.0f;
+        oscillator.relativeToVoice = true;
+        oscillator.frequencyValue = 1.0f;
+        oscillator.waveform = config_.waveform;
+    }
+
     voices_.clear();
     voices_.resize(config_.voiceCount);
+    robinVoiceReleaseUntil_.assign(
+        config_.voiceCount,
+        std::chrono::steady_clock::time_point::min());
 
     for (std::uint32_t voiceIndex = 0; voiceIndex < config_.voiceCount; ++voiceIndex) {
         auto& voice = voices_[voiceIndex];
         voice.active = true;
-        voice.frequency = config_.frequency;
-        voice.gain = 1.0f;
+        voice.linkedToMaster = true;
         voice.outputs.assign(config_.channels, false);
         if (!voice.outputs.empty()) {
             voice.outputs[voiceIndex % voice.outputs.size()] = true;
         }
-
-        voice.oscillators.clear();
-        voice.oscillators.resize(config_.oscillatorsPerVoice);
-        for (std::uint32_t oscillatorIndex = 0; oscillatorIndex < config_.oscillatorsPerVoice; ++oscillatorIndex) {
-            auto& oscillator = voice.oscillators[oscillatorIndex];
-            oscillator.enabled = (oscillatorIndex == 0);
-            oscillator.gain = 1.0f;
-            oscillator.relativeToVoice = true;
-            oscillator.frequencyValue = 1.0f;
-            oscillator.waveform = config_.waveform;
-        }
+        copyMasterStateToVoiceLocked(voice);
     }
 
     testState_.implemented = true;
@@ -1674,47 +1999,66 @@ void SynthController::buildDefaultStateLocked() {
     resetRobinRoutingStateLocked();
 }
 
-void SynthController::syncVoiceStateLocked(std::uint32_t voiceIndex) {
+void SynthController::syncVoiceStateLocked(std::uint32_t voiceIndex, bool syncFrequency) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
 
     const auto& voice = voices_[voiceIndex];
+    const auto& envelope = voice.linkedToMaster ? robinEnvelopeState_ : voice.envelope;
+    const auto& vcf = voice.linkedToMaster ? robinVcfState_ : voice.vcf;
+    const auto& envVcf = voice.linkedToMaster ? robinEnvVcfState_ : voice.envVcf;
+    const auto& oscillators = voice.linkedToMaster ? masterOscillators_ : voice.oscillators;
+
     robinSource_.synth().setVoiceActive(voiceIndex, voice.active);
-    robinSource_.synth().setVoiceFrequency(voiceIndex, voice.frequency);
-    robinSource_.synth().setVoiceGain(voiceIndex, voice.gain);
+    if (syncFrequency) {
+        syncRobinVoiceFrequencyLocked(voiceIndex);
+    }
+    robinSource_.synth().setVoiceGain(voiceIndex, voice.linkedToMaster ? robinMasterVoiceGain_ : voice.gain);
+    robinSource_.synth().setVoiceEnvelopeAttackSeconds(voiceIndex, envelope.attackMs / 1000.0f);
+    robinSource_.synth().setVoiceEnvelopeDecaySeconds(voiceIndex, envelope.decayMs / 1000.0f);
+    robinSource_.synth().setVoiceEnvelopeSustainLevel(voiceIndex, envelope.sustain);
+    robinSource_.synth().setVoiceEnvelopeReleaseSeconds(voiceIndex, envelope.releaseMs / 1000.0f);
+    robinSource_.synth().setVoiceFilterCutoffHz(voiceIndex, vcf.cutoffHz);
+    robinSource_.synth().setVoiceFilterResonance(voiceIndex, vcf.resonance);
+    robinSource_.synth().setVoiceFilterEnvelopeAttackSeconds(voiceIndex, envVcf.attackMs / 1000.0f);
+    robinSource_.synth().setVoiceFilterEnvelopeDecaySeconds(voiceIndex, envVcf.decayMs / 1000.0f);
+    robinSource_.synth().setVoiceFilterEnvelopeSustainLevel(voiceIndex, envVcf.sustain);
+    robinSource_.synth().setVoiceFilterEnvelopeReleaseSeconds(voiceIndex, envVcf.releaseMs / 1000.0f);
+    robinSource_.synth().setVoiceFilterEnvelopeAmount(voiceIndex, envVcf.amount);
 
     for (std::uint32_t outputIndex = 0; outputIndex < voice.outputs.size(); ++outputIndex) {
         robinSource_.synth().setVoiceOutputEnabled(voiceIndex, outputIndex, voice.outputs[outputIndex]);
     }
 
-    for (std::uint32_t oscillatorIndex = 0; oscillatorIndex < voice.oscillators.size(); ++oscillatorIndex) {
+    const std::uint32_t oscillatorCount = static_cast<std::uint32_t>(oscillators.size());
+    for (std::uint32_t oscillatorIndex = 0; oscillatorIndex < oscillatorCount; ++oscillatorIndex) {
         robinSource_.synth().setOscillatorEnabled(
             voiceIndex,
             oscillatorIndex,
-            voice.oscillators[oscillatorIndex].enabled);
+            oscillators[oscillatorIndex].enabled);
         robinSource_.synth().setOscillatorGain(
             voiceIndex,
             oscillatorIndex,
-            voice.oscillators[oscillatorIndex].gain);
+            oscillators[oscillatorIndex].gain);
         robinSource_.synth().setOscillatorRelativeToVoice(
             voiceIndex,
             oscillatorIndex,
-            voice.oscillators[oscillatorIndex].relativeToVoice);
+            oscillators[oscillatorIndex].relativeToVoice);
         robinSource_.synth().setOscillatorFrequency(
             voiceIndex,
             oscillatorIndex,
-            voice.oscillators[oscillatorIndex].frequencyValue);
+            oscillators[oscillatorIndex].frequencyValue);
         robinSource_.synth().setOscillatorWaveform(
             voiceIndex,
             oscillatorIndex,
-            voice.oscillators[oscillatorIndex].waveform);
+            oscillators[oscillatorIndex].waveform);
     }
 }
 
 void SynthController::syncAllVoicesLocked() {
     for (std::uint32_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
-        syncVoiceStateLocked(voiceIndex);
+        syncVoiceStateLocked(voiceIndex, true);
     }
 }
 
@@ -1732,10 +2076,7 @@ void SynthController::syncLfoLocked() {
 }
 
 void SynthController::syncRobinEnvelopeLocked() {
-    robinSource_.synth().setEnvelopeAttackSeconds(robinEnvelopeState_.attackMs / 1000.0f);
-    robinSource_.synth().setEnvelopeDecaySeconds(robinEnvelopeState_.decayMs / 1000.0f);
-    robinSource_.synth().setEnvelopeSustainLevel(robinEnvelopeState_.sustain);
-    robinSource_.synth().setEnvelopeReleaseSeconds(robinEnvelopeState_.releaseMs / 1000.0f);
+    syncLinkedRobinVoicesLocked();
 }
 
 void SynthController::resizeScaffoldStateLocked() {
@@ -1754,7 +2095,6 @@ void SynthController::resizeScaffoldStateLocked() {
 
     outputMixerChannels_.resize(outputCount);
     outputMixerNode_.resize(outputCount);
-    fxOutputRoutes_.resize(outputCount);
     decorState_.voiceCount = outputCount;
     piecesState_.voiceCount = std::max<std::uint32_t>(1, config_.voiceCount);
 }
@@ -1816,16 +2156,12 @@ const MidiSourceRouteState* SynthController::findMidiRouteLocked(std::uint32_t s
 }
 
 void SynthController::syncOutputProcessorNodesLocked() {
-    fxRackNode_.resize(static_cast<std::uint32_t>(fxOutputRoutes_.size()));
+    fxRackNode_.resize(static_cast<std::uint32_t>(outputMixerChannels_.size()));
     fxRackNode_.prepare(config_.sampleRate);
     fxRackNode_.setChorusEnabled(chorusState_.enabled);
-    fxRackNode_.setChorusLinkedControls(chorusState_.linkedControls);
     fxRackNode_.setChorusDepth(chorusState_.depth);
     fxRackNode_.setChorusSpeedHz(chorusState_.speedHz);
     fxRackNode_.setChorusPhaseSpreadDegrees(chorusState_.phaseSpreadDegrees);
-    for (std::size_t outputIndex = 0; outputIndex < fxOutputRoutes_.size(); ++outputIndex) {
-        fxRackNode_.setOutputRoute(static_cast<std::uint32_t>(outputIndex), fxOutputRoutes_[outputIndex].routeThroughFx);
-    }
 
     outputMixerNode_.resize(static_cast<std::uint32_t>(outputMixerChannels_.size()));
     outputMixerNode_.prepare(config_.sampleRate);
@@ -1968,23 +2304,15 @@ void SynthController::applyTestLevelLocked(float level) {
 
 void SynthController::applyGlobalFrequencyLocked(float frequencyHz) {
     config_.frequency = std::clamp(frequencyHz, 20.0f, 20000.0f);
-    for (std::size_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
-        voices_[voiceIndex].frequency = config_.frequency;
-        robinSource_.synth().setVoiceFrequency(static_cast<std::uint32_t>(voiceIndex), config_.frequency);
-    }
+    syncLinkedRobinVoicesLocked(true);
 }
 
 void SynthController::applyGlobalWaveformLocked(dsp::Waveform waveform) {
     config_.waveform = waveform;
-    for (std::size_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
-        for (std::size_t oscillatorIndex = 0; oscillatorIndex < voices_[voiceIndex].oscillators.size(); ++oscillatorIndex) {
-            voices_[voiceIndex].oscillators[oscillatorIndex].waveform = config_.waveform;
-            robinSource_.synth().setOscillatorWaveform(
-                static_cast<std::uint32_t>(voiceIndex),
-                static_cast<std::uint32_t>(oscillatorIndex),
-                config_.waveform);
-        }
+    for (auto& oscillator : masterOscillators_) {
+        oscillator.waveform = config_.waveform;
     }
+    syncLinkedRobinVoicesLocked();
 }
 
 void SynthController::applyRoutingPresetLocked(RoutingPreset preset) {
@@ -2032,6 +2360,7 @@ std::uint32_t SynthController::computeNextRobinTriggerOutputLocked() {
             robinRoundRobinPool_.erase(robinRoundRobinPool_.begin() + static_cast<std::ptrdiff_t>(poolIndex));
             break;
         }
+        case RoutingPreset::AllOutputs:
         case RoutingPreset::Custom:
         default:
             outputIndex = 0;
@@ -2060,6 +2389,23 @@ void SynthController::routeRobinVoiceToOutputLocked(std::uint32_t voiceIndex, st
     }
 }
 
+void SynthController::routeRobinVoiceToAllOutputsLocked(std::uint32_t voiceIndex) {
+    if (voiceIndex >= voices_.size()) {
+        return;
+    }
+
+    auto& outputs = voices_[voiceIndex].outputs;
+    if (outputs.empty()) {
+        return;
+    }
+
+    outputs.assign(outputs.size(), true);
+
+    for (std::uint32_t channelIndex = 0; channelIndex < outputs.size(); ++channelIndex) {
+        robinSource_.synth().setVoiceOutputEnabled(voiceIndex, channelIndex, true);
+    }
+}
+
 std::uint32_t SynthController::allocateRobinVoiceLocked() {
     if (voices_.empty()) {
         return 0;
@@ -2082,8 +2428,46 @@ std::uint32_t SynthController::allocateRobinVoiceLocked() {
 
     const std::uint32_t activeVoiceCount = static_cast<std::uint32_t>(activeVoiceIndices.size());
     const std::uint32_t cursorOffset = robinNextVoiceCursor_ % activeVoiceCount;
-    const std::uint32_t voiceIndex = activeVoiceIndices[cursorOffset];
-    robinNextVoiceCursor_ = (cursorOffset + 1) % activeVoiceCount;
+    const auto now = std::chrono::steady_clock::now();
+
+    auto isAssigned = [this](std::uint32_t voiceIndex) {
+        return std::find_if(
+                   robinVoiceAssignments_.begin(),
+                   robinVoiceAssignments_.end(),
+                   [voiceIndex](const RobinVoiceAssignment& assignment) {
+                       return assignment.voiceIndex == voiceIndex;
+                   })
+            != robinVoiceAssignments_.end();
+    };
+
+    auto isReleaseBusy = [this, now](std::uint32_t voiceIndex) {
+        return voiceIndex < robinVoiceReleaseUntil_.size()
+            && now < robinVoiceReleaseUntil_[voiceIndex];
+    };
+
+    auto findCandidateOffset = [&](bool requireUnassigned, bool requireReleaseFree) -> std::optional<std::uint32_t> {
+        for (std::uint32_t step = 0; step < activeVoiceCount; ++step) {
+            const std::uint32_t candidateOffset = (cursorOffset + step) % activeVoiceCount;
+            const std::uint32_t candidateVoiceIndex = activeVoiceIndices[candidateOffset];
+            if (requireUnassigned && isAssigned(candidateVoiceIndex)) {
+                continue;
+            }
+            if (requireReleaseFree && isReleaseBusy(candidateVoiceIndex)) {
+                continue;
+            }
+            return candidateOffset;
+        }
+        return std::nullopt;
+    };
+
+    std::optional<std::uint32_t> freeVoiceOffset = findCandidateOffset(true, true);
+    if (!freeVoiceOffset.has_value()) {
+        freeVoiceOffset = findCandidateOffset(true, false);
+    }
+
+    const std::uint32_t selectedOffset = freeVoiceOffset.value_or(cursorOffset);
+    const std::uint32_t voiceIndex = activeVoiceIndices[selectedOffset];
+    robinNextVoiceCursor_ = (selectedOffset + 1) % activeVoiceCount;
 
     auto voiceAssignment = std::find_if(
         robinVoiceAssignments_.begin(),
@@ -2101,6 +2485,7 @@ std::uint32_t SynthController::allocateRobinVoiceLocked() {
 
 void SynthController::reconfigureStructureLocked(std::uint32_t voiceCount, std::uint32_t oscillatorsPerVoice) {
     const auto previousVoices = voices_;
+    const auto previousMasterOscillators = masterOscillators_;
 
     config_.voiceCount = std::max<std::uint32_t>(1, voiceCount);
     config_.oscillatorsPerVoice = std::max<std::uint32_t>(1, oscillatorsPerVoice);
@@ -2113,14 +2498,23 @@ void SynthController::reconfigureStructureLocked(std::uint32_t voiceCount, std::
     buildDefaultStateLocked();
     resizeScaffoldStateLocked();
 
+    const std::size_t masterOscillatorCountToCopy = std::min(previousMasterOscillators.size(), masterOscillators_.size());
+    for (std::size_t oscillatorIndex = 0; oscillatorIndex < masterOscillatorCountToCopy; ++oscillatorIndex) {
+        masterOscillators_[oscillatorIndex] = previousMasterOscillators[oscillatorIndex];
+    }
+
     const std::size_t voiceCountToCopy = std::min(previousVoices.size(), voices_.size());
     for (std::size_t voiceIndex = 0; voiceIndex < voiceCountToCopy; ++voiceIndex) {
         const auto& previousVoice = previousVoices[voiceIndex];
         auto& voice = voices_[voiceIndex];
 
         voice.active = previousVoice.active;
+        voice.linkedToMaster = previousVoice.linkedToMaster;
         voice.frequency = previousVoice.frequency;
         voice.gain = previousVoice.gain;
+        voice.vcf = previousVoice.vcf;
+        voice.envVcf = previousVoice.envVcf;
+        voice.envelope = previousVoice.envelope;
 
         const std::size_t outputCountToCopy = std::min(previousVoice.outputs.size(), voice.outputs.size());
         for (std::size_t outputIndex = 0; outputIndex < outputCountToCopy; ++outputIndex) {
@@ -2218,21 +2612,29 @@ void SynthController::handleRobinNoteOnLocked(int noteNumber, float /*velocity*/
         });
     if (existingAssignment != robinVoiceAssignments_.end()) {
         robinSource_.synth().noteOff(existingAssignment->voiceIndex);
+        if (existingAssignment->voiceIndex < robinVoiceReleaseUntil_.size()) {
+            const auto& voice = voices_[existingAssignment->voiceIndex];
+            const auto releaseMs = voice.linkedToMaster ? robinEnvelopeState_.releaseMs : voice.envelope.releaseMs;
+            robinVoiceReleaseUntil_[existingAssignment->voiceIndex] =
+                std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(std::max(0.0f, releaseMs)));
+        }
         robinVoiceAssignments_.erase(existingAssignment);
     }
 
     const std::uint32_t voiceIndex = allocateRobinVoiceLocked();
-    const float frequencyHz = midiNoteToFrequency(noteNumber);
+    if (voiceIndex < robinVoiceReleaseUntil_.size()) {
+        robinVoiceReleaseUntil_[voiceIndex] = std::chrono::steady_clock::time_point::min();
+    }
+    robinVoiceAssignments_.push_back({noteNumber, voiceIndex});
+    syncRobinVoiceFrequencyLocked(voiceIndex);
 
-    voices_[voiceIndex].frequency = frequencyHz;
-    robinSource_.synth().setVoiceFrequency(voiceIndex, frequencyHz);
-
-    if (routingPreset_ != RoutingPreset::Custom) {
+    if (routingPreset_ == RoutingPreset::AllOutputs) {
+        routeRobinVoiceToAllOutputsLocked(voiceIndex);
+    } else if (routingPreset_ != RoutingPreset::Custom) {
         routeRobinVoiceToOutputLocked(voiceIndex, computeNextRobinTriggerOutputLocked());
     }
 
     robinSource_.synth().noteOn(voiceIndex);
-    robinVoiceAssignments_.push_back({noteNumber, voiceIndex});
 }
 
 void SynthController::handleRobinNoteOffLocked(int noteNumber) {
@@ -2246,8 +2648,18 @@ void SynthController::handleRobinNoteOffLocked(int noteNumber) {
         return;
     }
 
+    const std::uint32_t voiceIndex = assignment->voiceIndex;
     robinSource_.synth().noteOff(assignment->voiceIndex);
+    if (voiceIndex < robinVoiceReleaseUntil_.size()) {
+        const auto& voice = voices_[voiceIndex];
+        const auto releaseMs = voice.linkedToMaster ? robinEnvelopeState_.releaseMs : voice.envelope.releaseMs;
+        robinVoiceReleaseUntil_[voiceIndex] =
+            std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(std::max(0.0f, releaseMs)));
+    }
     robinVoiceAssignments_.erase(assignment);
+    // Keep the released note's pitch during the release tail instead of snapping
+    // the voice back to its root frequency while the envelope is still active.
+    (void)voiceIndex;
 
     if (autoActivatedVoice0_ && robinVoiceAssignments_.empty() && !voices_.empty()) {
         voices_[0].active = false;

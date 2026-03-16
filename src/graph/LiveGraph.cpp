@@ -36,7 +36,9 @@ void LiveGraph::render(float* output, std::uint32_t frames, std::uint32_t channe
         return;
     }
 
-    std::fill(output, output + (static_cast<std::size_t>(frames) * channels), 0.0f);
+    const std::size_t sampleCount = static_cast<std::size_t>(frames) * channels;
+    std::fill(output, output + sampleCount, 0.0f);
+    fxBusBuffer_.assign(sampleCount, 0.0f);
 
     for (auto& node : sourceNodes_) {
         if (node.isImplemented && !node.isImplemented()) {
@@ -46,14 +48,30 @@ void LiveGraph::render(float* output, std::uint32_t frames, std::uint32_t channe
             continue;
         }
         if (node.renderAdd) {
-            node.renderAdd(output, frames, channels);
+            float* targetBuffer = output;
+            if (node.renderTarget && node.renderTarget() == SourceRenderTarget::FxBus) {
+                targetBuffer = fxBusBuffer_.data();
+            }
+            node.renderAdd(targetBuffer, frames, channels);
         }
     }
 
     for (auto& node : outputProcessorNodes_) {
-        if (node.process) {
-            node.process(output, frames, channels);
+        if (!node.process || node.target != OutputProcessTarget::FxBus) {
+            continue;
         }
+        node.process(fxBusBuffer_.data(), frames, channels);
+    }
+
+    for (std::size_t sampleIndex = 0; sampleIndex < sampleCount; ++sampleIndex) {
+        output[sampleIndex] += fxBusBuffer_[sampleIndex];
+    }
+
+    for (auto& node : outputProcessorNodes_) {
+        if (!node.process || node.target != OutputProcessTarget::Main) {
+            continue;
+        }
+        node.process(output, frames, channels);
     }
 }
 

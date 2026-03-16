@@ -9,6 +9,7 @@ add_library(synth_core
     src/core/Logger.cpp
     src/dsp/Envelope.cpp
     src/dsp/ThreeBandEq.cpp
+    src/dsp/LowPassFilter.cpp
     src/dsp/Oscillator.cpp
     src/dsp/DelayLine.cpp
     src/dsp/Chorus.cpp

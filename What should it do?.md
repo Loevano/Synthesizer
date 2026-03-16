@@ -1,112 +1,206 @@
-What should it do?
-- It should be able to play on a multichannel setup.
-- You should be able to make 'big' sound
-- 3 playing modes need to be easily configured -> 
+# What should it do?
+
+This is the product/design note for the project. It mixes current decisions with near-future intent.
+
+## Core goals
+
+- It should work on a multichannel setup.
+- It should be able to make big, speaker-aware sound.
+- Routing, modulation, and FX should make sense on a speaker array, not just on stereo outputs.
+
+## Main playback/routing ideas
+
+The project should support these broad behaviors:
+
 1. voice locked to an output
-2. voice round robin to an output when triggered
-3. voice send to output based on how many notes held.
+2. voice round-robined across outputs when triggered
+3. voice distributed across outputs according to an algorithm
 
-Amnount of voices can be allocated. (default = 8)
-Amount of Oscs per voice can be allocated (default = 4, only first oscillator enabled by default)
+Current routing direction:
 
-Voices:
-- Need to have voice spread
-- Have a root freq
-- Can be toggled
-- Should all start enabled by default so the available voice count behaves like immediate polyphony
+- every output has:
+  - a dry path
+  - an FX-chain path
+- the Source Mixer decides whether a source feeds dry or FX
 
-Oscs:
-- Sine, Saw, Square, Triangle, Noise.
-- Have freq and gain.
-- Can be toggled to have relative frequency to root freq of voice.
-- Can be modulated.
-- Need to be DSP efficient (maybe a lookup table?)
+## Voice and oscillator capacity
 
+- Amount of voices can be allocated.
+- Amount of oscillators per voice can be allocated.
+- Voices should start enabled by default so the available voice count behaves like immediate polyphony.
 
+Current default direction:
 
-Modulators should modulate all outputs in an interesting way but controlled in a simple way.
+- `8` voices is still a good conceptual default
+- `6` oscillator slots per voice is the current working app default
 
-LFO on all oscs.
-Control over lfo:
+## Voice model
+
+Voices should:
+
+- be togglable
+- have a routing/allocation behavior across outputs
+- support local variation without rebuilding the whole patch from scratch
+
+Current Robin rule:
+
+- every voice has:
+  - `Enabled`
+  - `Linked to Master`
+- linked voices hide local controls and follow the master voice
+- unlinked voices open the full local voice editor
+- relinking should not wipe local state
+- there should be an explicit `Reset to Master State` action instead
+
+## Oscillator model
+
+Oscillators should:
+
+- support `Sine`, `Saw`, `Square`, `Triangle`, `Noise`
+- have frequency and gain
+- be togglable
+- support relative frequency to the voice/root behavior
+- eventually support modulation
+
+DSP note:
+
+- the oscillator path should remain scalable as voice count rises
+- lookup-table or band-limited strategies are good candidates if aliasing or CPU becomes the bottleneck
+
+## Modulation
+
+Modulators should create interesting multichannel movement in a controlled, simple way.
+
+Current direction:
+
+- Robin already has one live LFO system
+- future modulation should sit on top of the master voice model, not replace it
+
+LFO ideas:
+
 - phase spread over outputs
 - polarity flip
-- type of lfo used (sine, triangle, saw, upw saw, random)
-- have unlinked LFO's over all outputs to introduce polyrythms
-- Should be able to link to a clock (and have relative speed), toggle to have fixed frequency. 
+- selectable waveform:
+  - `sine`
+  - `triangle`
+  - `saw-down`
+  - `saw-up`
+  - `random`
+- linked-to-clock mode with relative rate
+- fixed-frequency mode
+- unlinked output behavior to introduce polyrhythms
 
-3 Different Global Envelopes:
-- Should be able to be triggered on input (note or midi or anything)
-- Should be able to route to LFO's.
-- Should be able to route to filters.
+## Envelopes and filters
 
-FX:
-Because we are designing on a lot of channels, it only makes sense to have multi FX based on the amount of outputs.
+Current Robin section model:
 
-- Saturation. Have the option for multiple sat or dist algorithms. With a gain before and gain after. Also make the option to have them linked (the gains).
-- Chorus. Modulating each output. Control over the depth (how far i modulates) and the speed. Also a control for 'phase spread'. This means that if you have a modulator at 5 hz, the phase gets distributed over each output.
-- Sidechain (dont know how to implement that yet)
+- `VCF`: cutoff, resonance
+- `ENV VCF`: attack, decay, sustain, release, amount
+- `AMP` / `ENV VCA`: attack, decay, sustain, release
+- oscillator bank per voice
 
+Future direction:
 
-MIDI and OSC
-MIDI:
-Should be able to play notes from midi USB device and have them recognized and played.
-OSC:
-There should be an osc map for all the params.
+- more modulation destinations
+- possibly more global envelopes beyond the current working set
 
+## FX
 
-
-- Per output FX. Should be
-- Playable synth should have voices playing with the outputs.
-
-
-
-Multi channel framework:
-
-Audio Engine: interfaces with coreAudio -> triggers the dsp to fill the audio buffer.  Init amount of ch, samplerate, buffersize. (used to allocate mem and resources)
-
-Source Mixer: VCA style mixer that controls the level at the source of each device. (performance mixer, used to make the performance)Output Mixer: Controls level, delay and eq of each individual output. (system engineer mixer, used to finetune and correct)
-
-Sound Sources:
-- Synths: All synths have per voice oscs, envelopes and filtering. Controls are in place to modulate and automate them linked.
-    - Robin: Playable synth where you can algorithmicly route voices over the outputs.
-    - Decor: Playable synth that has a voice per output. Creates ‘big’ sound -> actually immersed in the system
-    - Pieces: Playable granular synth that algorithmicly routes voices over the outputs
-
-Sound Processors:
-- FX: All FX are discrete per output. This means that if you have 8 outputs, you also get 8 instances of the effect. Controlls of all effects are linked. Each output has a dry and wet path. Parallel is not possible due to latency. A signal either goes through the fx or not.
-    - Saturator: Vartiety of algorothms. In and output level, option to be linked.
-    - Chorus. Modulating each output. Control over the depth (how far i modulates) and the speed. Control for 'phase spread'. This means that if you have a modulator at 5 hz, the phase gets distributed over each output.
-    - Sidechain (dont know how to implement that yet)
-
-This is maybe a bit more detailed. How do you think we should implement this step by step? Should we make 1 git repo for the entire project? Or split it up?
-
-
-Modulation:
-The program has a clock that can be clocked externally (through CV, MIDI), or internally with a BPM setting.
-Every Synth and Effect has 2 LFO's. You can choose to lock it to the main clock, or you can have it be internal.
-
-Robin:
-The idea of the synth is: easy to get a sound first, then add randomness and aliveness without rebuilding that
-sound for every voice.
-
-Start with master controls. Every voice follows those master sections by default.
-
-Then add diversity in 2 layers:
-1. Section modulators. Choose preset algorithms that add offsets on top of the master values. Example: a linear
-   ramp that gradually opens the filter from voice 1 to voice 12.
-2. Section unlink. If you need very specific local behavior, unlink a whole section for a voice and edit it locally.
-   Example: unlink the filter section on voices 3 and 7 to create a polyrhythm.
+Because the project is designed around many outputs, FX should be multichannel-native.
 
 Rules:
-- Algorithms should be modulators, not automators, so moving the master still moves the whole set.
-- Start with section unlink, not per-parameter unlink.
-- If a section is unlinked, it should stop receiving section modulators.
-- "Start" and "end" in an algorithm describe the offset range, not an absolute replacement.
 
-Sections:
-- VCF: cutoff, resonance
-- ENV VCA: attack, decay, sustain, release, amount
-- ENV VCF: attack, decay, sustain, release, amount
-- OSC 1: frequency, shape
-- OSC 2: frequency, shape
-- SUB OSC: frequency, shape
+- effects are effectively discrete per output
+- controls are globally linked by design
+- source routing decides whether a source reaches the FX chain
+
+Current processor direction:
+
+- `Chorus`
+  - live now
+  - depth
+  - speed
+  - phase spread
+- `Saturator`
+  - input level
+  - output level
+  - algorithm variety later
+- `Sidechain`
+  - still needs a separate design pass
+
+## MIDI and OSC
+
+MIDI:
+
+- should recognize notes from USB MIDI devices
+- should route per MIDI source into the synths
+
+OSC:
+
+- should expose a controllable parameter map
+
+## Framework model
+
+Current product model:
+
+`Audio Engine -> Source Mixer -> Output Mixer -> Sources -> FX -> outputs`
+
+Meanings:
+
+- `Audio Engine`
+  - CoreAudio
+  - sample rate
+  - buffer size
+  - output count
+  - resource allocation
+- `Source Mixer`
+  - performance mixer for whole sources
+- `Output Mixer`
+  - system-correction mixer for level, delay, EQ per output
+
+## Sources
+
+- `Robin`
+  - main playable synth
+  - algorithmic voice allocation across outputs
+  - master-first design with local voice overrides
+- `Decor`
+  - future immersive source
+  - one voice per output
+- `Pieces`
+  - future granular / algorithmic source
+
+## Robin
+
+Robin should be easy to program in two phases:
+
+1. get one strong sound quickly
+2. add aliveness and spatial variation without rebuilding the patch for every voice
+
+Current working design:
+
+- start with master controls
+- all voices follow the master by default
+- keep most voices linked
+- unlink only the voices that need local accents or contrast
+
+Next Robin layer:
+
+1. Section modulators
+   - preset algorithms that add offsets on top of the master values
+   - example: a linear ramp that gradually opens the filter from voice 1 to voice 12
+2. Section unlink
+   - unlink a section or voice when a few voices need special local behavior
+
+Rules:
+
+- algorithms should be modulators, not automators
+- master moves should still move the whole linked set
+- unlinking should stop that local section from following the master modulation layer
+
+## Open design questions still worth solving
+
+- how broad the future modulation system should be before it becomes a real matrix
+- what the exact `Decor` synthesis model should be
+- what the exact `Pieces` granular model should be
+- how sidechain should work in a multichannel speaker-aware context

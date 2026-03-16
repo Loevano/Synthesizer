@@ -1,151 +1,119 @@
-# Synthesizer (C++)
+# Synthesizer
 
-This is now a beginner-friendly MVP focused on learning:
-- C++ classes and project structure
-- Basic DSP (oscillator + gain)
-- Audio callback flow
-- A non-JUCE macOS app shell for the future web UI
+Multichannel synth host and macOS app shell for building speaker-aware instruments.
 
-## Current minimal architecture
-- `src/main.cpp`: app lifecycle and audio start/stop
-- `src/app/SynthController.cpp`: reusable host/controller layer shared by CLI and app shells
-- `src/audio/Synth.cpp`: top-level synth instrument and voice pool
-- `src/audio/TestSynth.cpp`: simplified single-oscillator debug source
-- `src/audio/Voice.cpp`: one voice with a pool of oscillator slots
-- `src/graph/`: concrete live graph owner and graph-stage modules
-- `src/dsp/Oscillator.cpp`: waveform generator (`Sine`, `Square`, `Triangle`, `Saw`, `Noise`)
-- `src/interfaces/AudioDriverCoreAudio.cpp`: CoreAudio driver backend
-- `src/core/Logger.cpp`: console + file logging
-- `src/platform/macos/AppMain.mm`: native macOS window with embedded `WKWebView`
-- `src/ui_web/`: bundled web assets loaded by the macOS app shell
+The project is centered around a native CoreAudio host, a reusable C++ DSP/controller layer, and a bundled web UI inside a `WKWebView`. The current reference source is `Robin`, a multivoice spatial synth with a master-first control model and local per-voice overrides.
 
-## Current code path
-`main -> SynthController -> AudioDriver -> source graph -> output processor graph -> output buffer`
+## Current live signal path
 
-## Current interface model
-`Audio Engine -> Source Mixer -> Output Mixer -> Sources -> FX -> outputs`
+`Audio Engine -> LiveGraph sources -> dry/fx split -> FX Rack -> dry + fx sum -> Output Mixer -> hardware outputs`
 
-This interface model is intentionally ahead of the engine in two places:
-- `Robin` is the main active source in the DSP path today
-- `Test` is a simplified active debug source in the same path
-- `Decor`, `Pieces`, and `FX` are scaffolded in controller state and the UI so the multichannel build order stays explicit
+## Current UI model
 
-Current internal graph note:
-- the controller now builds a `LiveGraph` from concrete graph modules instead of directly owning the live render path
-- current live graph modules are `RobinSourceNode`, `TestSourceNode`, and `OutputMixerNode`
-- the source-stage order remains `Robin -> Test -> Decor -> Pieces`
-- output processing remains routed through an explicit output-processor stage order, currently just `Output Mixer`
-- the raw bridge state now exposes this under `graph`
+`Program -> MIDI -> Source Mixer -> Output Mixer -> Robin -> Test -> Decor -> Pieces -> FX -> LFO`
+
+## Current live features
+
+- `Robin` is the main playable source:
+  - configurable voice count and oscillator slots
+  - all configured voices enabled by default
+  - `Enabled` and `Linked to Master` voice states
+  - one master template plus one expanded local voice editor at a time
+  - per-voice oscillator bank, `VCF`, `ENV VCF`, `AMP`
+  - routing presets including `All Outputs`
+- `Test` is a simplified debug source for routing, MIDI, and output checks.
+- `Source Mixer` controls source enable, source level, and whether each source feeds the dry path or the FX path.
+- `Output Mixer` controls per-output level, delay, and fixed-band EQ.
+- `Chorus` is live as a per-output FX processor.
+- `Saturator` and `Sidechain` are scaffolded in the controller and UI but are not fully live yet.
+- `CoreMIDI` input is live.
+- `OSC` control is live on UDP port `9000`.
+- Robin source-mixer level changes are smoothed in the DSP path to avoid pops.
+- Robin voice allocation now tries to preserve release tails before reusing a voice.
+
+## Robin in one sentence
+
+Robin is a multivoice spatial synth: dial in one strong master timbre, keep most voices linked, then unlink only the voices you want to turn into local accents, spatial deviations, or rhythmic contrast.
+
+## Build requirements
+
+The current app target is macOS-first.
+
+Required:
+
+- macOS
+- Xcode Command Line Tools
+- CMake 3.21+
+
+Optional:
+
+- Node.js, for quick `app.js` syntax checks
+- GitHub CLI (`gh`), if you want to create/push repos with the helper script
 
 ## Build
+
 ```bash
 cd /Users/jens/Documents/Coding/Synthesizer
 ./scripts/build.sh
 ```
 
-## Run
+## Run the CLI host
+
 ```bash
 ./scripts/run.sh
 ```
 
-## Run app shell
+## Run the macOS app
+
 ```bash
 ./scripts/run-app.sh
 ```
 
-## Help
+## Help / optional CLI args
+
 ```bash
 ./scripts/run.sh --help
-```
-
-## Optional run args
-```bash
 ./scripts/run.sh --frequency 110 --gain 0.2 --waveform square --sample-rate 48000 --buffer 256 --channels 2 --voices 16 --oscillators-per-voice 6
 ```
 
-Supported waveforms: `sine`, `square`, `triangle`, `saw`, `noise`
+Supported waveforms:
 
-Default capacity:
-- `16` voices
-- `6` oscillator slots per voice
+- `sine`
+- `square`
+- `triangle`
+- `saw`
+- `noise`
 
-Default active sound:
-- only voice `0` is active
-- only oscillator slot `0` inside that voice is active
+## Debug logging
 
-## Web UI status
-- JUCE is not part of the active build path
-- the macOS app embeds a bundled web UI inside `WKWebView`
-- a minimal native bridge is now in place:
-  - `getState()`
-  - `setParam(path, value)`
-- current web UI pages:
-  - `Program`: engine/CoreAudio state, output device selection, output count selection, MIDI/OSC status, and raw scaffold state
-  - `MIDI`: CoreMIDI device connection and per-device routing into the synths
-  - `Source Mixer`: source-level VCA control for `Robin`, `Test`, `Decor`, and `Pieces`
-  - `Output Mixer`: per-output trim, delay, and fixed-band EQ
-  - `Robin`: playable voice source with master pitch, master `ENV VCA`, output routing, and one linked oscillator bank across all voices
-  - `Test`: simplified single-oscillator debug source with manual output routing
-  - `Decor`: scaffold for the future one-voice-per-output immersive source
-  - `Pieces`: scaffold for the future granular algorithmic source
-  - `FX`: linked-control per-output insert routing, with live `Chorus` plus scaffold `Saturator` and `Sidechain`
-  - `LFO`: current Robin LFO controls
+Useful while tracing Robin and bridge issues:
 
-`Robin` note:
-- the current control model is master-first: the amp envelope and oscillator bank are shared across all voices, while voice tuning, level, and output assignment remain local overrides
-- section modulators and per-section unlink are planned next; they should layer on top of master values instead of replacing them
+```bash
+SYNTH_DEBUG_ROBIN=1 SYNTH_DEBUG_BRIDGE=1 ./scripts/run-app.sh
+```
 
-`Test` note:
-- it is intentionally simple: one oscillator, one reusable ADSR-style envelope, manual output routing, optional continuous tone activation, and switchable MIDI response
+Logs are written under `logs/`.
 
-Current scaffold note:
-- output mixer `level` is active in the audio path now
-- output mixer `delay` is active in the audio path now
-- output mixer `EQ` is active in the audio path now
-- `Robin` and `Test` do process audio now
-- `Decor` and `Pieces` do not process audio yet
-- `Chorus` is now live in the FX path
-- `Saturator` and `Sidechain` remain scaffold-only
+## Project layout
 
-## MIDI and OSC status
-- CoreMIDI input is now started with the host on macOS
-- current MIDI behavior:
-  - the MIDI page now exposes CoreMIDI sources and lets you enable them individually
-  - each connected MIDI source can be routed independently to `Robin` and `Test`
-  - note-on updates Robin pitch and drives the Test source note/envelope
-  - if no voice is active, voice `0` is auto-enabled for preview
-  - note-off disables that auto-enabled preview voice
-- OSC UDP server is now started with the host on port `9000`
-- current OSC messages:
-  - `/noteOn` with `,i` or `,if`
-  - `/noteOff` with `,i`
-  - `/param/...` for controller parameter paths
-    - example: `/param/frequency`
-    - example: `/param/voice/0/oscillator/1/waveform`
+- `src/app/`: controller, state model, native bridge surface
+- `src/audio/`: `Synth`, `Voice`, and `TestSynth`
+- `src/dsp/`: oscillators, envelopes, filter, delay, chorus, LFO, EQ
+- `src/graph/`: `LiveGraph`, source nodes, FX rack, output mixer node
+- `src/interfaces/`: platform audio backends
+- `src/platform/macos/`: app shell with `WKWebView`
+- `src/ui_web/`: bundled web UI
+- `docs/`: roadmap, architecture, overview, GitHub workflow, devlog
 
-## LFO status
-- one global LFO is now implemented
-- current LFO target:
-  - summed oscillator output level per output channel
-- current controls:
-  - waveform: `sine`, `triangle`, `saw-down`, `saw-up`, `random`
-  - depth
-  - phase spread over outputs
-  - polarity flip across outputs
-  - unlinked outputs for per-output rate variation
-  - clock-linked mode with tempo + rate multiplier
-  - fixed-frequency mode in Hz
-- current limitation:
-  - the LFO is not yet part of a general modulation matrix, so it does not route to pitch or filters yet
+## Documentation
 
-## Roadmap
-- Project overview:
-  - [docs/PROJECT_OVERVIEW.md](/Users/jens/Documents/Coding/Synthesizer/docs/PROJECT_OVERVIEW.md)
-- Generic platform and synth-feature roadmap:
-  - [docs/ROADMAP.md](/Users/jens/Documents/Coding/Synthesizer/docs/ROADMAP.md)
-- Implementation step plan:
-  - [docs/IMPLEMENTATION_PLAN.md](/Users/jens/Documents/Coding/Synthesizer/docs/IMPLEMENTATION_PLAN.md)
-- Current architecture summary:
-  - [docs/ARCHITECTURE.md](/Users/jens/Documents/Coding/Synthesizer/docs/ARCHITECTURE.md)
-- Long-form target feature notes:
-  - [What should it do?.md](/Users/jens/Documents/Coding/Synthesizer/What%20should%20it%20do%3F.md)
+- Overview: [docs/PROJECT_OVERVIEW.md](/Users/jens/Documents/Coding/Synthesizer/docs/PROJECT_OVERVIEW.md)
+- Architecture: [docs/ARCHITECTURE.md](/Users/jens/Documents/Coding/Synthesizer/docs/ARCHITECTURE.md)
+- Roadmap: [docs/ROADMAP.md](/Users/jens/Documents/Coding/Synthesizer/docs/ROADMAP.md)
+- Implementation plan: [docs/IMPLEMENTATION_PLAN.md](/Users/jens/Documents/Coding/Synthesizer/docs/IMPLEMENTATION_PLAN.md)
+- Feature notes: [What should it do?.md](/Users/jens/Documents/Coding/Synthesizer/What%20should%20it%20do%3F.md)
+- GitHub workflow: [docs/GITHUB.md](/Users/jens/Documents/Coding/Synthesizer/docs/GITHUB.md)
+
+## Contributing
+
+Contributor setup and workflow notes are in [CONTRIBUTING.md](/Users/jens/Documents/Coding/Synthesizer/CONTRIBUTING.md).

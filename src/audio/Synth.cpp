@@ -94,6 +94,94 @@ void Synth::setVoiceGain(std::uint32_t voiceIndex, float gain) {
     voices_[voiceIndex].setGain(gain);
 }
 
+void Synth::setVoiceEnvelopeAttackSeconds(std::uint32_t voiceIndex, float attackSeconds) {
+    if (voiceIndex >= voices_.size()) {
+        return;
+    }
+
+    voices_[voiceIndex].setEnvelopeAttackSeconds(attackSeconds);
+}
+
+void Synth::setVoiceEnvelopeDecaySeconds(std::uint32_t voiceIndex, float decaySeconds) {
+    if (voiceIndex >= voices_.size()) {
+        return;
+    }
+
+    voices_[voiceIndex].setEnvelopeDecaySeconds(decaySeconds);
+}
+
+void Synth::setVoiceEnvelopeSustainLevel(std::uint32_t voiceIndex, float sustainLevel) {
+    if (voiceIndex >= voices_.size()) {
+        return;
+    }
+
+    voices_[voiceIndex].setEnvelopeSustainLevel(sustainLevel);
+}
+
+void Synth::setVoiceEnvelopeReleaseSeconds(std::uint32_t voiceIndex, float releaseSeconds) {
+    if (voiceIndex >= voices_.size()) {
+        return;
+    }
+
+    voices_[voiceIndex].setEnvelopeReleaseSeconds(releaseSeconds);
+}
+
+void Synth::setVoiceFilterCutoffHz(std::uint32_t voiceIndex, float cutoffHz) {
+    if (voiceIndex >= voices_.size()) {
+        return;
+    }
+
+    voices_[voiceIndex].setFilterCutoffHz(cutoffHz);
+}
+
+void Synth::setVoiceFilterResonance(std::uint32_t voiceIndex, float resonance) {
+    if (voiceIndex >= voices_.size()) {
+        return;
+    }
+
+    voices_[voiceIndex].setFilterResonance(resonance);
+}
+
+void Synth::setVoiceFilterEnvelopeAttackSeconds(std::uint32_t voiceIndex, float attackSeconds) {
+    if (voiceIndex >= voices_.size()) {
+        return;
+    }
+
+    voices_[voiceIndex].setFilterEnvelopeAttackSeconds(attackSeconds);
+}
+
+void Synth::setVoiceFilterEnvelopeDecaySeconds(std::uint32_t voiceIndex, float decaySeconds) {
+    if (voiceIndex >= voices_.size()) {
+        return;
+    }
+
+    voices_[voiceIndex].setFilterEnvelopeDecaySeconds(decaySeconds);
+}
+
+void Synth::setVoiceFilterEnvelopeSustainLevel(std::uint32_t voiceIndex, float sustainLevel) {
+    if (voiceIndex >= voices_.size()) {
+        return;
+    }
+
+    voices_[voiceIndex].setFilterEnvelopeSustainLevel(sustainLevel);
+}
+
+void Synth::setVoiceFilterEnvelopeReleaseSeconds(std::uint32_t voiceIndex, float releaseSeconds) {
+    if (voiceIndex >= voices_.size()) {
+        return;
+    }
+
+    voices_[voiceIndex].setFilterEnvelopeReleaseSeconds(releaseSeconds);
+}
+
+void Synth::setVoiceFilterEnvelopeAmount(std::uint32_t voiceIndex, float amount) {
+    if (voiceIndex >= voices_.size()) {
+        return;
+    }
+
+    voices_[voiceIndex].setFilterEnvelopeAmount(amount);
+}
+
 void Synth::setOutputChannelCount(std::uint32_t outputChannelCount) {
     outputChannelCount_ = std::max<std::uint32_t>(1, outputChannelCount);
     lfo_.setOutputChannelCount(outputChannelCount_);
@@ -179,6 +267,48 @@ void Synth::setEnvelopeReleaseSeconds(float releaseSeconds) {
     releaseSeconds_ = std::max(0.0f, releaseSeconds);
     for (auto& voice : voices_) {
         voice.setEnvelopeReleaseSeconds(releaseSeconds_);
+    }
+}
+
+void Synth::setFilterCutoffHz(float cutoffHz) {
+    for (auto& voice : voices_) {
+        voice.setFilterCutoffHz(cutoffHz);
+    }
+}
+
+void Synth::setFilterResonance(float resonance) {
+    for (auto& voice : voices_) {
+        voice.setFilterResonance(resonance);
+    }
+}
+
+void Synth::setFilterEnvelopeAttackSeconds(float attackSeconds) {
+    for (auto& voice : voices_) {
+        voice.setFilterEnvelopeAttackSeconds(attackSeconds);
+    }
+}
+
+void Synth::setFilterEnvelopeDecaySeconds(float decaySeconds) {
+    for (auto& voice : voices_) {
+        voice.setFilterEnvelopeDecaySeconds(decaySeconds);
+    }
+}
+
+void Synth::setFilterEnvelopeSustainLevel(float sustainLevel) {
+    for (auto& voice : voices_) {
+        voice.setFilterEnvelopeSustainLevel(sustainLevel);
+    }
+}
+
+void Synth::setFilterEnvelopeReleaseSeconds(float releaseSeconds) {
+    for (auto& voice : voices_) {
+        voice.setFilterEnvelopeReleaseSeconds(releaseSeconds);
+    }
+}
+
+void Synth::setFilterEnvelopeAmount(float amount) {
+    for (auto& voice : voices_) {
+        voice.setFilterEnvelopeAmount(amount);
     }
 }
 

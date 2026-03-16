@@ -1,257 +1,188 @@
 # Roadmap
 
-This file separates two concerns:
+This file separates:
 
-- generic platform work needed to keep the app stable and understandable
-- synth-feature work described in [What should it do?.md](/Users/jens/Documents/Coding/Synthesizer/What%20should%20it%20do%3F.md)
+- platform and architecture work
+- synth-feature work
 
-The goal is to avoid mixing infrastructure work, DSP work, and UI work in one step.
+The goal is to keep infrastructure, DSP, and UI changes from collapsing into one undifferentiated list.
 
 ## Current baseline
 
-The project already has:
+Already in place:
 
-- a C++ synth engine: `Synth -> Voice -> Oscillator`
-- a simplified debug source: `TestSynth -> Oscillator`
-- a CoreAudio backend on macOS
-- a native macOS app shell with embedded `WKWebView`
-- a small JS/native bridge:
+- CoreAudio-backed host on macOS
+- native macOS app shell with embedded `WKWebView`
+- JS/native bridge:
   - `getState()`
   - `setParam(path, value)`
-- a browser UI organized around:
-  - `Program`
-  - `Source Mixer`
-  - `Output Mixer`
+- grouped controller state:
+  - `engine`
+  - `graph`
+  - `sourceMixer`
+  - `outputMixer`
+  - `sources`
+  - `processors`
+- reusable concrete graph modules:
+  - `LiveGraph`
+  - `RobinSourceNode`
+  - `TestSourceNode`
+  - `FxRackNode`
+  - `OutputMixerNode`
+- live sources:
   - `Robin`
   - `Test`
-  - `Decor`
-  - `Pieces`
-  - `FX`
-  - `LFO`
+- source-level dry/fx routing
+- per-output level, delay, and EQ
+- live chorus
+- CoreMIDI input
+- OSC control surface
 
-What is still missing is a stable note/event model, a proper routing model, modulation, FX, and external control.
+Still missing:
 
-## Generic platform roadmap
+- deeper modulation system / modulation matrix
+- `Decor` DSP
+- `Pieces` DSP
+- full saturator
+- sidechain design
+- broader automated regression coverage
 
-These milestones are not synth-specific. They make the app easier to extend safely.
+## Platform roadmap
 
-### 1. Program and system surface
+## 1. Stabilize regression coverage
 
 Goal:
-- keep system concerns in a dedicated `Program` layer instead of mixing them into source controls
+
+- make routing, allocation, and state changes safer to evolve
 
 Scope:
-- current audio config view:
-  - sample rate
-  - output channel count
-  - frames per buffer
-- current play mode / routing mode selection
-- app status:
-  - audio running
-  - current bridge status
-- device section scaffold:
-  - current output device name when available
-  - current output count when available
+
+- source enable/disable behavior
+- dry/fx routing behavior
+- output mixer processing behavior
+- Robin allocator behavior and release-tail handling
 
 Reason:
-- this keeps synth controls separate from infrastructure controls
 
-### 2. Stable parameter model
+- the app is now complex enough that silent regressions are more expensive than the initial setup cost of tests
 
-Goal:
-- make the controller the single source of truth for UI state
-
-Scope:
-- explicit structs for:
-  - synth state
-  - voice state
-  - oscillator state
-  - settings state
-- JSON shape becomes intentional rather than ad hoc
-- parameter path naming becomes stable
-
-Reason:
-- MIDI, OSC, presets, and automation all need this later
-
-### 3. Event and note layer
+## 2. Preset and state persistence
 
 Goal:
-- stop treating the synth as a static drone only
+
+- make the controller state saveable and reloadable without depending on UI state
 
 Scope:
-- note on / note off events
-- voice allocation API
-- trigger source abstraction:
-  - UI
-  - MIDI
-  - test events
 
-Reason:
-- round-robin and held-note routing modes only become meaningful once notes exist
+- stable serialization format
+- load/save flow
+- decide which controls are persistent versus runtime-only
 
-### 4. Device and control I/O
+## 3. Better parameter-smoothing policy
 
 Goal:
-- make the host controllable from the outside
+
+- apply consistent anti-zipper handling where live drags can create audible clicks
 
 Scope:
-- MIDI input
-- OSC parameter map
-- eventually audio device selection if needed
 
-Reason:
-- this is the bridge from a local prototype into a playable instrument
+- output-mixer level
+- any remaining abrupt source/process gains
+- future modulation-depth and routing-sensitive controls
 
-## Feature roadmap from `What should it do?.md`
-
-These milestones are the synth-specific roadmap.
-
-### A. Voice and routing foundation
+## 4. Broaden contributor ergonomics
 
 Goal:
-- define what a voice is and how it maps to outputs
+
+- make the repo easier to understand and extend
 
 Scope:
-- configurable voice count
-- configurable oscillators per voice
-- target defaults:
-  - `8` voices
-  - `4` oscillator slots per voice
-- voice root frequency
-- voice toggle
-- voice spread
-- play modes:
-  - locked to output
-  - round robin by trigger
-  - output based on number of notes held
 
-Dependency:
-- generic milestone 3 (`Event and note layer`) is required for full round-robin / held-note behavior
+- keep docs current
+- maintain contributor setup instructions
+- keep helper scripts accurate
 
-### B. Oscillator model
+## Feature roadmap
+
+## A. Finish Robin as the reference instrument
 
 Goal:
-- make oscillator slots independent building blocks
+
+- make Robin solid enough that it can carry the architecture while other sources are scaffolded
 
 Scope:
-- per-oscillator:
-  - waveform
-  - gain
-  - frequency
-  - enabled state
-  - relative-to-root toggle
-- efficient oscillator path
-- later optimization candidate:
-  - lookup table or band-limited strategy if aliasing/performance becomes an issue
 
-### C. Modulation system
+- keep master-first voice design
+- add section-level modulation / spread tools
+- keep local voice override behavior predictable
+- improve remaining edge cases around true voice stealing
+
+## B. Expand modulation
 
 Goal:
-- add controlled complexity without making routing unreadable
+
+- move from one live LFO to a broader modulation system
 
 Scope:
-- LFO bank
-- modulation routing to:
-  - oscillators
-  - filters
-- controls:
-  - phase spread over outputs
-  - polarity flip
-  - waveform type
-  - linked vs unlinked output behavior
-  - clock-linked vs fixed frequency
 
-### D. Global envelopes and filters
+- section modulators
+- voice spread algorithms
+- routing modulation
+- eventual matrix-like destination model
+
+## C. Expand FX rack
 
 Goal:
-- shape motion at the synth level
+
+- make the FX path more than a chorus proof-of-concept
 
 Scope:
-- three global envelopes
-- trigger from note or external event
-- route to:
-  - LFO parameters
-  - filters
 
-### E. Multichannel FX
+- saturator implementation
+- sidechain design
+- decide how future FX should share common control/state patterns
+
+## D. Implement Decor
 
 Goal:
-- design effects around multichannel output rather than stereo assumptions
+
+- add the first source whose voice count is tightly coupled to output count
 
 Scope:
-- saturation/distortion:
-  - algorithm choice
-  - pre gain
-  - post gain
-  - linked gain option
-- chorus:
-  - depth
-  - speed
-  - phase spread over outputs
-- sidechain:
-  - still undefined, needs a design pass before implementation
 
-### F. External control
+- one voice per output
+- speaker-locked behavior
+- immersive decorrelated playback design
+
+## E. Implement Pieces
 
 Goal:
-- make the synth playable and automatable from outside the app
+
+- add a granular / algorithmic source after the graph and routing model are more stable
 
 Scope:
-- MIDI note input
-- OSC map for all parameters
 
-## Recommended implementation order
+- playable grain triggering
+- spatial grain or voice distribution
 
-This is the sequence that keeps the project buildable while still moving toward the target instrument.
+## F. Improve oscillator quality
 
-### Phase 1
+Goal:
 
-- `Program` page
-- stable host/system state in the controller
-- play mode enum and controller surface
+- scale oscillator CPU cost and audio quality more gracefully as voice count rises
 
-### Phase 2
+Scope:
 
-- voice root frequency
-- voice spread
-- per-oscillator relative frequency model
-- oscillator frequency UI
+- lookup-table or band-limited strategies where useful
+- reduce aliasing on non-sine waveforms
+- keep the oscillator model scalable for larger Robin patches
 
-### Phase 3
+## Recommended order
 
-- note event layer
-- voice allocator
-- proper implementation of:
-  - round robin by trigger
-  - output by held-note count
-
-### Phase 4
-
-- LFO system
-- modulation routing
-
-### Phase 5
-
-- global envelopes
-- filters
-
-### Phase 6
-
-- multichannel FX
-
-### Phase 7
-
-- MIDI input
-- OSC map
-
-## Immediate next slice
-
-The next implementation slice should be:
-
-1. keep `engine`, `sourceMixer`, `outputMixer`, `sources`, and `processors` as stable controller concepts
-2. make `Source Mixer` an explicit graph stage
-3. add routing and output-mixer regression tests around the live graph
-4. keep `Robin` stable as the reference concrete source node
-5. then implement `Decor`, `Pieces`, and FX on top of that graph
-
-That keeps the app shell and mental model stable before adding deeper DSP features.
+1. Add routing / allocator regression coverage.
+2. Keep Robin stable as the reference live source.
+3. Add section-level modulation on top of Robin’s current model.
+4. Expand the FX rack beyond chorus.
+5. Implement `Decor`.
+6. Implement `Pieces`.
+7. Add preset/state persistence once the state shape settles further.

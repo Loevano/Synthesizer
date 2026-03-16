@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -46,14 +47,6 @@ struct OscillatorState {
     dsp::Waveform waveform = dsp::Waveform::Sine;
 };
 
-struct VoiceState {
-    bool active = false;
-    float frequency = 400.0f;
-    float gain = 1.0f;
-    std::vector<bool> outputs;
-    std::vector<OscillatorState> oscillators;
-};
-
 struct LfoState {
     bool enabled = false;
     float depth = 0.5f;
@@ -68,10 +61,16 @@ struct LfoState {
 };
 
 struct SourceMixerSlotState {
+    enum class RouteTarget : std::uint8_t {
+        Dry,
+        Fx,
+    };
+
     bool available = false;
     bool implemented = false;
     bool enabled = false;
     float level = 0.0f;
+    RouteTarget routeTarget = RouteTarget::Dry;
 };
 
 struct OutputEqState {
@@ -99,6 +98,36 @@ struct EnvelopeState {
     float releaseMs = 200.0f;
 };
 
+struct RobinPitchState {
+    float transposeSemitones = 0.0f;
+    float fineTuneCents = 0.0f;
+};
+
+struct RobinVcfState {
+    float cutoffHz = 18000.0f;
+    float resonance = 0.707f;
+};
+
+struct RobinEnvVcfState {
+    float attackMs = 20.0f;
+    float decayMs = 250.0f;
+    float sustain = 0.0f;
+    float releaseMs = 220.0f;
+    float amount = 0.0f;
+};
+
+struct VoiceState {
+    bool active = false;
+    bool linkedToMaster = true;
+    float frequency = 400.0f;
+    float gain = 1.0f;
+    RobinVcfState vcf;
+    RobinEnvVcfState envVcf;
+    EnvelopeState envelope;
+    std::vector<bool> outputs;
+    std::vector<OscillatorState> oscillators;
+};
+
 struct TestSourceState {
     bool implemented = true;
     bool playable = true;
@@ -113,14 +142,12 @@ struct TestSourceState {
 
 struct SaturatorState {
     bool enabled = false;
-    bool linkedLevels = true;
     float inputLevel = 1.0f;
     float outputLevel = 1.0f;
 };
 
 struct ChorusState {
     bool enabled = false;
-    bool linkedControls = true;
     float depth = 0.5f;
     float speedHz = 0.25f;
     float phaseSpreadDegrees = 0.0f;
@@ -128,10 +155,6 @@ struct ChorusState {
 
 struct SidechainState {
     bool enabled = false;
-};
-
-struct FxOutputRouteState {
-    bool routeThroughFx = false;
 };
 
 struct MidiSourceRouteState {
@@ -152,6 +175,7 @@ enum class RoutingPreset {
     Backward,
     Random,
     RoundRobin,
+    AllOutputs,
     Custom,
 };
 
@@ -177,6 +201,8 @@ private:
     static bool tryParseWaveform(std::string_view value, dsp::Waveform& waveform);
     static const char* lfoWaveformToString(dsp::LfoWaveform waveform);
     static bool tryParseLfoWaveform(std::string_view value, dsp::LfoWaveform& waveform);
+    static const char* sourceRouteTargetToString(SourceMixerSlotState::RouteTarget routeTarget);
+    static bool tryParseSourceRouteTarget(std::string_view value, SourceMixerSlotState::RouteTarget& routeTarget);
     static const char* routingPresetToString(RoutingPreset preset);
     static bool tryParseRoutingPreset(std::string_view value, RoutingPreset& preset);
     static const interfaces::OutputDeviceInfo* findOutputDevice(
@@ -186,10 +212,15 @@ private:
     static bool tryParseIndex(std::string_view value, std::uint32_t& index);
     static float midiNoteToFrequency(int noteNumber);
     void logRobinMasterOscillatorUpdateLocked(std::string_view path, std::string_view valueDescription);
+    float tunedRobinFrequencyLocked(float baseFrequencyHz) const;
+    void copyMasterStateToVoiceLocked(VoiceState& voice) const;
+    void syncLinkedRobinVoicesLocked(bool syncFrequency = false);
+    void syncRobinVoiceFrequencyLocked(std::uint32_t voiceIndex);
+    void syncAllRobinVoiceFrequenciesLocked();
 
     void buildLiveGraphLocked();
     void buildDefaultStateLocked();
-    void syncVoiceStateLocked(std::uint32_t voiceIndex);
+    void syncVoiceStateLocked(std::uint32_t voiceIndex, bool syncFrequency = true);
     void syncAllVoicesLocked();
     void syncLfoLocked();
     void syncRobinEnvelopeLocked();
@@ -212,6 +243,7 @@ private:
     void resetRobinRoutingStateLocked();
     std::uint32_t computeNextRobinTriggerOutputLocked();
     void routeRobinVoiceToOutputLocked(std::uint32_t voiceIndex, std::uint32_t outputIndex);
+    void routeRobinVoiceToAllOutputsLocked(std::uint32_t voiceIndex);
     std::uint32_t allocateRobinVoiceLocked();
     void reconfigureStructureLocked(std::uint32_t voiceCount, std::uint32_t oscillatorsPerVoice);
     void handleNoteOnLocked(int noteNumber, float velocity);
@@ -234,21 +266,26 @@ private:
     graph::OutputMixerNode outputMixerNode_;
     graph::LiveGraph liveGraph_;
     std::vector<VoiceState> voices_;
+    std::vector<std::chrono::steady_clock::time_point> robinVoiceReleaseUntil_;
+    std::vector<OscillatorState> masterOscillators_;
+    RobinPitchState robinPitchState_;
     LfoState lfoState_;
     RoutingPreset routingPreset_ = RoutingPreset::Forward;
-    SourceMixerSlotState robinMixerState_{true, true, false, 0.15f};
-    SourceMixerSlotState testMixerState_{true, true, true, 0.15f};
-    SourceMixerSlotState decorMixerState_{true, false, false, 0.0f};
-    SourceMixerSlotState piecesMixerState_{true, false, false, 0.0f};
+    SourceMixerSlotState robinMixerState_{true, true, false, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
+    SourceMixerSlotState testMixerState_{true, true, true, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
+    SourceMixerSlotState decorMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
+    SourceMixerSlotState piecesMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
     std::vector<OutputMixerChannelState> outputMixerChannels_;
     EnvelopeState robinEnvelopeState_;
+    float robinMasterVoiceGain_ = 1.0f;
+    RobinVcfState robinVcfState_;
+    RobinEnvVcfState robinEnvVcfState_;
     TestSourceState testState_;
     PlaceholderSourceState decorState_{false, true, 0};
     PlaceholderSourceState piecesState_{false, true, 0};
     SaturatorState saturatorState_;
     ChorusState chorusState_;
     SidechainState sidechainState_;
-    std::vector<FxOutputRouteState> fxOutputRoutes_;
     std::vector<MidiSourceRouteState> midiSourceRoutes_;
     std::string audioBackendName_ = "Unknown";
     std::string outputDeviceName_ = "Unknown";

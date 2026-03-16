@@ -1,6 +1,8 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
+#include <vector>
 
 #include "synth/audio/TestSynth.hpp"
 
@@ -25,6 +27,9 @@ public:
 
 private:
     audio::TestSynth synth_;
+    std::atomic<float> targetLevel_{0.0f};
+    float currentLevel_ = 0.0f;
+    std::vector<float> renderBuffer_;
 };
 
 }  // namespace synth::graph

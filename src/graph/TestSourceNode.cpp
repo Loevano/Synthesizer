@@ -63,10 +63,33 @@ void TestSourceNode::renderAdd(float* output,
                                bool enabled,
                                float level) {
     if (!enabled) {
+        targetLevel_.store(0.0f);
         return;
     }
 
-    synth_.renderAdd(output, frames, channels, std::clamp(level, 0.0f, 1.0f));
+    if (output == nullptr || channels == 0) {
+        return;
+    }
+
+    targetLevel_.store(std::clamp(level, 0.0f, 1.0f));
+    const float targetLevel = targetLevel_.load();
+    const float levelStep = frames > 1
+        ? (targetLevel - currentLevel_) / static_cast<float>(frames - 1)
+        : 0.0f;
+
+    const std::size_t sampleCount = static_cast<std::size_t>(frames) * channels;
+    renderBuffer_.assign(sampleCount, 0.0f);
+    synth_.renderAdd(renderBuffer_.data(), frames, channels, 1.0f);
+
+    for (std::uint32_t frame = 0; frame < frames; ++frame) {
+        const float frameLevel = frames > 1 ? currentLevel_ + (levelStep * static_cast<float>(frame)) : targetLevel;
+        const std::size_t frameOffset = static_cast<std::size_t>(frame) * channels;
+        for (std::uint32_t channel = 0; channel < channels; ++channel) {
+            output[frameOffset + channel] += renderBuffer_[frameOffset + channel] * frameLevel;
+        }
+    }
+
+    currentLevel_ = targetLevel;
 }
 
 }  // namespace synth::graph

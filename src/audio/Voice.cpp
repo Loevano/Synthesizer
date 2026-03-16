@@ -1,12 +1,18 @@
 #include "synth/audio/Voice.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 namespace synth::audio {
 
 namespace {
 
 constexpr float kMinOscillatorRatio = 0.01f;
+constexpr float kMinFilterCutoffHz = 20.0f;
+constexpr float kMaxFilterCutoffHz = 20000.0f;
+constexpr float kMinFilterResonance = 0.1f;
+constexpr float kMaxFilterResonance = 10.0f;
+constexpr float kMaxFilterEnvelopeOctaves = 6.0f;
 
 }
 
@@ -29,6 +35,10 @@ void Voice::configure(std::uint32_t oscillatorCount) {
     }
 
     envelope_.setSampleRate(sampleRate_);
+    filterEnvelope_.setSampleRate(sampleRate_);
+    filter_.prepare(sampleRate_);
+    filter_.setCutoffHz(filterCutoffHz_);
+    filter_.setResonance(filterResonance_);
 
     if (outputEnabled_.empty()) {
         outputEnabled_.push_back(true);
@@ -42,6 +52,10 @@ void Voice::setSampleRate(double sampleRate) {
 
     sampleRate_ = sampleRate;
     envelope_.setSampleRate(sampleRate_);
+    filterEnvelope_.setSampleRate(sampleRate_);
+    filter_.prepare(sampleRate_);
+    filter_.setCutoffHz(filterCutoffHz_);
+    filter_.setResonance(filterResonance_);
     for (auto& slot : oscillators_) {
         slot.oscillator.setSampleRate(sampleRate_);
         updateOscillatorFrequency(slot);
@@ -135,6 +149,36 @@ void Voice::setEnvelopeReleaseSeconds(float releaseSeconds) {
     envelope_.setReleaseSeconds(releaseSeconds);
 }
 
+void Voice::setFilterCutoffHz(float cutoffHz) {
+    filterCutoffHz_ = std::clamp(cutoffHz, kMinFilterCutoffHz, kMaxFilterCutoffHz);
+    filter_.setCutoffHz(filterCutoffHz_);
+}
+
+void Voice::setFilterResonance(float resonance) {
+    filterResonance_ = std::clamp(resonance, kMinFilterResonance, kMaxFilterResonance);
+    filter_.setResonance(filterResonance_);
+}
+
+void Voice::setFilterEnvelopeAttackSeconds(float attackSeconds) {
+    filterEnvelope_.setAttackSeconds(attackSeconds);
+}
+
+void Voice::setFilterEnvelopeDecaySeconds(float decaySeconds) {
+    filterEnvelope_.setDecaySeconds(decaySeconds);
+}
+
+void Voice::setFilterEnvelopeSustainLevel(float sustainLevel) {
+    filterEnvelope_.setSustainLevel(sustainLevel);
+}
+
+void Voice::setFilterEnvelopeReleaseSeconds(float releaseSeconds) {
+    filterEnvelope_.setReleaseSeconds(releaseSeconds);
+}
+
+void Voice::setFilterEnvelopeAmount(float amount) {
+    filterEnvelopeAmount_ = std::clamp(amount, 0.0f, 1.0f);
+}
+
 void Voice::setGain(float gain) {
     gain_ = std::clamp(gain, 0.0f, 1.0f);
 }
@@ -174,6 +218,8 @@ void Voice::setActive(bool active) {
     pendingDeactivate_ = false;
     if (!active_) {
         envelope_.reset();
+        filterEnvelope_.reset();
+        filter_.reset();
     }
 }
 
@@ -182,17 +228,25 @@ void Voice::noteOn() {
         return;
     }
 
+    const bool retriggeringActiveNote = envelope_.isActive() || filterEnvelope_.isActive();
     pendingDeactivate_ = false;
+    if (!retriggeringActiveNote) {
+        filter_.reset();
+    }
     envelope_.noteOn();
+    filterEnvelope_.noteOn();
 }
 
 void Voice::noteOff() {
     envelope_.noteOff();
+    filterEnvelope_.noteOff();
 }
 
 void Voice::clearNote() {
     pendingDeactivate_ = false;
     envelope_.reset();
+    filterEnvelope_.reset();
+    filter_.reset();
 }
 
 void Voice::updateOscillatorFrequency(OscillatorSlot& slot) {
@@ -246,16 +300,29 @@ void Voice::renderAdd(float* output,
             continue;
         }
 
+        sample /= static_cast<float>(activeOscillatorCount);
+
+        const float filterEnvelopeValue = filterEnvelope_.nextValue();
+        const float filterCutoffHz =
+            std::clamp(
+                filterCutoffHz_ * std::pow(2.0f, filterEnvelopeAmount_ * filterEnvelopeValue * kMaxFilterEnvelopeOctaves),
+                kMinFilterCutoffHz,
+                kMaxFilterCutoffHz);
+        filter_.setCutoffHz(filterCutoffHz);
+        sample = filter_.processSample(sample);
+
         const float envelopeValue = envelope_.nextValue();
         if (envelopeValue <= 0.0f && !envelope_.isActive()) {
             if (pendingDeactivate_) {
                 active_ = false;
                 pendingDeactivate_ = false;
+                filterEnvelope_.reset();
+                filter_.reset();
             }
             continue;
         }
 
-        sample = (sample / static_cast<float>(activeOscillatorCount)) * gain_ * masterGain * envelopeValue;
+        sample *= gain_ * masterGain * envelopeValue;
 
         const std::uint32_t frameOffset = frame * channels;
         for (std::uint32_t channel = 0; channel < routedChannelCount; ++channel) {
@@ -273,6 +340,8 @@ void Voice::renderAdd(float* output,
     if (pendingDeactivate_ && !envelope_.isActive()) {
         active_ = false;
         pendingDeactivate_ = false;
+        filterEnvelope_.reset();
+        filter_.reset();
     }
 }
 

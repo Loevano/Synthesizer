@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.7 - 2026-03-16
+- Added Robin `VCF`, `ENV VCF`, and low-pass filter support to the live synth path
+- Reworked Robin around the current master/local voice model:
+  - `Enabled`
+  - `Linked to Master`
+  - one selected local editor at a time
+  - explicit `Reset to Master State`
+- Added `All Outputs` as a Robin routing preset
+- Changed source routing so each source chooses `dry` or `fx`, while outputs sum dry plus FX-chain signal
+- Removed redundant FX link controls from the UI and backend model
+- Moved ordinary live UI edits onto a temp/live bridge path instead of full state round-trips
+- Hardened Robin and source-mixer audio behavior:
+  - smoothed source-mixer level changes
+  - improved Robin voice reuse so release tails are less likely to be cut off early
+  - reduced retrigger clicks in the Robin voice path
+- Added contributor setup documentation
+
 ## 0.1.6 - 2026-03-15
 - Added the multichannel scaffold app structure around `LiveGraph`, `Robin`, `Test`, `Output Mixer`, `FX`, and the embedded web UI
 - Reframed `Robin` around a master-first control model in the UI and docs

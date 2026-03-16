@@ -6,7 +6,6 @@ namespace synth::graph {
 
 void FxRackNode::resize(std::uint32_t outputChannels) {
     const std::size_t channelCount = std::max<std::uint32_t>(1, outputChannels);
-    outputs_.resize(channelCount);
     chorusStages_.resize(channelCount);
     syncChorusState();
 }
@@ -23,20 +22,8 @@ void FxRackNode::prepare(double sampleRate) {
     syncChorusState();
 }
 
-void FxRackNode::setOutputRoute(std::uint32_t outputChannel, bool routeThroughFx) {
-    if (outputChannel >= outputs_.size()) {
-        return;
-    }
-
-    outputs_[outputChannel].routeThroughFx = routeThroughFx;
-}
-
 void FxRackNode::setChorusEnabled(bool enabled) {
     chorusEnabled_ = enabled;
-}
-
-void FxRackNode::setChorusLinkedControls(bool linkedControls) {
-    chorusLinkedControls_ = linkedControls;
 }
 
 void FxRackNode::setChorusDepth(float depth) {
@@ -63,16 +50,12 @@ void FxRackNode::process(float* output, std::uint32_t frames, std::uint32_t chan
         return;
     }
 
-    const std::uint32_t appliedChannels = static_cast<std::uint32_t>(
-        std::min<std::size_t>(channels, std::min(outputs_.size(), chorusStages_.size())));
+    const std::uint32_t appliedChannels =
+        static_cast<std::uint32_t>(std::min<std::size_t>(channels, chorusStages_.size()));
 
     for (std::uint32_t frame = 0; frame < frames; ++frame) {
         const std::size_t frameOffset = static_cast<std::size_t>(frame) * channels;
         for (std::uint32_t channel = 0; channel < appliedChannels; ++channel) {
-            if (!outputs_[channel].routeThroughFx) {
-                continue;
-            }
-
             if (chorusEnabled_) {
                 output[frameOffset + channel] = chorusStages_[channel].processSample(output[frameOffset + channel]);
             }

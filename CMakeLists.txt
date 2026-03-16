@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(synth_core
+    src/core/CrashDiagnostics.cpp
     src/core/Logger.cpp
     src/dsp/Envelope.cpp
     src/dsp/ThreeBandEq.cpp

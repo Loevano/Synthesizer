@@ -1,20 +1,32 @@
 # Contributing
 
-This project is currently a macOS-first multichannel synth app with a native C++ audio engine and a bundled web UI.
+This repo works best when contributors treat it like a collaboration between:
+- a human making product and sound-design decisions
+- a coding agent implementing changes quickly
+- a normal Git workflow that keeps experiments isolated
 
-## Prerequisites
+This guide is written for that style of contribution.
+
+## What this project is
+
+This is a macOS-first multichannel synth app with:
+- a native C++ audio engine
+- a controller/state layer
+- a bundled web UI inside a `WKWebView`
+
+The current reference instrument is `Robin`, a multivoice spatial synth with a master-first workflow and local per-voice overrides.
+
+## Setup
 
 Required:
-
 - macOS
 - Xcode Command Line Tools
 - CMake 3.21+
 - Git
 
-Optional but useful:
-
+Useful:
 - Node.js, for `node --check src/ui_web/app.js`
-- GitHub CLI (`gh`), for remote/repo setup
+- GitHub CLI (`gh`), for branch/PR workflow
 
 Install Xcode Command Line Tools if needed:
 
@@ -22,7 +34,7 @@ Install Xcode Command Line Tools if needed:
 xcode-select --install
 ```
 
-## Clone and build
+Clone and build:
 
 ```bash
 git clone <your-repo-url>
@@ -30,109 +42,231 @@ cd Synthesizer
 ./scripts/build.sh
 ```
 
-## Run
-
-CLI host:
-
-```bash
-./scripts/run.sh
-```
-
-macOS app:
+Run the app:
 
 ```bash
 ./scripts/run-app.sh
 ```
 
-If the app is already open, relaunch it after UI changes so the rebuilt bundled assets are loaded.
+Run the CLI host:
 
-## Useful verification steps
+```bash
+./scripts/run.sh
+```
 
-Minimum expectation before committing:
+If the app is already open, relaunch it after UI changes so the rebuilt bundled assets reload.
+
+## Vibe Coding Workflow
+
+The most effective workflow here is:
+1. make one focused request
+2. implement it on a branch
+3. verify it
+4. commit and push
+5. open a PR into `main`
+
+Do not batch unrelated UI, DSP, routing, and infrastructure changes into one vague request if you can avoid it. The tighter the slice, the better the result.
+
+## How To Prompt Well
+
+Best prompts have:
+- one screen or subsystem at a time
+- the goal
+- the scope
+- the behavior rules
+- what must stay
+- what must be removed
+
+For UI work, screenshots help a lot. The best pattern is:
+- screenshot for visual direction
+- 3-6 bullets for interaction rules
+
+Good example:
+- Goal: make Robin voice overview denser
+- Scope: Robin page only
+- Keep: master-first workflow
+- Remove: duplicated controls
+- Behavior: linked voices stay collapsed, one unlinked voice editor open at a time
+- Reference: attached screenshot
+
+For synth behavior or DSP work, say:
+- what you changed
+- what you expected
+- what actually happened
+- whether audio was playing
+- whether MIDI or OSC was active
+- exact control path if possible
+
+Good example:
+- Hold a note in Robin
+- Change `FX -> Chorus -> Depth`
+- Pop happens during drag, not on release
+- Reproducible every time
+
+## Crash And Debug Workflow
+
+If the app crashes or behaves strangely, run:
+
+```bash
+./scripts/run-app.sh --debug-crash
+```
+
+This enables:
+- bridge timing logs
+- Robin parameter logs
+- controller and bridge breadcrumbs
+- fatal signal logging
+- `std::terminate` logging
+- uncaught macOS exception logging
+
+Logs are written under `logs/`:
+- `synth_*.log` for normal runtime logs
+- `crash_*.log` for crash diagnostics and recent breadcrumbs
+
+If you report a crash, include:
+- the exact repro steps
+- whether audio was playing
+- whether MIDI or OSC was active
+- the newest `logs/synth_*.log`
+- the newest `logs/crash_*.log`
+
+## Branch Workflow
+
+Do not do feature work directly on `main`.
+
+Create a branch for each focused change:
+
+```bash
+git checkout -b fix/chorus-pops
+```
+
+Examples:
+- `fix/robin-crash-logs`
+- `feat/robin-lfo-layout`
+- `docs/vibe-contributing-guide`
+
+Keep the branch scoped to one area of work. That makes review and rollback much easier.
+
+## Verification Before Commit
+
+Minimum expectation:
 
 ```bash
 ./scripts/build.sh
 ```
 
-If you changed `src/ui_web/app.js`, also run:
+If `src/ui_web/app.js` changed:
 
 ```bash
 node --check src/ui_web/app.js
 ```
 
-## Debugging
+If you changed audio behavior, also do a live repro pass in the app when possible.
 
-Robin and bridge logging:
+## Commit Workflow
 
-```bash
-SYNTH_DEBUG_ROBIN=1 SYNTH_DEBUG_BRIDGE=1 ./scripts/run-app.sh
-```
-
-Logs are written under `logs/`.
-
-## Project structure
-
-- `src/app/`
-  - controller, state model, parameter handling, bridge-facing logic
-- `src/audio/`
-  - `Synth`, `Voice`, `TestSynth`
-- `src/dsp/`
-  - oscillator, envelope, filter, delay, chorus, LFO, EQ
-- `src/graph/`
-  - live graph, source nodes, FX rack, output mixer node
-- `src/platform/macos/`
-  - app shell and webview bridge
-- `src/ui_web/`
-  - bundled HTML/CSS/JS UI
-- `docs/`
-  - overview, architecture, roadmap, implementation notes
-
-## Current contribution expectations
-
-- Keep the project in one repo.
-- Preserve the current controller state shape unless there is a strong reason to change it.
-- Prefer simple, explicit DSP and graph code over abstraction for its own sake.
-- If you change UI behavior, update the relevant docs.
-- If you change routing, DSP, or bridge behavior, update the architecture docs and changelog.
-
-## Current workflow
-
-Create a devlog entry if you want to track a slice of work:
+Stage only the files that belong to the change:
 
 ```bash
-./scripts/new-devlog-entry.sh
-```
-
-Commit manually:
-
-```bash
-git add .
-git commit -m "Describe the change"
+git add path/to/file
+git add another/file
+git commit -m "Fix chorus parameter pops"
 ```
 
 Or use the helper:
 
 ```bash
-./scripts/git-commit.sh "Describe the change"
+./scripts/git-commit.sh "Fix chorus parameter pops"
 ```
 
-Push:
+Commit messages should describe the actual change, not the session.
+
+Good:
+- `Add crash diagnostics and bridge breadcrumbs`
+- `Remove oscillator-count gain normalization`
+- `Rework Robin voice editor layout`
+
+Bad:
+- `misc fixes`
+- `update stuff`
+- `changes`
+
+## Push And PR Workflow
+
+Push your branch:
 
 ```bash
-git push origin <branch>
+git push -u origin fix/chorus-pops
 ```
 
-## Remote setup
+Open a PR into `main`.
 
-If you are creating a fresh GitHub repo and use GitHub CLI:
+A good PR description includes:
+- what changed
+- why it changed
+- how to verify it
+- any known gaps or risks
+
+Suggested PR template:
+
+```md
+## Summary
+- what changed
+
+## Why
+- user-visible or technical reason
+
+## Verification
+- ./scripts/build.sh
+- node --check src/ui_web/app.js
+- manual repro steps
+
+## Risks
+- anything still uncertain
+```
+
+## GitHub CLI
+
+If you use GitHub CLI:
+
+```bash
+gh auth login
+gh pr create --base main --fill
+```
+
+If you are creating a fresh remote:
 
 ```bash
 ./scripts/github-create.sh your-github-username Synthesizer
 ```
 
-## Areas that still need care
+## What To Update When You Change Things
+
+Update docs when behavior or workflow changes.
+
+Usually:
+- `README.md` for user-facing setup, running, or debugging changes
+- `CONTRIBUTING.md` for contributor workflow changes
+- `docs/GITHUB.md` for branch/PR workflow changes
+- `CHANGELOG.md` for notable shipped behavior changes
+
+If you change routing, DSP, or architecture meaningfully, also update:
+- `docs/ARCHITECTURE.md`
+- `docs/PROJECT_OVERVIEW.md`
+
+## Project Structure
+
+- `src/app/`: controller, state model, parameter handling, bridge-facing logic
+- `src/audio/`: `Synth`, `Voice`, `TestSynth`
+- `src/dsp/`: oscillator, envelope, filter, delay, chorus, LFO, EQ
+- `src/graph/`: live graph, source nodes, FX rack, output mixer node
+- `src/platform/macos/`: app shell and webview bridge
+- `src/ui_web/`: bundled HTML/CSS/JS UI
+- `docs/`: overview, architecture, roadmap, implementation notes
+
+## Current Areas That Need Extra Care
 
 - automated tests are still light
 - the app target is macOS-first
 - `Decor`, `Pieces`, `Saturator`, and `Sidechain` are still partly scaffolded
-- Robin still needs a deeper modulation system beyond the current LFO and local voice overrides
+- Robin still needs deeper modulation beyond the current LFO and local voice overrides

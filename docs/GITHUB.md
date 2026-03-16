@@ -1,70 +1,90 @@
 # GitHub Workflow
 
-## Initial local setup
+This project should normally land changes through short-lived branches and pull requests into `main`.
 
-```bash
-git init
-git add .
-git commit -m "Initial synthesizer scaffold"
-```
+## Initial setup
 
-## Create a remote repo with GitHub CLI
+If the repo is not connected to GitHub yet:
 
 ```bash
 gh auth login
 ./scripts/github-create.sh your-github-username Synthesizer
 ```
 
-This script creates a private repo, adds `origin`, and pushes the current branch.
+This creates a private repo, adds `origin`, and pushes the current branch.
 
-## Daily workflow
+## Standard branch flow
 
-Optional devlog:
+Create a branch for a focused change:
 
 ```bash
-./scripts/new-devlog-entry.sh
+git checkout -b fix/robin-crash-logs
+```
+
+Do the work, then verify:
+
+```bash
+./scripts/build.sh
+node --check src/ui_web/app.js
 ```
 
 Commit:
 
 ```bash
-git add .
-git commit -m "Describe the change"
-```
-
-Or use the helper:
-
-```bash
-./scripts/git-commit.sh "Describe the change"
+git add path/to/file
+git add another/file
+git commit -m "Add crash diagnostics and bridge breadcrumbs"
 ```
 
 Push:
 
 ```bash
-git push origin main
+git push -u origin fix/robin-crash-logs
 ```
 
-If you are working on a feature branch:
+Open the PR:
 
 ```bash
-git push -u origin your-branch-name
+gh pr create --base main --fill
 ```
 
-## Before pushing
+## PR expectations
 
-Recommended minimum verification:
+A good PR should say:
+- what changed
+- why it changed
+- how it was verified
+- any known risk or remaining gap
+
+Keep PRs focused. Avoid mixing unrelated UI polish, DSP fixes, routing changes, and docs cleanup unless they are directly tied to one issue.
+
+## If You Are Using A Coding Agent
+
+Recommended workflow:
+1. make a branch first
+2. ask for one focused change
+3. verify the result
+4. ask for commit and push
+5. open a PR into `main`
+
+If the change is UI-heavy, include screenshots.
+If the change is crash-related, run:
 
 ```bash
-./scripts/build.sh
+./scripts/run-app.sh --debug-crash
 ```
 
-If `src/ui_web/app.js` changed:
+and attach the newest `logs/synth_*.log` and `logs/crash_*.log`.
+
+## Optional devlog
+
+If you want to keep a working note for a slice of work:
 
 ```bash
-node --check src/ui_web/app.js
+./scripts/new-devlog-entry.sh
 ```
 
 ## Related docs
 
-- Contributor setup: [CONTRIBUTING.md](/Users/jens/Documents/Coding/Synthesizer/CONTRIBUTING.md)
+- Contributor setup and prompting guide: [CONTRIBUTING.md](/Users/jens/Documents/Coding/Synthesizer/CONTRIBUTING.md)
 - Architecture: [docs/ARCHITECTURE.md](/Users/jens/Documents/Coding/Synthesizer/docs/ARCHITECTURE.md)

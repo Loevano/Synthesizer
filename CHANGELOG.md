@@ -15,6 +15,10 @@
   - smoothed source-mixer level changes
   - improved Robin voice reuse so release tails are less likely to be cut off early
   - reduced retrigger clicks in the Robin voice path
+- Added crash diagnostics with:
+  - fatal signal and terminate logging
+  - uncaught macOS exception logging
+  - optional bridge/controller breadcrumbs via `./scripts/run-app.sh --debug-crash`
 - Added contributor setup documentation
 
 ## 0.1.6 - 2026-03-15

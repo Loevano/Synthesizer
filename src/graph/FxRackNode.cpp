@@ -52,15 +52,22 @@ void FxRackNode::process(float* output, std::uint32_t frames, std::uint32_t chan
 
     const std::uint32_t appliedChannels =
         static_cast<std::uint32_t>(std::min<std::size_t>(channels, chorusStages_.size()));
+    const float targetBlend = chorusEnabled_ ? 1.0f : 0.0f;
+    const float blendStep = frames > 1
+        ? (targetBlend - chorusBlend_) / static_cast<float>(frames - 1)
+        : 0.0f;
 
     for (std::uint32_t frame = 0; frame < frames; ++frame) {
         const std::size_t frameOffset = static_cast<std::size_t>(frame) * channels;
+        const float frameBlend = frames > 1 ? chorusBlend_ + (blendStep * static_cast<float>(frame)) : targetBlend;
         for (std::uint32_t channel = 0; channel < appliedChannels; ++channel) {
-            if (chorusEnabled_) {
-                output[frameOffset + channel] = chorusStages_[channel].processSample(output[frameOffset + channel]);
-            }
+            const float drySample = output[frameOffset + channel];
+            const float wetSample = chorusStages_[channel].processSample(drySample);
+            output[frameOffset + channel] = drySample + ((wetSample - drySample) * frameBlend);
         }
     }
+
+    chorusBlend_ = targetBlend;
 }
 
 void FxRackNode::syncChorusState() {

@@ -2,6 +2,7 @@
 #import <WebKit/WebKit.h>
 
 #include "synth/app/SynthController.hpp"
+#include "synth/core/CrashDiagnostics.hpp"
 
 #include <chrono>
 #include <cstdlib>
@@ -93,6 +94,13 @@ std::string escapeJavaScriptString(const std::string& value) {
 
 }  // namespace
 
+static void handleUncaughtNsException(NSException* exception) {
+    const std::string name = exception.name != nil ? std::string([[exception.name description] UTF8String]) : "Unknown";
+    const std::string reason =
+        exception.reason != nil ? std::string([[exception.reason description] UTF8String]) : "Unknown";
+    synth::core::CrashDiagnostics::noteObjectiveCException(name, reason);
+}
+
 @interface SynthAppDelegate : NSObject <NSApplicationDelegate, WKScriptMessageHandler>
 @end
 
@@ -101,6 +109,7 @@ std::string escapeJavaScriptString(const std::string& value) {
     WKWebView* webView_;
     std::unique_ptr<synth::app::SynthController> controller_;
     BOOL debugBridge_;
+    BOOL debugCrash_;
 }
 
 - (void)sendResponse:(NSInteger)requestId
@@ -132,6 +141,7 @@ std::string escapeJavaScriptString(const std::string& value) {
 - (void)applicationDidFinishLaunching:(NSNotification*)notification {
     (void)notification;
     debugBridge_ = envFlagEnabled("SYNTH_DEBUG_BRIDGE") || envFlagEnabled("SYNTH_DEBUG_ROBIN");
+    debugCrash_ = envFlagEnabled("SYNTH_DEBUG_CRASH");
 
     controller_ = std::make_unique<synth::app::SynthController>();
     if (!controller_->startAudio()) {
@@ -206,6 +216,9 @@ std::string escapeJavaScriptString(const std::string& value) {
     const NSInteger requestId = [requestIdNumber integerValue];
 
     if ([type isEqualToString:@"getState"]) {
+        if (debugCrash_) {
+            controller_->crashDiagnostics().breadcrumb("Bridge getState request.");
+        }
         [self sendResponse:requestId ok:YES payload:controller_->stateJson() error:""];
         return;
     }
@@ -222,15 +235,21 @@ std::string escapeJavaScriptString(const std::string& value) {
         std::string errorMessage;
         bool success = false;
         const auto paramStart = std::chrono::steady_clock::now();
+        const std::string pathString([path UTF8String]);
+
+        if (debugCrash_) {
+            controller_->crashDiagnostics().breadcrumb(
+                "Bridge " + std::string([type UTF8String]) + " start path=" + pathString);
+        }
 
         if ([rawValue isKindOfClass:[NSNumber class]]) {
             success = controller_->setParam(
-                std::string([path UTF8String]),
+                pathString,
                 [(NSNumber*)rawValue doubleValue],
                 &errorMessage);
         } else if ([rawValue isKindOfClass:[NSString class]]) {
             success = controller_->setParam(
-                std::string([path UTF8String]),
+                pathString,
                 std::string([(NSString*)rawValue UTF8String]),
                 &errorMessage);
         } else {
@@ -238,6 +257,10 @@ std::string escapeJavaScriptString(const std::string& value) {
         }
 
         if (!success) {
+            if (debugCrash_) {
+                controller_->crashDiagnostics().breadcrumb(
+                    "Bridge " + std::string([type UTF8String]) + " failed path=" + pathString + " error=" + errorMessage);
+            }
             [self sendResponse:requestId ok:NO payload:"null" error:errorMessage];
             return;
         }
@@ -259,6 +282,11 @@ std::string escapeJavaScriptString(const std::string& value) {
                     + " paramMs=" + std::to_string(paramMs)
                     + " payloadMs=" + std::to_string(payloadMs));
             }
+        }
+
+        if (debugCrash_) {
+            controller_->crashDiagnostics().breadcrumb(
+                "Bridge " + std::string([type UTF8String]) + " ok path=" + pathString);
         }
 
         [self sendResponse:requestId ok:YES payload:payloadJson error:""];
@@ -284,6 +312,7 @@ int main(int argc, const char* argv[]) {
     (void)argv;
 
     @autoreleasepool {
+        NSSetUncaughtExceptionHandler(&handleUncaughtNsException);
         NSApplication* application = [NSApplication sharedApplication];
         SynthAppDelegate* delegate = [[SynthAppDelegate alloc] init];
         [application setDelegate:delegate];

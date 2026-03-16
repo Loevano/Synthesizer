@@ -300,8 +300,6 @@ void Voice::renderAdd(float* output,
             continue;
         }
 
-        sample /= static_cast<float>(activeOscillatorCount);
-
         const float filterEnvelopeValue = filterEnvelope_.nextValue();
         const float filterCutoffHz =
             std::clamp(

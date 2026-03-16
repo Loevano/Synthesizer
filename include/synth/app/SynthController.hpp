@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "synth/core/Logger.hpp"
+#include "synth/core/CrashDiagnostics.hpp"
 #include "synth/graph/FxRackNode.hpp"
 #include "synth/graph/LiveGraph.hpp"
 #include "synth/graph/OutputMixerNode.hpp"
@@ -194,6 +195,7 @@ public:
 
     audio::Synth& synth();
     core::Logger& logger();
+    core::CrashDiagnostics& crashDiagnostics();
     const RuntimeConfig& config() const;
 
 private:
@@ -257,6 +259,7 @@ private:
 
     RuntimeConfig config_;
     core::Logger logger_;
+    core::CrashDiagnostics crashDiagnostics_;
     std::unique_ptr<interfaces::IAudioDriver> driver_;
     std::unique_ptr<io::MidiInput> midiInput_;
     std::unique_ptr<io::OscServer> oscServer_;
@@ -303,6 +306,7 @@ private:
     std::minstd_rand robinRoutingRandom_{std::random_device{}()};
     bool autoActivatedVoice0_ = false;
     bool debugRobinOscillatorParams_ = false;
+    bool debugCrashBreadcrumbs_ = false;
     mutable std::mutex mutex_;
     bool initialized_ = false;
 };

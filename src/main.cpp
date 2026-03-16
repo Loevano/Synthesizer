@@ -1,4 +1,5 @@
 #include "synth/app/SynthController.hpp"
+#include "synth/core/CrashDiagnostics.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -119,6 +120,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    controller.crashDiagnostics().breadcrumb("CLI host started.");
     controller.logger().info("Running. Press Ctrl+C to stop.");
     while (gRunning.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));

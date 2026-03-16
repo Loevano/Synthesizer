@@ -142,7 +142,9 @@ std::string queryDefaultOutputDeviceName() {
 SynthController::SynthController(RuntimeConfig config)
     : config_(std::move(config)),
       logger_(config_.logDirectory),
-      debugRobinOscillatorParams_(envFlagEnabled("SYNTH_DEBUG_ROBIN")) {}
+      crashDiagnostics_(config_.logDirectory),
+      debugRobinOscillatorParams_(envFlagEnabled("SYNTH_DEBUG_ROBIN")),
+      debugCrashBreadcrumbs_(envFlagEnabled("SYNTH_DEBUG_CRASH")) {}
 
 SynthController::~SynthController() {
     stopAudio();
@@ -155,6 +157,13 @@ bool SynthController::initialize() {
 
     if (!logger_.initialize()) {
         return false;
+    }
+
+    if (crashDiagnostics_.initialize()) {
+        crashDiagnostics_.install();
+        logger_.info("Crash diagnostics initialized. Writing to " + crashDiagnostics_.crashLogPath().string());
+    } else {
+        logger_.warn("Crash diagnostics failed to initialize.");
     }
 
     audioBackendName_ = "CoreAudio";
@@ -203,6 +212,8 @@ bool SynthController::startAudio() {
     if (!initialize()) {
         return false;
     }
+
+    crashDiagnostics_.breadcrumb("startAudio requested.");
 
     if (driver_->isRunning()) {
         return true;
@@ -297,6 +308,8 @@ bool SynthController::startAudio() {
 }
 
 void SynthController::stopAudio() {
+    crashDiagnostics_.breadcrumb("stopAudio requested.");
+
     if (oscServer_ != nullptr && oscServer_->isRunning()) {
         oscServer_->stop();
     }
@@ -672,6 +685,12 @@ std::string SynthController::stateJson() const {
 }
 
 bool SynthController::setParam(std::string_view path, double value, std::string* errorMessage) {
+    if (debugCrashBreadcrumbs_) {
+        std::ostringstream breadcrumb;
+        breadcrumb << "setParam number path=" << path << " value=" << value;
+        crashDiagnostics_.breadcrumb(breadcrumb.str());
+    }
+
     std::unique_lock<std::mutex> lock(mutex_);
     const auto parts = splitPath(path);
 
@@ -1390,6 +1409,11 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
 }
 
 bool SynthController::setParam(std::string_view path, std::string_view value, std::string* errorMessage) {
+    if (debugCrashBreadcrumbs_) {
+        crashDiagnostics_.breadcrumb(
+            "setParam string path=" + std::string(path) + " value=" + std::string(value));
+    }
+
     std::unique_lock<std::mutex> lock(mutex_);
     const auto parts = splitPath(path);
 
@@ -1562,6 +1586,10 @@ audio::Synth& SynthController::synth() {
 
 core::Logger& SynthController::logger() {
     return logger_;
+}
+
+core::CrashDiagnostics& SynthController::crashDiagnostics() {
+    return crashDiagnostics_;
 }
 
 const RuntimeConfig& SynthController::config() const {
@@ -2486,6 +2514,15 @@ std::uint32_t SynthController::allocateRobinVoiceLocked() {
 void SynthController::reconfigureStructureLocked(std::uint32_t voiceCount, std::uint32_t oscillatorsPerVoice) {
     const auto previousVoices = voices_;
     const auto previousMasterOscillators = masterOscillators_;
+
+    // Structural changes must drop live Robin note allocation state before the
+    // voice/oscillator layout is rebuilt.
+    robinSource_.synth().clearNotes();
+    robinVoiceAssignments_.clear();
+    robinVoiceReleaseUntil_.clear();
+    robinNextVoiceCursor_ = 0;
+    autoActivatedVoice0_ = false;
+    resetRobinRoutingStateLocked();
 
     config_.voiceCount = std::max<std::uint32_t>(1, voiceCount);
     config_.oscillatorsPerVoice = std::max<std::uint32_t>(1, oscillatorsPerVoice);

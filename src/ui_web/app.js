@@ -928,6 +928,31 @@ function applyRobinMasterOscillatorUpdate(oscillatorIndex, field, rawValue) {
   }
 }
 
+function clearQueuedParamsByPrefix(prefix) {
+  for (const path of Array.from(queuedParams.keys())) {
+    if (path.startsWith(prefix)) {
+      queuedParams.delete(path);
+    }
+  }
+}
+
+function clearInFlightParamsByPrefix(prefix) {
+  for (const path of Array.from(inFlightParams.keys())) {
+    if (path.startsWith(prefix)) {
+      inFlightParams.delete(path);
+    }
+  }
+}
+
+function flushRobinStructuralUiState() {
+  activeRangeInput = null;
+  hasDeferredRender = false;
+  clearQueuedParamsByPrefix("sources.robin.voice.");
+  clearQueuedParamsByPrefix("sources.robin.oscillator.");
+  clearInFlightParamsByPrefix("sources.robin.voice.");
+  clearInFlightParamsByPrefix("sources.robin.oscillator.");
+}
+
 function applyRobinPitchOffsetUpdate(field, rawValue) {
   const robin = getRobin();
   if (!robin) {
@@ -2775,6 +2800,9 @@ async function dispatchParamFast(path, value, { silent = false, onSuccess = null
 }
 
 function setStructuralParam(path, value) {
+  if (path === "sources.robin.voiceCount" || path === "sources.robin.oscillatorsPerVoice") {
+    flushRobinStructuralUiState();
+  }
   dispatchParam(path, value);
 }
 

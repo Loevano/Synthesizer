@@ -92,7 +92,21 @@ Useful while tracing Robin and bridge issues:
 SYNTH_DEBUG_ROBIN=1 SYNTH_DEBUG_BRIDGE=1 ./scripts/run-app.sh
 ```
 
-Logs are written under `logs/`.
+For crash-oriented tracing, use:
+
+```bash
+./scripts/run-app.sh --debug-crash
+```
+
+This enables:
+- bridge timing logs
+- Robin parameter logs
+- controller and bridge breadcrumbs for recent param changes
+- fatal signal, terminate, and uncaught Objective-C exception logging
+
+Logs are written under `logs/`:
+- `synth_*.log` for normal runtime logs
+- `crash_*.log` for crash diagnostics and breadcrumbs
 
 ## Project layout
 

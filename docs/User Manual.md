@@ -513,9 +513,9 @@ Useful files:
 
 ## Downloaded App Says It Is Damaged
 
-Official tagged `main` releases are intended to be signed and notarized.
+Official tagged `main` releases are packaged for download, but currently unsigned.
 
-If macOS says the app is "damaged", you are most likely opening an older unsigned tester build or a locally packaged unsigned build. In that case it is usually Gatekeeper/quarantine rather than an actually broken app bundle.
+If macOS says the app is "damaged", you are most likely hitting Gatekeeper/quarantine rather than an actually broken app bundle.
 
 Try one of these:
 - right-click `Synthesizer.app` and choose `Open`
@@ -526,7 +526,7 @@ xattr -dr com.apple.quarantine /path/to/Synthesizer.app
 open /path/to/Synthesizer.app
 ```
 
-For the full release/signing explanation, see [RELEASING.md](RELEASING.md).
+For the full release explanation, see [RELEASING.md](RELEASING.md).
 
 ## Pops While Adjusting Sound
 

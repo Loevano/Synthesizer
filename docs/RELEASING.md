@@ -1,6 +1,6 @@
 # Releasing, Signing, and Notarization
 
-This document explains the release behavior for `main` and `dev`, what end users may see on macOS, and how signing/notarization is expected to work.
+This document explains the release behavior for `main` and `dev`, what end users may see on macOS, and what the future signing/notarization upgrade would look like.
 
 ## Current State
 
@@ -14,12 +14,12 @@ Current branch intent:
 
 Release workflow intent:
 - `dev` should not be used for public downloadable app releases
-- tagged commits on `main` should produce signed/notarized macOS releases
-- if signing secrets are missing, tagged `main` releases should fail instead of publishing unsigned artifacts
+- tagged commits on `main` should produce packaged macOS releases
+- those releases are currently unsigned
 
 ## What End Users May See
 
-If you open an older or manually packaged unsigned build, macOS Gatekeeper may block it.
+If you open a downloaded or manually packaged unsigned build, macOS Gatekeeper may block it.
 
 Common symptoms:
 - `"Synthesizer" is damaged and can't be opened`
@@ -78,14 +78,12 @@ git push origin v1.0.0
 That triggers the release workflow. The intended flow is:
 - verify the tagged commit is on `main`
 - build the app
-- sign it
-- notarize it
-- staple it
+- package it into a `.zip`
 - publish the final zip to GitHub Releases
 
-## Proper macOS Distribution Flow
+## Future Signed macOS Distribution Flow
 
-For a normal user-facing macOS release, the flow is:
+If you later decide to pay for Apple Developer membership and sign releases properly, the flow would be:
 
 1. build the app
 2. sign the app with a `Developer ID Application` certificate
@@ -94,20 +92,7 @@ For a normal user-facing macOS release, the flow is:
 5. staple the notarization ticket to the app
 6. create the final distributable zip from the stapled app
 
-That gives users a much smoother experience and avoids the current Gatekeeper warnings.
-
-## Required Secrets For CI Releases
-
-The GitHub Actions release workflow expects:
-- `APPLE_SIGNING_IDENTITY`
-- `APPLE_DEVELOPER_ID_P12_BASE64`
-- `APPLE_DEVELOPER_ID_P12_PASSWORD`
-- `APPLE_API_KEY_ID`
-- `APPLE_API_ISSUER_ID`
-- `APPLE_API_PRIVATE_KEY`
-- optional: `APPLE_KEYCHAIN_PASSWORD`
-
-Without those secrets, tagged `main` releases should fail.
+That would give users a smoother experience and avoid the current Gatekeeper warnings.
 
 ## Local Signing Example
 
@@ -167,8 +152,8 @@ ditto -c -k --sequesterRsrc --keepParent \
 
 Use this split:
 - `dev` for source, CI, and integration work
-- `main` for stable signed/notarized tagged releases
+- `main` for stable packaged tagged releases
 
-For older unsigned builds or local manual packaging:
+For current releases and local manual packaging:
 - keep the quarantine workaround documented
-- do not present those builds as polished public releases
+- treat these as usable packaged builds, but not fully trusted macOS distributions

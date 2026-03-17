@@ -25,7 +25,8 @@ void RobinSourceNode::renderAdd(float* output, std::uint32_t frames, std::uint32
     }
 
     const std::size_t sampleCount = static_cast<std::size_t>(frames) * channels;
-    renderBuffer_.assign(sampleCount, 0.0f);
+    renderBuffer_.resize(sampleCount);
+    std::fill(renderBuffer_.begin(), renderBuffer_.end(), 0.0f);
     synth_.renderAdd(renderBuffer_.data(), frames, channels);
 
     const float targetGain = targetGain_.load();

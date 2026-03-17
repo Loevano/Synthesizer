@@ -162,3 +162,65 @@ Important missing pieces:
 - full saturator implementation
 - real sidechain design
 - broader regression testing around routing and allocator behavior
+
+## Next architecture refactor
+
+The next structural step should be to reduce how much `SynthController` owns directly.
+Right now it still acts as engine host, state serializer, source router, Robin controller,
+and Test source controller all at once. That made the lock-pressure refactor possible, but
+it is also the main reason the file has become hard to read and harder to extend safely.
+
+The recommended direction is shallow inheritance plus composition:
+
+- keep `SynthController` responsible for engine lifecycle, device/output config, and top-level graph orchestration
+- introduce a small shared instrument/source interface for common lifecycle only
+- extract synth-specific logic into dedicated classes instead of growing one giant controller
+
+The shared base should stay small. It should define only the parts that are actually stable
+across instruments:
+
+- note on/off
+- render
+- numeric param apply
+- string param apply
+- state serialization
+- queued command drain, if needed
+
+If a second-level base becomes useful, it should be for genuinely shared polyphonic synth
+structure, not for every possible future feature. A `PolySynthInstrument` style base can
+make sense for:
+
+- voices
+- oscillator bank
+- envelopes
+- filter section
+
+It should not force unrelated details like routing presets, modulation systems, or allocator
+behavior into the base type.
+
+Shared helpers should prefer composition:
+
+- realtime command queue
+- allocator
+- snapshot cache
+- routing helpers
+
+Target extraction order:
+
+1. define the small base interface
+2. extract `Test` first because it is simpler
+3. extract `Robin` once the pattern is proven
+4. simplify `SynthController` so it orchestrates instead of implementing every synth directly
+
+Constraints for that refactor:
+
+- preserve current behavior
+- keep the queued live-param model introduced on `stability-refactor-foundation`
+- do not rewrite the whole host at once
+- move one synth at a time
+- add regression tests as responsibilities move
+
+The guiding principle is:
+
+- yes to inheritance for a clear blueprint
+- no to deep inheritance or a bloated god base class

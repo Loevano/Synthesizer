@@ -370,7 +370,8 @@ void Synth::renderAdd(float* output, std::uint32_t frames, std::uint32_t channel
 
     const float gain = gain_.load();
     const std::size_t sampleCount = static_cast<std::size_t>(frames) * channels;
-    lfoModulationBuffer_.assign(sampleCount, 1.0f);
+    lfoModulationBuffer_.resize(sampleCount);
+    std::fill(lfoModulationBuffer_.begin(), lfoModulationBuffer_.end(), 1.0f);
 
     for (std::uint32_t frame = 0; frame < frames; ++frame) {
         lfo_.renderFrame(lfoModulationBuffer_.data() + (frame * channels), channels);

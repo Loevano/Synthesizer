@@ -5,56 +5,56 @@
 namespace synth::graph {
 
 void TestSourceNode::prepare(double sampleRate, std::uint32_t outputChannels) {
-    synth_.setSampleRate(sampleRate);
-    synth_.setOutputChannelCount(outputChannels);
+    engine_.setSampleRate(sampleRate);
+    engine_.setOutputChannelCount(outputChannels);
 }
 
 void TestSourceNode::setActive(bool active) {
-    synth_.setActive(active);
+    engine_.setActive(active);
 }
 
 void TestSourceNode::setMidiEnabled(bool enabled) {
-    synth_.setMidiEnabled(enabled);
+    engine_.setMidiEnabled(enabled);
 }
 
 void TestSourceNode::setFrequency(float frequencyHz) {
-    synth_.setFrequency(frequencyHz);
+    engine_.setFrequency(frequencyHz);
 }
 
 void TestSourceNode::setGain(float gain) {
-    synth_.setGain(gain);
+    engine_.setGain(gain);
 }
 
 void TestSourceNode::setWaveform(dsp::Waveform waveform) {
-    synth_.setWaveform(waveform);
+    engine_.setWaveform(waveform);
 }
 
 void TestSourceNode::setEnvelopeAttackSeconds(float attackSeconds) {
-    synth_.setEnvelopeAttackSeconds(attackSeconds);
+    engine_.setEnvelopeAttackSeconds(attackSeconds);
 }
 
 void TestSourceNode::setEnvelopeDecaySeconds(float decaySeconds) {
-    synth_.setEnvelopeDecaySeconds(decaySeconds);
+    engine_.setEnvelopeDecaySeconds(decaySeconds);
 }
 
 void TestSourceNode::setEnvelopeSustainLevel(float sustainLevel) {
-    synth_.setEnvelopeSustainLevel(sustainLevel);
+    engine_.setEnvelopeSustainLevel(sustainLevel);
 }
 
 void TestSourceNode::setEnvelopeReleaseSeconds(float releaseSeconds) {
-    synth_.setEnvelopeReleaseSeconds(releaseSeconds);
+    engine_.setEnvelopeReleaseSeconds(releaseSeconds);
 }
 
 void TestSourceNode::setOutputEnabled(std::uint32_t outputChannel, bool enabled) {
-    synth_.setOutputEnabled(outputChannel, enabled);
+    engine_.setOutputEnabled(outputChannel, enabled);
 }
 
 void TestSourceNode::noteOn(int noteNumber, float velocity) {
-    synth_.noteOn(noteNumber, velocity);
+    engine_.noteOn(noteNumber, velocity);
 }
 
 void TestSourceNode::noteOff(int noteNumber) {
-    synth_.noteOff(noteNumber);
+    engine_.noteOff(noteNumber);
 }
 
 void TestSourceNode::renderAdd(float* output,
@@ -78,8 +78,9 @@ void TestSourceNode::renderAdd(float* output,
         : 0.0f;
 
     const std::size_t sampleCount = static_cast<std::size_t>(frames) * channels;
-    renderBuffer_.assign(sampleCount, 0.0f);
-    synth_.renderAdd(renderBuffer_.data(), frames, channels, 1.0f);
+    renderBuffer_.resize(sampleCount);
+    std::fill(renderBuffer_.begin(), renderBuffer_.end(), 0.0f);
+    engine_.renderAdd(renderBuffer_.data(), frames, channels, 1.0f);
 
     for (std::uint32_t frame = 0; frame < frames; ++frame) {
         const float frameLevel = frames > 1 ? currentLevel_ + (levelStep * static_cast<float>(frame)) : targetLevel;

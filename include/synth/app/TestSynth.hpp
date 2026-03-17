@@ -12,7 +12,7 @@
 
 namespace synth::app {
 
-class Test final : public Instrument {
+class TestSynth final : public Instrument {
 public:
     void prepare(double sampleRate, std::uint32_t outputChannels) override;
     void renderAdd(float* output,

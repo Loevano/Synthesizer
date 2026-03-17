@@ -1,4 +1,4 @@
-#include "synth/app/Test.hpp"
+#include "synth/app/TestSynth.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -7,21 +7,21 @@
 
 namespace synth::app {
 
-void Test::prepare(double sampleRate, std::uint32_t outputChannels) {
+void TestSynth::prepare(double sampleRate, std::uint32_t outputChannels) {
     sourceNode_.prepare(sampleRate, outputChannels);
     resizeOutputs(outputChannels);
     syncNodeState();
 }
 
-void Test::renderAdd(float* output,
-                     std::uint32_t frames,
-                     std::uint32_t channels,
-                     bool enabled,
-                     float level) {
+void TestSynth::renderAdd(float* output,
+                          std::uint32_t frames,
+                          std::uint32_t channels,
+                          bool enabled,
+                          float level) {
     sourceNode_.renderAdd(output, frames, channels, enabled, level);
 }
 
-void Test::noteOn(int noteNumber, float velocity) {
+void TestSynth::noteOn(int noteNumber, float velocity) {
     if (!state_.midiEnabled) {
         return;
     }
@@ -30,7 +30,7 @@ void Test::noteOn(int noteNumber, float velocity) {
     sourceNode_.noteOn(noteNumber, velocity);
 }
 
-void Test::noteOff(int noteNumber) {
+void TestSynth::noteOff(int noteNumber) {
     if (!state_.midiEnabled) {
         return;
     }
@@ -38,9 +38,9 @@ void Test::noteOff(int noteNumber) {
     sourceNode_.noteOff(noteNumber);
 }
 
-RealtimeParamResult Test::applyNumericParam(const std::vector<std::string_view>& parts,
-                                            double value,
-                                            std::string* errorMessage) {
+RealtimeParamResult TestSynth::applyNumericParam(const std::vector<std::string_view>& parts,
+                                                 double value,
+                                                 std::string* errorMessage) {
     RealtimeCommand command;
     const auto result = tryBuildRealtimeNumericCommand(parts, value, command, errorMessage);
     if (result != RealtimeParamResult::Applied) {
@@ -51,9 +51,9 @@ RealtimeParamResult Test::applyNumericParam(const std::vector<std::string_view>&
     return RealtimeParamResult::Applied;
 }
 
-RealtimeParamResult Test::applyStringParam(const std::vector<std::string_view>& parts,
-                                           std::string_view value,
-                                           std::string* errorMessage) {
+RealtimeParamResult TestSynth::applyStringParam(const std::vector<std::string_view>& parts,
+                                                std::string_view value,
+                                                std::string* errorMessage) {
     RealtimeCommand command;
     const auto result = tryBuildRealtimeStringCommand(parts, value, command, errorMessage);
     if (result != RealtimeParamResult::Applied) {
@@ -64,10 +64,10 @@ RealtimeParamResult Test::applyStringParam(const std::vector<std::string_view>& 
     return RealtimeParamResult::Applied;
 }
 
-RealtimeParamResult Test::tryBuildRealtimeNumericCommand(const std::vector<std::string_view>& parts,
-                                                         double value,
-                                                         RealtimeCommand& command,
-                                                         std::string* errorMessage) const {
+RealtimeParamResult TestSynth::tryBuildRealtimeNumericCommand(const std::vector<std::string_view>& parts,
+                                                              double value,
+                                                              RealtimeCommand& command,
+                                                              std::string* errorMessage) const {
     if (parts.size() < 3 || parts[0] != "sources" || parts[1] != "test") {
         return RealtimeParamResult::NotHandled;
     }
@@ -135,10 +135,10 @@ RealtimeParamResult Test::tryBuildRealtimeNumericCommand(const std::vector<std::
     return RealtimeParamResult::NotHandled;
 }
 
-RealtimeParamResult Test::tryBuildRealtimeStringCommand(const std::vector<std::string_view>& parts,
-                                                        std::string_view value,
-                                                        RealtimeCommand& command,
-                                                        std::string* errorMessage) const {
+RealtimeParamResult TestSynth::tryBuildRealtimeStringCommand(const std::vector<std::string_view>& parts,
+                                                             std::string_view value,
+                                                             RealtimeCommand& command,
+                                                             std::string* errorMessage) const {
     if (parts.size() == 3 && parts[0] == "sources" && parts[1] == "test" && parts[2] == "waveform") {
         dsp::Waveform waveform;
         if (!tryParseWaveform(value, waveform)) {
@@ -156,7 +156,7 @@ RealtimeParamResult Test::tryBuildRealtimeStringCommand(const std::vector<std::s
     return RealtimeParamResult::NotHandled;
 }
 
-bool Test::handlesRealtimeCommand(RealtimeCommandType type) const {
+bool TestSynth::handlesRealtimeCommand(RealtimeCommandType type) const {
     switch (type) {
         case RealtimeCommandType::TestActive:
         case RealtimeCommandType::TestMidiEnabled:
@@ -174,7 +174,7 @@ bool Test::handlesRealtimeCommand(RealtimeCommandType type) const {
     }
 }
 
-void Test::applyRealtimeCommand(const RealtimeCommand& command) {
+void TestSynth::applyRealtimeCommand(const RealtimeCommand& command) {
     switch (command.type) {
         case RealtimeCommandType::TestActive:
             state_.active = command.value >= 0.5f;
@@ -224,7 +224,7 @@ void Test::applyRealtimeCommand(const RealtimeCommand& command) {
     }
 }
 
-void Test::appendStateJson(std::ostringstream& json) const {
+void TestSynth::appendStateJson(std::ostringstream& json) const {
     json << "{"
          << "\"implemented\":" << (state_.implemented ? "true" : "false") << ","
          << "\"playable\":" << (state_.playable ? "true" : "false") << ","
@@ -251,26 +251,26 @@ void Test::appendStateJson(std::ostringstream& json) const {
     json << "]}";
 }
 
-bool Test::implemented() const {
+bool TestSynth::implemented() const {
     return state_.implemented;
 }
 
-bool Test::playable() const {
+bool TestSynth::playable() const {
     return state_.playable;
 }
 
-void Test::resizeOutputs(std::uint32_t outputCount) {
+void TestSynth::resizeOutputs(std::uint32_t outputCount) {
     state_.outputs.resize(std::max<std::uint32_t>(1, outputCount), false);
     if (std::none_of(state_.outputs.begin(), state_.outputs.end(), [](bool enabled) { return enabled; })) {
         assignDefaultOutputs(state_.outputs);
     }
 }
 
-std::uint32_t Test::outputCount() const {
+std::uint32_t TestSynth::outputCount() const {
     return static_cast<std::uint32_t>(state_.outputs.size());
 }
 
-void Test::assignDefaultOutputs(std::vector<bool>& outputs) {
+void TestSynth::assignDefaultOutputs(std::vector<bool>& outputs) {
     std::fill(outputs.begin(), outputs.end(), false);
     if (!outputs.empty()) {
         outputs[0] = true;
@@ -280,7 +280,7 @@ void Test::assignDefaultOutputs(std::vector<bool>& outputs) {
     }
 }
 
-const char* Test::waveformToString(dsp::Waveform waveform) {
+const char* TestSynth::waveformToString(dsp::Waveform waveform) {
     switch (waveform) {
         case dsp::Waveform::Square:
             return "square";
@@ -296,7 +296,7 @@ const char* Test::waveformToString(dsp::Waveform waveform) {
     }
 }
 
-bool Test::tryParseWaveform(std::string_view value, dsp::Waveform& waveform) {
+bool TestSynth::tryParseWaveform(std::string_view value, dsp::Waveform& waveform) {
     if (value == "sine") {
         waveform = dsp::Waveform::Sine;
         return true;
@@ -320,11 +320,11 @@ bool Test::tryParseWaveform(std::string_view value, dsp::Waveform& waveform) {
     return false;
 }
 
-float Test::midiNoteToFrequency(int noteNumber) {
+float TestSynth::midiNoteToFrequency(int noteNumber) {
     return 440.0f * std::pow(2.0f, static_cast<float>(noteNumber - 69) / 12.0f);
 }
 
-void Test::syncNodeState() {
+void TestSynth::syncNodeState() {
     sourceNode_.setActive(state_.active);
     sourceNode_.setMidiEnabled(state_.midiEnabled);
     sourceNode_.setFrequency(state_.frequency);

@@ -21,14 +21,15 @@ add_library(synth_core
     src/dsp/Chorus.cpp
     src/dsp/Lfo.cpp
     src/audio/Voice.cpp
-    src/audio/TestSynth.cpp
+    src/audio/TestEngine.cpp
     src/audio/Synth.cpp
     src/graph/RobinSourceNode.cpp
     src/graph/TestSourceNode.cpp
     src/graph/FxRackNode.cpp
     src/graph/OutputMixerNode.cpp
     src/graph/LiveGraph.cpp
-    src/app/Test.cpp
+    src/app/Robin.cpp
+    src/app/TestSynth.cpp
     src/app/SynthController.cpp
     src/io/MidiInput.cpp
     src/io/OscServer.cpp

@@ -269,10 +269,91 @@ void testQueuedRobinMasterParamsRefreshStateWhileRunning() {
         "queued robin master envelope release update succeeds");
     expect(errorMessage.empty(), "no robin master envelope release error");
 
+    expect(
+        controller.setParam("sources.robin.transposeSemitones", 3.0, &errorMessage),
+        "queued robin master transpose update succeeds");
+    expect(errorMessage.empty(), "no robin master transpose error");
+
+    expect(
+        controller.setParam("sources.robin.fineTuneCents", 17.0, &errorMessage),
+        "queued robin master fine tune update succeeds");
+    expect(errorMessage.empty(), "no robin master fine tune error");
+
+    expect(
+        controller.setParam("sources.robin.oscillator.0.gain", 0.61, &errorMessage),
+        "queued robin master oscillator gain update succeeds");
+    expect(errorMessage.empty(), "no robin master oscillator gain error");
+
+    expect(
+        controller.setParam("sources.robin.oscillator.0.relative", 0.0, &errorMessage),
+        "queued robin master oscillator relative update succeeds");
+    expect(errorMessage.empty(), "no robin master oscillator relative error");
+
+    expect(
+        controller.setParam("sources.robin.oscillator.0.frequency", 333.0, &errorMessage),
+        "queued robin master oscillator frequency update succeeds");
+    expect(errorMessage.empty(), "no robin master oscillator frequency error");
+
     const std::string refreshedStateJson = controller.stateJson();
     expect(refreshedStateJson.find("\"cutoffHz\":1200") != std::string::npos, "queued robin master cutoff flushed");
     expect(refreshedStateJson.find("\"amount\":0.45") != std::string::npos, "queued robin master env vcf amount flushed");
     expect(refreshedStateJson.find("\"releaseMs\":350") != std::string::npos, "queued robin master envelope release flushed");
+    expect(refreshedStateJson.find("\"transposeSemitones\":3") != std::string::npos, "queued robin master transpose flushed");
+    expect(refreshedStateJson.find("\"fineTuneCents\":17") != std::string::npos, "queued robin master fine tune flushed");
+    expect(refreshedStateJson.find("\"frequencyValue\":333") != std::string::npos, "queued robin master oscillator frequency flushed");
+    expect(refreshedStateJson.find("\"gain\":0.61") != std::string::npos, "queued robin master oscillator gain flushed");
+}
+
+void testQueuedRobinLfoParamsRefreshStateWhileRunning() {
+    synth::app::RuntimeConfig config;
+    config.logDirectory = testLogDirectory();
+
+    auto driver = std::make_unique<FakeAudioDriver>(makeTestDevices());
+    auto* driverPtr = driver.get();
+    synth::app::SynthController controller(config, std::move(driver));
+    expect(controller.initialize(), "controller initializes");
+
+    driverPtr->forceRunning(true);
+
+    std::string errorMessage;
+    expect(
+        controller.setParam("sources.robin.lfo.enabled", 1.0, &errorMessage),
+        "queued robin lfo enabled update succeeds");
+    expect(errorMessage.empty(), "no robin lfo enabled error");
+
+    expect(
+        controller.setParam("sources.robin.lfo.depth", 0.72, &errorMessage),
+        "queued robin lfo depth update succeeds");
+    expect(errorMessage.empty(), "no robin lfo depth error");
+
+    expect(
+        controller.setParam("sources.robin.lfo.phaseSpreadDegrees", 210.0, &errorMessage),
+        "queued robin lfo phase spread update succeeds");
+    expect(errorMessage.empty(), "no robin lfo phase spread error");
+
+    expect(
+        controller.setParam("sources.robin.lfo.clockLinked", 0.0, &errorMessage),
+        "queued robin lfo clock linked update succeeds");
+    expect(errorMessage.empty(), "no robin lfo clock linked error");
+
+    expect(
+        controller.setParam("sources.robin.lfo.rateMultiplier", 3.0, &errorMessage),
+        "queued robin lfo rate multiplier update succeeds");
+    expect(errorMessage.empty(), "no robin lfo rate multiplier error");
+
+    expect(
+        controller.setParam("sources.robin.lfo.fixedFrequencyHz", 5.5, &errorMessage),
+        "queued robin lfo fixed frequency update succeeds");
+    expect(errorMessage.empty(), "no robin lfo fixed frequency error");
+
+    const std::string refreshedStateJson = controller.stateJson();
+    expect(
+        refreshedStateJson.find(
+            "\"lfo\":{\"enabled\":true,\"depth\":0.72,\"phaseSpreadDegrees\":210,"
+            "\"polarityFlip\":false,\"unlinkedOutputs\":false,\"clockLinked\":false,"
+            "\"tempoBpm\":120,\"rateMultiplier\":3,\"fixedFrequencyHz\":5.5")
+            != std::string::npos,
+        "queued robin lfo state flushed");
 }
 
 void testQueuedRobinVoiceParamsRefreshStateWhileRunning() {
@@ -298,14 +379,49 @@ void testQueuedRobinVoiceParamsRefreshStateWhileRunning() {
     expect(errorMessage.empty(), "no robin voice gain error");
 
     expect(
+        controller.setParam("sources.robin.voice.0.frequency", 555.0, &errorMessage),
+        "queued robin voice frequency update succeeds");
+    expect(errorMessage.empty(), "no robin voice frequency error");
+
+    expect(
         controller.setParam("sources.robin.voice.0.vcf.resonance", 1.2, &errorMessage),
         "queued robin voice vcf resonance update succeeds");
     expect(errorMessage.empty(), "no robin voice vcf resonance error");
 
+    expect(
+        controller.setParam("sources.robin.voice.0.envVcf.amount", 0.33, &errorMessage),
+        "queued robin voice env vcf amount update succeeds");
+    expect(errorMessage.empty(), "no robin voice env vcf amount error");
+
+    expect(
+        controller.setParam("sources.robin.voice.0.envelope.releaseMs", 420.0, &errorMessage),
+        "queued robin voice envelope release update succeeds");
+    expect(errorMessage.empty(), "no robin voice envelope release error");
+
+    expect(
+        controller.setParam("sources.robin.voice.0.oscillator.0.gain", 0.27, &errorMessage),
+        "queued robin voice oscillator gain update succeeds");
+    expect(errorMessage.empty(), "no robin voice oscillator gain error");
+
+    expect(
+        controller.setParam("sources.robin.voice.0.oscillator.0.relative", 0.0, &errorMessage),
+        "queued robin voice oscillator relative update succeeds");
+    expect(errorMessage.empty(), "no robin voice oscillator relative error");
+
+    expect(
+        controller.setParam("sources.robin.voice.0.oscillator.0.frequency", 777.0, &errorMessage),
+        "queued robin voice oscillator frequency update succeeds");
+    expect(errorMessage.empty(), "no robin voice oscillator frequency error");
+
     const std::string refreshedStateJson = controller.stateJson();
     expect(refreshedStateJson.find("\"linkedToMaster\":false") != std::string::npos, "voice remains unlinked in state");
+    expect(refreshedStateJson.find("\"frequency\":555") != std::string::npos, "queued robin voice frequency flushed");
     expect(refreshedStateJson.find("\"gain\":0.42") != std::string::npos, "queued robin voice gain flushed");
     expect(refreshedStateJson.find("\"resonance\":1.2") != std::string::npos, "queued robin voice resonance flushed");
+    expect(refreshedStateJson.find("\"amount\":0.33") != std::string::npos, "queued robin voice env vcf amount flushed");
+    expect(refreshedStateJson.find("\"releaseMs\":420") != std::string::npos, "queued robin voice envelope release flushed");
+    expect(refreshedStateJson.find("\"frequencyValue\":777") != std::string::npos, "queued robin voice oscillator frequency flushed");
+    expect(refreshedStateJson.find("\"gain\":0.27") != std::string::npos, "queued robin voice oscillator gain flushed");
 }
 
 void testLiveGraphDryFxRenderOrder() {
@@ -386,6 +502,7 @@ int main() {
         {"queued realtime param refreshes state while running", testQueuedRealtimeParamRefreshesStateWhileRunning},
         {"queued global note refreshes state while running", testQueuedGlobalNoteRefreshesStateWhileRunning},
         {"queued robin master params refresh state while running", testQueuedRobinMasterParamsRefreshStateWhileRunning},
+        {"queued robin lfo params refresh state while running", testQueuedRobinLfoParamsRefreshStateWhileRunning},
         {"queued robin voice params refresh state while running", testQueuedRobinVoiceParamsRefreshStateWhileRunning},
         {"live graph render order respects dry and fx routing", testLiveGraphDryFxRenderOrder},
     };

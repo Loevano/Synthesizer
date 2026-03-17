@@ -2017,6 +2017,104 @@ RealtimeParamResult SynthController::tryEnqueueRealtimeNumericParam(std::string_
         } else {
             return RealtimeParamResult::NotHandled;
         }
+    } else if (parts.size() == 4
+               && parts[0] == "sources"
+               && parts[1] == "robin"
+               && parts[2] == "vcf") {
+        if (parts[3] == "cutoffHz") {
+            command.type = RealtimeCommandType::RobinMasterVcfCutoffHz;
+            command.value = static_cast<float>(std::clamp(value, 20.0, 20000.0));
+        } else if (parts[3] == "resonance") {
+            command.type = RealtimeCommandType::RobinMasterVcfResonance;
+            command.value = static_cast<float>(std::clamp(value, 0.1, 10.0));
+        } else {
+            return RealtimeParamResult::NotHandled;
+        }
+    } else if (parts.size() == 4
+               && parts[0] == "sources"
+               && parts[1] == "robin"
+               && parts[2] == "envVcf") {
+        if (parts[3] == "attackMs") {
+            command.type = RealtimeCommandType::RobinMasterEnvVcfAttackMs;
+            command.value = static_cast<float>(std::clamp(value, 0.0, 5000.0));
+        } else if (parts[3] == "decayMs") {
+            command.type = RealtimeCommandType::RobinMasterEnvVcfDecayMs;
+            command.value = static_cast<float>(std::clamp(value, 0.0, 5000.0));
+        } else if (parts[3] == "sustain") {
+            command.type = RealtimeCommandType::RobinMasterEnvVcfSustain;
+            command.value = static_cast<float>(std::clamp(value, 0.0, 1.0));
+        } else if (parts[3] == "releaseMs") {
+            command.type = RealtimeCommandType::RobinMasterEnvVcfReleaseMs;
+            command.value = static_cast<float>(std::clamp(value, 0.0, 5000.0));
+        } else if (parts[3] == "amount") {
+            command.type = RealtimeCommandType::RobinMasterEnvVcfAmount;
+            command.value = static_cast<float>(std::clamp(value, 0.0, 1.0));
+        } else {
+            return RealtimeParamResult::NotHandled;
+        }
+    } else if (parts.size() == 4
+               && parts[0] == "sources"
+               && parts[1] == "robin"
+               && parts[2] == "envelope") {
+        if (parts[3] == "attackMs") {
+            command.type = RealtimeCommandType::RobinMasterEnvelopeAttackMs;
+            command.value = static_cast<float>(std::clamp(value, 0.0, 5000.0));
+        } else if (parts[3] == "decayMs") {
+            command.type = RealtimeCommandType::RobinMasterEnvelopeDecayMs;
+            command.value = static_cast<float>(std::clamp(value, 0.0, 5000.0));
+        } else if (parts[3] == "sustain") {
+            command.type = RealtimeCommandType::RobinMasterEnvelopeSustain;
+            command.value = static_cast<float>(std::clamp(value, 0.0, 1.0));
+        } else if (parts[3] == "releaseMs") {
+            command.type = RealtimeCommandType::RobinMasterEnvelopeReleaseMs;
+            command.value = static_cast<float>(std::clamp(value, 0.0, 5000.0));
+        } else {
+            return RealtimeParamResult::NotHandled;
+        }
+    } else if (parts.size() >= 5
+               && parts[0] == "sources"
+               && parts[1] == "robin"
+               && parts[2] == "voice") {
+        if (!tryParseIndex(parts[3], command.index)) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "Invalid voice index.";
+            }
+            return RealtimeParamResult::Failed;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (command.index >= voices_.size()) {
+                if (errorMessage != nullptr) {
+                    *errorMessage = "Invalid voice index.";
+                }
+                return RealtimeParamResult::Failed;
+            }
+
+            if (voices_[command.index].linkedToMaster) {
+                if (errorMessage != nullptr) {
+                    *errorMessage = "Voice is linked to the master template.";
+                }
+                return RealtimeParamResult::Failed;
+            }
+        }
+
+        if (parts.size() == 5 && parts[4] == "gain") {
+            command.type = RealtimeCommandType::RobinVoiceGain;
+            command.value = static_cast<float>(std::clamp(value, 0.0, 1.0));
+        } else if (parts.size() == 6 && parts[4] == "vcf") {
+            if (parts[5] == "cutoffHz") {
+                command.type = RealtimeCommandType::RobinVoiceVcfCutoffHz;
+                command.value = static_cast<float>(std::clamp(value, 20.0, 20000.0));
+            } else if (parts[5] == "resonance") {
+                command.type = RealtimeCommandType::RobinVoiceVcfResonance;
+                command.value = static_cast<float>(std::clamp(value, 0.1, 10.0));
+            } else {
+                return RealtimeParamResult::NotHandled;
+            }
+        } else {
+            return RealtimeParamResult::NotHandled;
+        }
     } else {
         return RealtimeParamResult::NotHandled;
     }
@@ -2114,6 +2212,71 @@ void SynthController::applyRealtimeCommandLocked(const RealtimeCommand& command)
         case RealtimeCommandType::ChorusPhaseSpreadDegrees:
             chorusState_.phaseSpreadDegrees = std::clamp(command.value, 0.0f, 360.0f);
             fxRackNode_.setChorusPhaseSpreadDegrees(chorusState_.phaseSpreadDegrees);
+            break;
+        case RealtimeCommandType::RobinMasterVcfCutoffHz:
+            robinVcfState_.cutoffHz = std::clamp(command.value, 20.0f, 20000.0f);
+            syncLinkedRobinVoicesLocked();
+            break;
+        case RealtimeCommandType::RobinMasterVcfResonance:
+            robinVcfState_.resonance = std::clamp(command.value, 0.1f, 10.0f);
+            syncLinkedRobinVoicesLocked();
+            break;
+        case RealtimeCommandType::RobinMasterEnvVcfAttackMs:
+            robinEnvVcfState_.attackMs = std::clamp(command.value, 0.0f, 5000.0f);
+            syncLinkedRobinVoicesLocked();
+            break;
+        case RealtimeCommandType::RobinMasterEnvVcfDecayMs:
+            robinEnvVcfState_.decayMs = std::clamp(command.value, 0.0f, 5000.0f);
+            syncLinkedRobinVoicesLocked();
+            break;
+        case RealtimeCommandType::RobinMasterEnvVcfSustain:
+            robinEnvVcfState_.sustain = std::clamp(command.value, 0.0f, 1.0f);
+            syncLinkedRobinVoicesLocked();
+            break;
+        case RealtimeCommandType::RobinMasterEnvVcfReleaseMs:
+            robinEnvVcfState_.releaseMs = std::clamp(command.value, 0.0f, 5000.0f);
+            syncLinkedRobinVoicesLocked();
+            break;
+        case RealtimeCommandType::RobinMasterEnvVcfAmount:
+            robinEnvVcfState_.amount = std::clamp(command.value, 0.0f, 1.0f);
+            syncLinkedRobinVoicesLocked();
+            break;
+        case RealtimeCommandType::RobinMasterEnvelopeAttackMs:
+            robinEnvelopeState_.attackMs = std::clamp(command.value, 0.0f, 5000.0f);
+            syncLinkedRobinVoicesLocked();
+            break;
+        case RealtimeCommandType::RobinMasterEnvelopeDecayMs:
+            robinEnvelopeState_.decayMs = std::clamp(command.value, 0.0f, 5000.0f);
+            syncLinkedRobinVoicesLocked();
+            break;
+        case RealtimeCommandType::RobinMasterEnvelopeSustain:
+            robinEnvelopeState_.sustain = std::clamp(command.value, 0.0f, 1.0f);
+            syncLinkedRobinVoicesLocked();
+            break;
+        case RealtimeCommandType::RobinMasterEnvelopeReleaseMs:
+            robinEnvelopeState_.releaseMs = std::clamp(command.value, 0.0f, 5000.0f);
+            syncLinkedRobinVoicesLocked();
+            break;
+        case RealtimeCommandType::RobinVoiceGain:
+            if (command.index >= voices_.size() || voices_[command.index].linkedToMaster) {
+                return;
+            }
+            voices_[command.index].gain = std::clamp(command.value, 0.0f, 1.0f);
+            robinSource_.synth().setVoiceGain(command.index, voices_[command.index].gain);
+            break;
+        case RealtimeCommandType::RobinVoiceVcfCutoffHz:
+            if (command.index >= voices_.size() || voices_[command.index].linkedToMaster) {
+                return;
+            }
+            voices_[command.index].vcf.cutoffHz = std::clamp(command.value, 20.0f, 20000.0f);
+            robinSource_.synth().setVoiceFilterCutoffHz(command.index, voices_[command.index].vcf.cutoffHz);
+            break;
+        case RealtimeCommandType::RobinVoiceVcfResonance:
+            if (command.index >= voices_.size() || voices_[command.index].linkedToMaster) {
+                return;
+            }
+            voices_[command.index].vcf.resonance = std::clamp(command.value, 0.1f, 10.0f);
+            robinSource_.synth().setVoiceFilterResonance(command.index, voices_[command.index].vcf.resonance);
             break;
         case RealtimeCommandType::GlobalNoteOn:
             handleNoteOnLocked(command.noteNumber, command.value);

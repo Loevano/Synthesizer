@@ -242,6 +242,72 @@ void testQueuedGlobalNoteRefreshesStateWhileRunning() {
     expect(noteOffStateJson.find("\"activeMidiNote\":-1") != std::string::npos, "queued note-off flushed into state");
 }
 
+void testQueuedRobinMasterParamsRefreshStateWhileRunning() {
+    synth::app::RuntimeConfig config;
+    config.logDirectory = testLogDirectory();
+
+    auto driver = std::make_unique<FakeAudioDriver>(makeTestDevices());
+    auto* driverPtr = driver.get();
+    synth::app::SynthController controller(config, std::move(driver));
+    expect(controller.initialize(), "controller initializes");
+
+    driverPtr->forceRunning(true);
+
+    std::string errorMessage;
+    expect(
+        controller.setParam("sources.robin.vcf.cutoffHz", 1200.0, &errorMessage),
+        "queued robin master vcf cutoff update succeeds");
+    expect(errorMessage.empty(), "no robin master vcf cutoff error");
+
+    expect(
+        controller.setParam("sources.robin.envVcf.amount", 0.45, &errorMessage),
+        "queued robin master env vcf amount update succeeds");
+    expect(errorMessage.empty(), "no robin master env vcf amount error");
+
+    expect(
+        controller.setParam("sources.robin.envelope.releaseMs", 350.0, &errorMessage),
+        "queued robin master envelope release update succeeds");
+    expect(errorMessage.empty(), "no robin master envelope release error");
+
+    const std::string refreshedStateJson = controller.stateJson();
+    expect(refreshedStateJson.find("\"cutoffHz\":1200") != std::string::npos, "queued robin master cutoff flushed");
+    expect(refreshedStateJson.find("\"amount\":0.45") != std::string::npos, "queued robin master env vcf amount flushed");
+    expect(refreshedStateJson.find("\"releaseMs\":350") != std::string::npos, "queued robin master envelope release flushed");
+}
+
+void testQueuedRobinVoiceParamsRefreshStateWhileRunning() {
+    synth::app::RuntimeConfig config;
+    config.logDirectory = testLogDirectory();
+
+    auto driver = std::make_unique<FakeAudioDriver>(makeTestDevices());
+    auto* driverPtr = driver.get();
+    synth::app::SynthController controller(config, std::move(driver));
+    expect(controller.initialize(), "controller initializes");
+
+    std::string errorMessage;
+    expect(
+        controller.setParam("sources.robin.voice.0.linkedToMaster", 0.0, &errorMessage),
+        "voice unlink succeeds");
+    expect(errorMessage.empty(), "no voice unlink error");
+
+    driverPtr->forceRunning(true);
+
+    expect(
+        controller.setParam("sources.robin.voice.0.gain", 0.42, &errorMessage),
+        "queued robin voice gain update succeeds");
+    expect(errorMessage.empty(), "no robin voice gain error");
+
+    expect(
+        controller.setParam("sources.robin.voice.0.vcf.resonance", 1.2, &errorMessage),
+        "queued robin voice vcf resonance update succeeds");
+    expect(errorMessage.empty(), "no robin voice vcf resonance error");
+
+    const std::string refreshedStateJson = controller.stateJson();
+    expect(refreshedStateJson.find("\"linkedToMaster\":false") != std::string::npos, "voice remains unlinked in state");
+    expect(refreshedStateJson.find("\"gain\":0.42") != std::string::npos, "queued robin voice gain flushed");
+    expect(refreshedStateJson.find("\"resonance\":1.2") != std::string::npos, "queued robin voice resonance flushed");
+}
+
 void testLiveGraphDryFxRenderOrder() {
     synth::graph::LiveGraph graph;
 
@@ -319,6 +385,8 @@ int main() {
         {"state json refreshes after param mutation", testStateJsonRefreshesAfterParamMutation},
         {"queued realtime param refreshes state while running", testQueuedRealtimeParamRefreshesStateWhileRunning},
         {"queued global note refreshes state while running", testQueuedGlobalNoteRefreshesStateWhileRunning},
+        {"queued robin master params refresh state while running", testQueuedRobinMasterParamsRefreshStateWhileRunning},
+        {"queued robin voice params refresh state while running", testQueuedRobinVoiceParamsRefreshStateWhileRunning},
         {"live graph render order respects dry and fx routing", testLiveGraphDryFxRenderOrder},
     };
 

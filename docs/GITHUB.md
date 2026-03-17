@@ -71,6 +71,30 @@ gh pr create --base main --head dev --fill
 
 That PR is the promotion step from tested integration work into stable `main`.
 
+## Release flow
+
+This repo also supports packaged macOS app releases.
+
+Local packaging:
+
+```bash
+./scripts/package-app.sh
+```
+
+GitHub Actions release workflow:
+- file: [.github/workflows/release.yml](../.github/workflows/release.yml)
+- manual trigger: `workflow_dispatch`
+- release trigger: push a tag like `v0.2.0`
+
+Tag release behavior:
+- builds the macOS app bundle
+- packages it into a `.zip`
+- uploads the zip as a GitHub Release asset
+
+Current note:
+- this packages the app for download
+- it does not sign or notarize the app
+
 ## PR expectations
 
 A good PR should say:

@@ -44,6 +44,9 @@ cd Synthesizer
 ./scripts/build.sh
 ```
 
+If you just want to try the app and a release is available, you do not need Xcode.
+Download the packaged `.zip` from GitHub Releases, unzip it, and run `Synthesizer.app`.
+
 Run the macOS app:
 
 ```bash
@@ -60,6 +63,12 @@ Clean generated files:
 
 ```bash
 ./scripts/clean.sh
+```
+
+Create a packaged macOS app zip locally:
+
+```bash
+./scripts/package-app.sh
 ```
 
 If the app is already open, relaunch it after UI changes so the rebuilt bundled assets are reloaded.
@@ -188,3 +197,18 @@ Normal flow:
 1. create a feature branch from `dev`
 2. open a PR into `dev`
 3. merge `dev` into `main` when the batch is stable
+
+## Releases
+
+This repo now includes a release workflow for packaged macOS app builds.
+
+- local packaging script: [scripts/package-app.sh](scripts/package-app.sh)
+- GitHub Actions workflow: [.github/workflows/release.yml](.github/workflows/release.yml)
+
+Release behavior:
+- `workflow_dispatch` builds a packaged macOS artifact
+- pushing a tag like `v0.2.0` builds the macOS app, zips it, and attaches it to a GitHub Release
+
+Current release packaging is intended for testers first:
+- the app can be downloaded and run without Xcode
+- the app is not automatically signed or notarized by this workflow

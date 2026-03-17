@@ -15,6 +15,17 @@
 #include <utility>
 #include <vector>
 
+namespace synth::app {
+
+struct SynthControllerTestAccess {
+    static void submitRealtimeCommandOrApply(SynthController& controller,
+                                             RealtimeCommand command) {
+        controller.submitRealtimeCommandOrApply(std::move(command));
+    }
+};
+
+}  // namespace synth::app
+
 namespace {
 
 using synth::interfaces::AudioCallback;
@@ -205,6 +216,32 @@ void testQueuedRealtimeParamRefreshesStateWhileRunning() {
         "queued chorus depth flushed into state");
 }
 
+void testQueuedGlobalNoteRefreshesStateWhileRunning() {
+    synth::app::RuntimeConfig config;
+    config.logDirectory = testLogDirectory();
+
+    auto driver = std::make_unique<FakeAudioDriver>(makeTestDevices());
+    auto* driverPtr = driver.get();
+    synth::app::SynthController controller(config, std::move(driver));
+    expect(controller.initialize(), "controller initializes");
+
+    driverPtr->forceRunning(true);
+
+    synth::app::SynthControllerTestAccess::submitRealtimeCommandOrApply(
+        controller,
+        {synth::app::RealtimeCommandType::GlobalNoteOn, 0, 64, 1.0f});
+
+    const std::string noteOnStateJson = controller.stateJson();
+    expect(noteOnStateJson.find("\"activeMidiNote\":64") != std::string::npos, "queued note-on flushed into state");
+
+    synth::app::SynthControllerTestAccess::submitRealtimeCommandOrApply(
+        controller,
+        {synth::app::RealtimeCommandType::GlobalNoteOff, 0, 64, 0.0f});
+
+    const std::string noteOffStateJson = controller.stateJson();
+    expect(noteOffStateJson.find("\"activeMidiNote\":-1") != std::string::npos, "queued note-off flushed into state");
+}
+
 void testLiveGraphDryFxRenderOrder() {
     synth::graph::LiveGraph graph;
 
@@ -281,6 +318,7 @@ int main() {
         {"controller output channels clamp to selected device maximum", testControllerOutputChannelSelectionClampsToDeviceMaximum},
         {"state json refreshes after param mutation", testStateJsonRefreshesAfterParamMutation},
         {"queued realtime param refreshes state while running", testQueuedRealtimeParamRefreshesStateWhileRunning},
+        {"queued global note refreshes state while running", testQueuedGlobalNoteRefreshesStateWhileRunning},
         {"live graph render order respects dry and fx routing", testLiveGraphDryFxRenderOrder},
     };
 

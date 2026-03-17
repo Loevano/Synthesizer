@@ -194,11 +194,16 @@ enum class RealtimeCommandType : std::uint8_t {
     ChorusDepth,
     ChorusSpeedHz,
     ChorusPhaseSpreadDegrees,
+    GlobalNoteOn,
+    GlobalNoteOff,
+    MidiNoteOn,
+    MidiNoteOff,
 };
 
 struct RealtimeCommand {
     RealtimeCommandType type = RealtimeCommandType::SourceLevelRobin;
     std::uint32_t index = 0;
+    int noteNumber = -1;
     float value = 0.0f;
 };
 
@@ -229,6 +234,8 @@ public:
     const RuntimeConfig& config() const;
 
 private:
+    friend struct SynthControllerTestAccess;
+
     static const char* waveformToString(dsp::Waveform waveform);
     static bool tryParseWaveform(std::string_view value, dsp::Waveform& waveform);
     static const char* lfoWaveformToString(dsp::LfoWaveform waveform);
@@ -244,6 +251,7 @@ private:
     static bool tryParseIndex(std::string_view value, std::uint32_t& index);
     static float midiNoteToFrequency(int noteNumber);
     RealtimeParamResult tryEnqueueRealtimeNumericParam(std::string_view path, double value, std::string* errorMessage);
+    void submitRealtimeCommandOrApply(RealtimeCommand command);
     void enqueueRealtimeCommand(RealtimeCommand command);
     void drainRealtimeCommandsLocked();
     void applyRealtimeCommandLocked(const RealtimeCommand& command);

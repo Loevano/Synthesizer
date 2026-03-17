@@ -281,12 +281,16 @@ bool SynthController::startAudio() {
     }
     if (!midiInput_->isRunning()) {
         midiEnabled_ = midiInput_->start([this](std::uint32_t sourceIndex, int noteNumber, float velocity) {
-            std::lock_guard<std::mutex> lock(mutex_);
+            RealtimeCommand command;
+            command.index = sourceIndex;
+            command.noteNumber = noteNumber;
             if (velocity > 0.0f) {
-                handleMidiNoteOnLocked(sourceIndex, noteNumber, velocity);
+                command.type = RealtimeCommandType::MidiNoteOn;
+                command.value = velocity;
             } else {
-                handleMidiNoteOffLocked(sourceIndex, noteNumber);
+                command.type = RealtimeCommandType::MidiNoteOff;
             }
+            submitRealtimeCommandOrApply(command);
         }, false);
         if (midiEnabled_) {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -320,12 +324,20 @@ bool SynthController::startAudio() {
             }
         };
         callbacks.onNoteOn = [this](int noteNumber, float velocity) {
-            std::lock_guard<std::mutex> lock(mutex_);
-            handleNoteOnLocked(noteNumber, velocity);
+            submitRealtimeCommandOrApply({
+                RealtimeCommandType::GlobalNoteOn,
+                0,
+                noteNumber,
+                velocity,
+            });
         };
         callbacks.onNoteOff = [this](int noteNumber) {
-            std::lock_guard<std::mutex> lock(mutex_);
-            handleNoteOffLocked(noteNumber);
+            submitRealtimeCommandOrApply({
+                RealtimeCommandType::GlobalNoteOff,
+                0,
+                noteNumber,
+                0.0f,
+            });
         };
         oscEnabled_ = oscServer_->start(oscPort_, std::move(callbacks));
     } else {
@@ -2009,15 +2021,19 @@ RealtimeParamResult SynthController::tryEnqueueRealtimeNumericParam(std::string_
         return RealtimeParamResult::NotHandled;
     }
 
+    submitRealtimeCommandOrApply(command);
+    return RealtimeParamResult::Applied;
+}
+
+void SynthController::submitRealtimeCommandOrApply(RealtimeCommand command) {
     markStateSnapshotDirty();
     if (driver_ != nullptr && driver_->isRunning()) {
-        enqueueRealtimeCommand(command);
-        return RealtimeParamResult::Applied;
+        enqueueRealtimeCommand(std::move(command));
+        return;
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
     applyRealtimeCommandLocked(command);
-    return RealtimeParamResult::Applied;
 }
 
 void SynthController::enqueueRealtimeCommand(RealtimeCommand command) {
@@ -2098,6 +2114,18 @@ void SynthController::applyRealtimeCommandLocked(const RealtimeCommand& command)
         case RealtimeCommandType::ChorusPhaseSpreadDegrees:
             chorusState_.phaseSpreadDegrees = std::clamp(command.value, 0.0f, 360.0f);
             fxRackNode_.setChorusPhaseSpreadDegrees(chorusState_.phaseSpreadDegrees);
+            break;
+        case RealtimeCommandType::GlobalNoteOn:
+            handleNoteOnLocked(command.noteNumber, command.value);
+            break;
+        case RealtimeCommandType::GlobalNoteOff:
+            handleNoteOffLocked(command.noteNumber);
+            break;
+        case RealtimeCommandType::MidiNoteOn:
+            handleMidiNoteOnLocked(command.index, command.noteNumber, command.value);
+            break;
+        case RealtimeCommandType::MidiNoteOff:
+            handleMidiNoteOffLocked(command.index, command.noteNumber);
             break;
     }
 }

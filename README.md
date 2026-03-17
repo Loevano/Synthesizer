@@ -80,16 +80,8 @@ cd Synthesizer
 
 ```bash
 ./scripts/run.sh --help
-./scripts/run.sh --frequency 110 --gain 0.2 --waveform square --sample-rate 48000 --buffer 256 --channels 2 --voices 16 --oscillators-per-voice 6
+./scripts/run.sh --frequency 110 --gain 0.2 --sample-rate 48000 --buffer 256 --channels 2 --voices 16 --oscillators-per-voice 6
 ```
-
-Supported waveforms:
-
-- `sine`
-- `square`
-- `triangle`
-- `saw`
-- `noise`
 
 ## Debug logging
 

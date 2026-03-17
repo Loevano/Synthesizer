@@ -23,30 +23,6 @@ struct CliConfig {
     std::string errorMessage;
 };
 
-bool tryParseWaveform(std::string_view value, synth::dsp::Waveform& waveform) {
-    if (value == "sine") {
-        waveform = synth::dsp::Waveform::Sine;
-        return true;
-    }
-    if (value == "square") {
-        waveform = synth::dsp::Waveform::Square;
-        return true;
-    }
-    if (value == "triangle") {
-        waveform = synth::dsp::Waveform::Triangle;
-        return true;
-    }
-    if (value == "saw") {
-        waveform = synth::dsp::Waveform::Saw;
-        return true;
-    }
-    if (value == "noise") {
-        waveform = synth::dsp::Waveform::Noise;
-        return true;
-    }
-    return false;
-}
-
 void printUsage(const char* programName) {
     std::cout
         << "Usage: " << programName << " [options]\n"
@@ -59,8 +35,7 @@ void printUsage(const char* programName) {
         << "  --oscillators-per-voice <count>\n"
         << "                         Oscillator slots per voice, default 6\n"
         << "  --frequency <hz>       Oscillator frequency, default 400\n"
-        << "  --gain <0..1>          Output gain, default 0.15\n"
-        << "  --waveform <name>      sine, square, triangle, saw, noise\n";
+        << "  --gain <0..1>          Output gain, default 0.15\n";
 }
 
 CliConfig parseArgs(int argc, char** argv) {
@@ -70,14 +45,6 @@ CliConfig parseArgs(int argc, char** argv) {
         const std::string arg = argv[i];
         if (arg == "--help" || arg == "-h") {
             config.showHelp = true;
-        } else if (arg == "--waveform" && i + 1 < argc) {
-            if (!tryParseWaveform(argv[++i], config.runtime.waveform)) {
-                config.errorMessage = "Invalid waveform. Use: sine, square, triangle, saw, or noise.";
-                return config;
-            }
-        } else if (arg == "--waveform") {
-            config.errorMessage = "Missing value for --waveform.";
-            return config;
         } else if (arg == "--sample-rate" && i + 1 < argc) {
             config.runtime.sampleRate = std::stod(argv[++i]);
         } else if (arg == "--channels" && i + 1 < argc) {

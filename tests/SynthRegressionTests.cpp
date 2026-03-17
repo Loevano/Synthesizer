@@ -270,6 +270,11 @@ void testQueuedRobinMasterParamsRefreshStateWhileRunning() {
     expect(errorMessage.empty(), "no robin master envelope release error");
 
     expect(
+        controller.setParam("sources.robin.gain", 0.34, &errorMessage),
+        "queued robin master gain update succeeds");
+    expect(errorMessage.empty(), "no robin master gain error");
+
+    expect(
         controller.setParam("sources.robin.transposeSemitones", 3.0, &errorMessage),
         "queued robin master transpose update succeeds");
     expect(errorMessage.empty(), "no robin master transpose error");
@@ -294,13 +299,23 @@ void testQueuedRobinMasterParamsRefreshStateWhileRunning() {
         "queued robin master oscillator frequency update succeeds");
     expect(errorMessage.empty(), "no robin master oscillator frequency error");
 
+    expect(
+        controller.setParam("sources.robin.oscillator.0.waveform", "triangle", &errorMessage),
+        "queued robin master oscillator waveform update succeeds");
+    expect(errorMessage.empty(), "no robin master oscillator waveform error");
+
     const std::string refreshedStateJson = controller.stateJson();
     expect(refreshedStateJson.find("\"cutoffHz\":1200") != std::string::npos, "queued robin master cutoff flushed");
     expect(refreshedStateJson.find("\"amount\":0.45") != std::string::npos, "queued robin master env vcf amount flushed");
     expect(refreshedStateJson.find("\"releaseMs\":350") != std::string::npos, "queued robin master envelope release flushed");
+    expect(
+        refreshedStateJson.find("\"frequency\":400,\"gain\":0.34,\"transposeSemitones\":3") != std::string::npos,
+        "queued robin master gain flushed");
     expect(refreshedStateJson.find("\"transposeSemitones\":3") != std::string::npos, "queued robin master transpose flushed");
     expect(refreshedStateJson.find("\"fineTuneCents\":17") != std::string::npos, "queued robin master fine tune flushed");
-    expect(refreshedStateJson.find("\"frequencyValue\":333") != std::string::npos, "queued robin master oscillator frequency flushed");
+    expect(
+        refreshedStateJson.find("\"frequencyValue\":333,\"waveform\":\"triangle\"") != std::string::npos,
+        "queued robin master oscillator waveform flushed");
     expect(refreshedStateJson.find("\"gain\":0.61") != std::string::npos, "queued robin master oscillator gain flushed");
 }
 
@@ -346,14 +361,118 @@ void testQueuedRobinLfoParamsRefreshStateWhileRunning() {
         "queued robin lfo fixed frequency update succeeds");
     expect(errorMessage.empty(), "no robin lfo fixed frequency error");
 
+    expect(
+        controller.setParam("sources.robin.lfo.waveform", "saw-up", &errorMessage),
+        "queued robin lfo waveform update succeeds");
+    expect(errorMessage.empty(), "no robin lfo waveform error");
+
     const std::string refreshedStateJson = controller.stateJson();
     expect(
         refreshedStateJson.find(
             "\"lfo\":{\"enabled\":true,\"depth\":0.72,\"phaseSpreadDegrees\":210,"
             "\"polarityFlip\":false,\"unlinkedOutputs\":false,\"clockLinked\":false,"
-            "\"tempoBpm\":120,\"rateMultiplier\":3,\"fixedFrequencyHz\":5.5")
+            "\"tempoBpm\":120,\"rateMultiplier\":3,\"fixedFrequencyHz\":5.5,\"waveform\":\"saw-up\"")
             != std::string::npos,
         "queued robin lfo state flushed");
+}
+
+void testQueuedTestAndMixerFxParamsRefreshStateWhileRunning() {
+    synth::app::RuntimeConfig config;
+    config.logDirectory = testLogDirectory();
+
+    auto driver = std::make_unique<FakeAudioDriver>(makeTestDevices());
+    auto* driverPtr = driver.get();
+    synth::app::SynthController controller(config, std::move(driver));
+    expect(controller.initialize(), "controller initializes");
+
+    driverPtr->forceRunning(true);
+
+    std::string errorMessage;
+    expect(
+        controller.setParam("sources.test.active", 0.0, &errorMessage),
+        "queued test active update succeeds");
+    expect(errorMessage.empty(), "no test active error");
+
+    expect(
+        controller.setParam("sources.test.midiEnabled", 0.0, &errorMessage),
+        "queued test midi update succeeds");
+    expect(errorMessage.empty(), "no test midi error");
+
+    expect(
+        controller.setParam("sources.test.frequency", 330.0, &errorMessage),
+        "queued test frequency update succeeds");
+    expect(errorMessage.empty(), "no test frequency error");
+
+    expect(
+        controller.setParam("sources.test.gain", 0.65, &errorMessage),
+        "queued test gain update succeeds");
+    expect(errorMessage.empty(), "no test gain error");
+
+    expect(
+        controller.setParam("sources.test.envelope.releaseMs", 640.0, &errorMessage),
+        "queued test envelope release update succeeds");
+    expect(errorMessage.empty(), "no test envelope release error");
+
+    expect(
+        controller.setParam("sources.test.output.0", 0.0, &errorMessage),
+        "queued test output update succeeds");
+    expect(errorMessage.empty(), "no test output error");
+
+    expect(
+        controller.setParam("sources.test.waveform", "square", &errorMessage),
+        "queued test waveform update succeeds");
+    expect(errorMessage.empty(), "no test waveform error");
+
+    expect(
+        controller.setParam("sourceMixer.test.enabled", 1.0, &errorMessage),
+        "queued source mixer enabled update succeeds");
+    expect(errorMessage.empty(), "no source mixer enabled error");
+
+    expect(
+        controller.setParam("sourceMixer.test.routeTarget", "fx", &errorMessage),
+        "queued source mixer route target update succeeds");
+    expect(errorMessage.empty(), "no source mixer route target error");
+
+    expect(
+        controller.setParam("processors.fx.saturator.enabled", 1.0, &errorMessage),
+        "queued saturator enabled update succeeds");
+    expect(errorMessage.empty(), "no saturator enabled error");
+
+    expect(
+        controller.setParam("processors.fx.saturator.inputLevel", 1.4, &errorMessage),
+        "queued saturator input update succeeds");
+    expect(errorMessage.empty(), "no saturator input error");
+
+    expect(
+        controller.setParam("processors.fx.saturator.outputLevel", 0.8, &errorMessage),
+        "queued saturator output update succeeds");
+    expect(errorMessage.empty(), "no saturator output error");
+
+    expect(
+        controller.setParam("processors.fx.sidechain.enabled", 1.0, &errorMessage),
+        "queued sidechain enabled update succeeds");
+    expect(errorMessage.empty(), "no sidechain enabled error");
+
+    const std::string refreshedStateJson = controller.stateJson();
+    expect(
+        refreshedStateJson.find(
+            "\"test\":{\"available\":true,\"implemented\":true,\"enabled\":true,\"level\":0.15,\"routeTarget\":\"fx\"}")
+            != std::string::npos,
+        "queued source mixer state flushed");
+    expect(
+        refreshedStateJson.find(
+            "\"test\":{\"implemented\":true,\"playable\":true,\"active\":false,\"midiEnabled\":false,"
+            "\"frequency\":330,\"gain\":0.65,\"waveform\":\"square\"")
+            != std::string::npos,
+        "queued test source state flushed");
+    expect(refreshedStateJson.find("\"releaseMs\":640") != std::string::npos, "queued test envelope release flushed");
+    expect(refreshedStateJson.find("\"outputs\":[false,true]") != std::string::npos, "queued test outputs flushed");
+    expect(
+        refreshedStateJson.find("\"saturator\":{\"enabled\":true,\"inputLevel\":1.4,\"outputLevel\":0.8}") != std::string::npos,
+        "queued saturator state flushed");
+    expect(
+        refreshedStateJson.find("\"sidechain\":{\"enabled\":true}") != std::string::npos,
+        "queued sidechain state flushed");
 }
 
 void testQueuedRobinVoiceParamsRefreshStateWhileRunning() {
@@ -413,6 +532,11 @@ void testQueuedRobinVoiceParamsRefreshStateWhileRunning() {
         "queued robin voice oscillator frequency update succeeds");
     expect(errorMessage.empty(), "no robin voice oscillator frequency error");
 
+    expect(
+        controller.setParam("sources.robin.voice.0.oscillator.0.waveform", "noise", &errorMessage),
+        "queued robin voice oscillator waveform update succeeds");
+    expect(errorMessage.empty(), "no robin voice oscillator waveform error");
+
     const std::string refreshedStateJson = controller.stateJson();
     expect(refreshedStateJson.find("\"linkedToMaster\":false") != std::string::npos, "voice remains unlinked in state");
     expect(refreshedStateJson.find("\"frequency\":555") != std::string::npos, "queued robin voice frequency flushed");
@@ -420,7 +544,9 @@ void testQueuedRobinVoiceParamsRefreshStateWhileRunning() {
     expect(refreshedStateJson.find("\"resonance\":1.2") != std::string::npos, "queued robin voice resonance flushed");
     expect(refreshedStateJson.find("\"amount\":0.33") != std::string::npos, "queued robin voice env vcf amount flushed");
     expect(refreshedStateJson.find("\"releaseMs\":420") != std::string::npos, "queued robin voice envelope release flushed");
-    expect(refreshedStateJson.find("\"frequencyValue\":777") != std::string::npos, "queued robin voice oscillator frequency flushed");
+    expect(
+        refreshedStateJson.find("\"frequencyValue\":777,\"waveform\":\"noise\"") != std::string::npos,
+        "queued robin voice oscillator waveform flushed");
     expect(refreshedStateJson.find("\"gain\":0.27") != std::string::npos, "queued robin voice oscillator gain flushed");
 }
 
@@ -503,6 +629,7 @@ int main() {
         {"queued global note refreshes state while running", testQueuedGlobalNoteRefreshesStateWhileRunning},
         {"queued robin master params refresh state while running", testQueuedRobinMasterParamsRefreshStateWhileRunning},
         {"queued robin lfo params refresh state while running", testQueuedRobinLfoParamsRefreshStateWhileRunning},
+        {"queued test and mixer/fx params refresh state while running", testQueuedTestAndMixerFxParamsRefreshStateWhileRunning},
         {"queued robin voice params refresh state while running", testQueuedRobinVoiceParamsRefreshStateWhileRunning},
         {"live graph render order respects dry and fx routing", testLiveGraphDryFxRenderOrder},
     };

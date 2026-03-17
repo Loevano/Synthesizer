@@ -38,7 +38,6 @@ struct RuntimeConfig {
     std::uint32_t oscillatorsPerVoice = 6;
     float frequency = 400.0f;
     float gain = 0.15f;
-    dsp::Waveform waveform = dsp::Waveform::Sine;
     std::filesystem::path logDirectory;
 };
 
@@ -185,15 +184,21 @@ enum class RoutingPreset {
 enum class RealtimeCommandType : std::uint8_t {
     SourceLevelRobin,
     SourceLevelTest,
+    SourceMixerEnabled,
+    SourceMixerRouteTarget,
     OutputLevel,
     OutputDelay,
     OutputEqLow,
     OutputEqMid,
     OutputEqHigh,
+    SaturatorEnabled,
+    SaturatorInputLevel,
+    SaturatorOutputLevel,
     ChorusEnabled,
     ChorusDepth,
     ChorusSpeedHz,
     ChorusPhaseSpreadDegrees,
+    SidechainEnabled,
     RobinLfoEnabled,
     RobinLfoDepth,
     RobinLfoPhaseSpreadDegrees,
@@ -203,6 +208,7 @@ enum class RealtimeCommandType : std::uint8_t {
     RobinLfoTempoBpm,
     RobinLfoRateMultiplier,
     RobinLfoFixedFrequencyHz,
+    RobinLfoWaveform,
     RobinMasterVcfCutoffHz,
     RobinMasterVcfResonance,
     RobinMasterEnvVcfAttackMs,
@@ -215,8 +221,19 @@ enum class RealtimeCommandType : std::uint8_t {
     RobinMasterEnvelopeSustain,
     RobinMasterEnvelopeReleaseMs,
     RobinMasterFrequency,
+    RobinMasterGain,
     RobinTransposeSemitones,
     RobinFineTuneCents,
+    TestActive,
+    TestMidiEnabled,
+    TestFrequency,
+    TestGain,
+    TestEnvelopeAttackMs,
+    TestEnvelopeDecayMs,
+    TestEnvelopeSustain,
+    TestEnvelopeReleaseMs,
+    TestOutputEnabled,
+    TestWaveform,
     RobinVoiceGain,
     RobinVoiceFrequency,
     RobinVoiceVcfCutoffHz,
@@ -234,10 +251,12 @@ enum class RealtimeCommandType : std::uint8_t {
     RobinMasterOscillatorGain,
     RobinMasterOscillatorRelative,
     RobinMasterOscillatorFrequency,
+    RobinMasterOscillatorWaveform,
     RobinVoiceOscillatorEnabled,
     RobinVoiceOscillatorGain,
     RobinVoiceOscillatorRelative,
     RobinVoiceOscillatorFrequency,
+    RobinVoiceOscillatorWaveform,
     GlobalNoteOn,
     GlobalNoteOff,
     MidiNoteOn,
@@ -250,6 +269,7 @@ struct RealtimeCommand {
     int noteNumber = -1;
     float value = 0.0f;
     std::uint32_t subIndex = 0;
+    std::uint32_t code = 0;
 };
 
 enum class RealtimeParamResult : std::uint8_t {
@@ -296,6 +316,7 @@ private:
     static bool tryParseIndex(std::string_view value, std::uint32_t& index);
     static float midiNoteToFrequency(int noteNumber);
     RealtimeParamResult tryEnqueueRealtimeNumericParam(std::string_view path, double value, std::string* errorMessage);
+    RealtimeParamResult tryEnqueueRealtimeStringParam(std::string_view path, std::string_view value, std::string* errorMessage);
     void submitRealtimeCommandOrApply(RealtimeCommand command);
     void enqueueRealtimeCommand(RealtimeCommand command);
     void drainRealtimeCommandsLocked();
@@ -330,7 +351,6 @@ private:
     void applyRobinLevelLocked(float level);
     void applyTestLevelLocked(float level);
     void applyGlobalFrequencyLocked(float frequencyHz);
-    void applyGlobalWaveformLocked(dsp::Waveform waveform);
     void applyRoutingPresetLocked(RoutingPreset preset);
     void resetRobinRoutingStateLocked();
     std::uint32_t computeNextRobinTriggerOutputLocked();

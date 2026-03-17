@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "synth/audio/TestSynth.hpp"
+#include "synth/audio/TestEngine.hpp"
 
 namespace synth::graph {
 
@@ -26,7 +26,7 @@ public:
     void renderAdd(float* output, std::uint32_t frames, std::uint32_t channels, bool enabled, float level);
 
 private:
-    audio::TestSynth synth_;
+    audio::TestEngine engine_;
     std::atomic<float> targetLevel_{0.0f};
     float currentLevel_ = 0.0f;
     std::vector<float> renderBuffer_;

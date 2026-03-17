@@ -8,7 +8,7 @@
 
 namespace synth::audio {
 
-class TestSynth {
+class TestEngine {
 public:
     void setSampleRate(double sampleRate);
     void setOutputChannelCount(std::uint32_t outputChannelCount);

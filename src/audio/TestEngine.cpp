@@ -1,11 +1,11 @@
-#include "synth/audio/TestSynth.hpp"
+#include "synth/audio/TestEngine.hpp"
 
 #include <algorithm>
 #include <cmath>
 
 namespace synth::audio {
 
-void TestSynth::setSampleRate(double sampleRate) {
+void TestEngine::setSampleRate(double sampleRate) {
     if (sampleRate <= 0.0) {
         return;
     }
@@ -15,7 +15,7 @@ void TestSynth::setSampleRate(double sampleRate) {
     envelope_.setSampleRate(sampleRate_);
 }
 
-void TestSynth::setOutputChannelCount(std::uint32_t outputChannelCount) {
+void TestEngine::setOutputChannelCount(std::uint32_t outputChannelCount) {
     const std::size_t channelCount = std::max<std::uint32_t>(1, outputChannelCount);
     const bool hadEnabledOutput =
         std::find(outputEnabled_.begin(), outputEnabled_.end(), true) != outputEnabled_.end();
@@ -26,20 +26,20 @@ void TestSynth::setOutputChannelCount(std::uint32_t outputChannelCount) {
     }
 }
 
-void TestSynth::setFrequency(float frequencyHz) {
+void TestEngine::setFrequency(float frequencyHz) {
     frequencyHz_ = std::max(1.0f, frequencyHz);
     oscillator_.setFrequency(frequencyHz_);
 }
 
-void TestSynth::setGain(float gain) {
+void TestEngine::setGain(float gain) {
     gain_ = std::clamp(gain, 0.0f, 1.0f);
 }
 
-void TestSynth::setWaveform(dsp::Waveform waveform) {
+void TestEngine::setWaveform(dsp::Waveform waveform) {
     oscillator_.setWaveform(waveform);
 }
 
-void TestSynth::setOutputEnabled(std::uint32_t outputChannel, bool enabled) {
+void TestEngine::setOutputEnabled(std::uint32_t outputChannel, bool enabled) {
     if (outputChannel >= outputEnabled_.size()) {
         return;
     }
@@ -47,7 +47,7 @@ void TestSynth::setOutputEnabled(std::uint32_t outputChannel, bool enabled) {
     outputEnabled_[outputChannel] = enabled;
 }
 
-void TestSynth::setActive(bool active) {
+void TestEngine::setActive(bool active) {
     active_ = active;
     if (active_ && heldNotes_.empty()) {
         velocityGain_ = 1.0f;
@@ -57,7 +57,7 @@ void TestSynth::setActive(bool active) {
     syncGate();
 }
 
-void TestSynth::setMidiEnabled(bool enabled) {
+void TestEngine::setMidiEnabled(bool enabled) {
     midiEnabled_ = enabled;
     if (!midiEnabled_) {
         heldNotes_.clear();
@@ -68,23 +68,23 @@ void TestSynth::setMidiEnabled(bool enabled) {
     syncGate();
 }
 
-void TestSynth::setEnvelopeAttackSeconds(float attackSeconds) {
+void TestEngine::setEnvelopeAttackSeconds(float attackSeconds) {
     envelope_.setAttackSeconds(attackSeconds);
 }
 
-void TestSynth::setEnvelopeDecaySeconds(float decaySeconds) {
+void TestEngine::setEnvelopeDecaySeconds(float decaySeconds) {
     envelope_.setDecaySeconds(decaySeconds);
 }
 
-void TestSynth::setEnvelopeSustainLevel(float sustainLevel) {
+void TestEngine::setEnvelopeSustainLevel(float sustainLevel) {
     envelope_.setSustainLevel(sustainLevel);
 }
 
-void TestSynth::setEnvelopeReleaseSeconds(float releaseSeconds) {
+void TestEngine::setEnvelopeReleaseSeconds(float releaseSeconds) {
     envelope_.setReleaseSeconds(releaseSeconds);
 }
 
-void TestSynth::noteOn(int noteNumber, float velocity) {
+void TestEngine::noteOn(int noteNumber, float velocity) {
     if (!midiEnabled_) {
         return;
     }
@@ -96,7 +96,7 @@ void TestSynth::noteOn(int noteNumber, float velocity) {
     syncGate();
 }
 
-void TestSynth::noteOff(int noteNumber) {
+void TestEngine::noteOff(int noteNumber) {
     if (!midiEnabled_) {
         return;
     }
@@ -115,7 +115,7 @@ void TestSynth::noteOff(int noteNumber) {
     syncGate();
 }
 
-void TestSynth::renderAdd(float* output, std::uint32_t frames, std::uint32_t channels, float masterGain) {
+void TestEngine::renderAdd(float* output, std::uint32_t frames, std::uint32_t channels, float masterGain) {
     if (output == nullptr || channels == 0 || outputEnabled_.empty()) {
         return;
     }
@@ -157,11 +157,11 @@ void TestSynth::renderAdd(float* output, std::uint32_t frames, std::uint32_t cha
     }
 }
 
-float TestSynth::midiNoteToFrequency(int noteNumber) {
+float TestEngine::midiNoteToFrequency(int noteNumber) {
     return 440.0f * std::exp2((static_cast<float>(noteNumber) - 69.0f) / 12.0f);
 }
 
-void TestSynth::syncGate() {
+void TestEngine::syncGate() {
     const bool shouldGate = shouldGateBeOpen();
     if (shouldGate == gateOpen_) {
         return;
@@ -175,7 +175,7 @@ void TestSynth::syncGate() {
     }
 }
 
-bool TestSynth::shouldGateBeOpen() const {
+bool TestEngine::shouldGateBeOpen() const {
     return active_ || (midiEnabled_ && !heldNotes_.empty());
 }
 

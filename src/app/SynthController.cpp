@@ -85,16 +85,6 @@ RuntimeConfig resolveRuntimeConfig(RuntimeConfig config) {
     return config;
 }
 
-void assignDefaultTestOutputs(std::vector<bool>& outputs) {
-    std::fill(outputs.begin(), outputs.end(), false);
-    if (!outputs.empty()) {
-        outputs[0] = true;
-    }
-    if (outputs.size() > 1) {
-        outputs[1] = true;
-    }
-}
-
 std::optional<std::uint32_t> sourceMixerSlotCode(std::string_view key) {
     if (key == "robin") {
         return 0;
@@ -574,31 +564,9 @@ std::string SynthController::buildStateJsonLocked() const {
 
     json << "]},"
          << "\"sources\":{"
-         << "\"test\":{"
-         << "\"implemented\":" << (testState_.implemented ? "true" : "false") << ","
-         << "\"playable\":" << (testState_.playable ? "true" : "false") << ","
-         << "\"active\":" << (testState_.active ? "true" : "false") << ","
-         << "\"midiEnabled\":" << (testState_.midiEnabled ? "true" : "false") << ","
-         << "\"frequency\":" << testState_.frequency << ","
-         << "\"gain\":" << testState_.gain << ","
-         << "\"waveform\":\"" << escapeJson(waveformToString(testState_.waveform)) << "\","
-         << "\"envelope\":{"
-         << "\"attackMs\":" << testState_.envelope.attackMs << ","
-         << "\"decayMs\":" << testState_.envelope.decayMs << ","
-         << "\"sustain\":" << testState_.envelope.sustain << ","
-         << "\"releaseMs\":" << testState_.envelope.releaseMs
-         << "},"
-         << "\"outputs\":[";
-
-    for (std::size_t outputIndex = 0; outputIndex < testState_.outputs.size(); ++outputIndex) {
-        if (outputIndex > 0) {
-            json << ",";
-        }
-        json << (testState_.outputs[outputIndex] ? "true" : "false");
-    }
-
-    json << "]"
-         << "},"
+         << "\"test\":";
+    test_.appendStateJson(json);
+    json << ","
          << "\"robin\":{"
          << "\"implemented\":true,"
          << "\"playable\":true,"
@@ -782,6 +750,11 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
     markStateSnapshotDirty();
     std::unique_lock<std::mutex> lock(mutex_);
     const auto parts = splitPath(path);
+
+    if (const auto testResult = test_.applyNumericParam(parts, value, errorMessage);
+        testResult != RealtimeParamResult::NotHandled) {
+        return testResult == RealtimeParamResult::Applied;
+    }
 
     if (path == "engine.outputChannels") {
         const std::uint32_t requestedChannels = static_cast<std::uint32_t>(std::clamp(value, 1.0, 64.0));
@@ -983,69 +956,6 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
                 applyRobinLevelLocked(sourceState->level);
             }
             return true;
-        }
-    }
-
-    if (parts.size() >= 3 && parts[0] == "sources" && parts[1] == "test") {
-        if (parts.size() == 3 && parts[2] == "active") {
-            testState_.active = value >= 0.5;
-            testSource_.setActive(testState_.active);
-            return true;
-        }
-
-        if (parts.size() == 3 && parts[2] == "midiEnabled") {
-            testState_.midiEnabled = value >= 0.5;
-            testSource_.setMidiEnabled(testState_.midiEnabled);
-            return true;
-        }
-
-        if (parts.size() == 3 && parts[2] == "frequency") {
-            testState_.frequency = static_cast<float>(std::clamp(value, 20.0, 20000.0));
-            testSource_.setFrequency(testState_.frequency);
-            return true;
-        }
-
-        if (parts.size() == 3 && parts[2] == "gain") {
-            testState_.gain = static_cast<float>(std::clamp(value, 0.0, 1.0));
-            testSource_.setGain(testState_.gain);
-            return true;
-        }
-
-        if (parts.size() == 4 && parts[2] == "output") {
-            std::uint32_t outputIndex = 0;
-            if (!tryParseIndex(parts[3], outputIndex) || outputIndex >= testState_.outputs.size()) {
-                if (errorMessage != nullptr) {
-                    *errorMessage = "Invalid test output index.";
-                }
-                return false;
-            }
-
-            testState_.outputs[outputIndex] = value >= 0.5;
-            testSource_.setOutputEnabled(outputIndex, testState_.outputs[outputIndex]);
-            return true;
-        }
-
-        if (parts.size() == 4 && parts[2] == "envelope") {
-            if (parts[3] == "attackMs") {
-                testState_.envelope.attackMs = static_cast<float>(std::clamp(value, 0.0, 5000.0));
-                testSource_.setEnvelopeAttackSeconds(testState_.envelope.attackMs / 1000.0f);
-                return true;
-            }
-            if (parts[3] == "decayMs") {
-                testState_.envelope.decayMs = static_cast<float>(std::clamp(value, 0.0, 5000.0));
-                testSource_.setEnvelopeDecaySeconds(testState_.envelope.decayMs / 1000.0f);
-                return true;
-            }
-            if (parts[3] == "sustain") {
-                testState_.envelope.sustain = static_cast<float>(std::clamp(value, 0.0, 1.0));
-                testSource_.setEnvelopeSustainLevel(testState_.envelope.sustain);
-                return true;
-            }
-            if (parts[3] == "releaseMs") {
-                testState_.envelope.releaseMs = static_cast<float>(std::clamp(value, 0.0, 5000.0));
-                testSource_.setEnvelopeReleaseSeconds(testState_.envelope.releaseMs / 1000.0f);
-                return true;
-            }
         }
     }
 
@@ -1512,6 +1422,11 @@ bool SynthController::setParam(std::string_view path, std::string_view value, st
     std::unique_lock<std::mutex> lock(mutex_);
     const auto parts = splitPath(path);
 
+    if (const auto testResult = test_.applyStringParam(parts, value, errorMessage);
+        testResult != RealtimeParamResult::NotHandled) {
+        return testResult == RealtimeParamResult::Applied;
+    }
+
     if (path == "engine.outputDeviceId") {
         lock.unlock();
         return applyOutputEngineConfig(std::string(value), std::nullopt, errorMessage);
@@ -1528,20 +1443,6 @@ bool SynthController::setParam(std::string_view path, std::string_view value, st
 
         applyRoutingPresetLocked(preset);
         syncAllVoicesLocked();
-        return true;
-    }
-
-    if (path == "sources.test.waveform") {
-        dsp::Waveform waveform;
-        if (!tryParseWaveform(value, waveform)) {
-            if (errorMessage != nullptr) {
-                *errorMessage = "Invalid waveform value.";
-            }
-            return false;
-        }
-
-        testState_.waveform = waveform;
-        testSource_.setWaveform(testState_.waveform);
         return true;
     }
 
@@ -1882,6 +1783,13 @@ RealtimeParamResult SynthController::tryEnqueueRealtimeNumericParam(std::string_
                                                                     std::string* errorMessage) {
     const auto parts = splitPath(path);
     RealtimeCommand command;
+    if (const auto testResult = test_.tryBuildRealtimeNumericCommand(parts, value, command, errorMessage);
+        testResult != RealtimeParamResult::NotHandled) {
+        if (testResult == RealtimeParamResult::Applied) {
+            submitRealtimeCommandOrApply(command);
+        }
+        return testResult;
+    }
 
     if (path == "frequency" || path == "sources.robin.frequency") {
         command.type = RealtimeCommandType::RobinMasterFrequency;
@@ -2024,58 +1932,6 @@ RealtimeParamResult SynthController::tryEnqueueRealtimeNumericParam(std::string_
             command.value = static_cast<float>(std::clamp(value, 0.01, 40.0));
         } else {
             return RealtimeParamResult::NotHandled;
-        }
-    } else if (parts.size() >= 3
-               && parts[0] == "sources"
-               && parts[1] == "test") {
-        if (parts.size() == 3 && parts[2] == "active") {
-            command.type = RealtimeCommandType::TestActive;
-            command.value = value >= 0.5 ? 1.0f : 0.0f;
-        } else if (parts.size() == 3 && parts[2] == "midiEnabled") {
-            command.type = RealtimeCommandType::TestMidiEnabled;
-            command.value = value >= 0.5 ? 1.0f : 0.0f;
-        } else if (parts.size() == 3 && parts[2] == "frequency") {
-            command.type = RealtimeCommandType::TestFrequency;
-            command.value = static_cast<float>(std::clamp(value, 20.0, 20000.0));
-        } else if (parts.size() == 3 && parts[2] == "gain") {
-            command.type = RealtimeCommandType::TestGain;
-            command.value = static_cast<float>(std::clamp(value, 0.0, 1.0));
-        } else if (parts.size() == 4 && parts[2] == "output") {
-            if (!tryParseIndex(parts[3], command.index)) {
-                if (errorMessage != nullptr) {
-                    *errorMessage = "Invalid test output index.";
-                }
-                return RealtimeParamResult::Failed;
-            }
-            command.type = RealtimeCommandType::TestOutputEnabled;
-            command.value = value >= 0.5 ? 1.0f : 0.0f;
-        } else if (parts.size() == 4 && parts[2] == "envelope") {
-            if (parts[3] == "attackMs") {
-                command.type = RealtimeCommandType::TestEnvelopeAttackMs;
-                command.value = static_cast<float>(std::clamp(value, 0.0, 5000.0));
-            } else if (parts[3] == "decayMs") {
-                command.type = RealtimeCommandType::TestEnvelopeDecayMs;
-                command.value = static_cast<float>(std::clamp(value, 0.0, 5000.0));
-            } else if (parts[3] == "sustain") {
-                command.type = RealtimeCommandType::TestEnvelopeSustain;
-                command.value = static_cast<float>(std::clamp(value, 0.0, 1.0));
-            } else if (parts[3] == "releaseMs") {
-                command.type = RealtimeCommandType::TestEnvelopeReleaseMs;
-                command.value = static_cast<float>(std::clamp(value, 0.0, 5000.0));
-            } else {
-                return RealtimeParamResult::NotHandled;
-            }
-        } else {
-            return RealtimeParamResult::NotHandled;
-        }
-
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (command.type == RealtimeCommandType::TestOutputEnabled
-            && command.index >= testState_.outputs.size()) {
-            if (errorMessage != nullptr) {
-                *errorMessage = "Invalid test output index.";
-            }
-            return RealtimeParamResult::Failed;
         }
     } else if (parts.size() == 4
                && parts[0] == "sources"
@@ -2295,6 +2151,13 @@ RealtimeParamResult SynthController::tryEnqueueRealtimeStringParam(std::string_v
                                                                    std::string* errorMessage) {
     const auto parts = splitPath(path);
     RealtimeCommand command;
+    if (const auto testResult = test_.tryBuildRealtimeStringCommand(parts, value, command, errorMessage);
+        testResult != RealtimeParamResult::NotHandled) {
+        if (testResult == RealtimeParamResult::Applied) {
+            submitRealtimeCommandOrApply(command);
+        }
+        return testResult;
+    }
 
     if (parts.size() == 3 && parts[0] == "sourceMixer" && parts[2] == "routeTarget") {
         const auto sourceCode = sourceMixerSlotCode(parts[1]);
@@ -2323,17 +2186,6 @@ RealtimeParamResult SynthController::tryEnqueueRealtimeStringParam(std::string_v
         }
 
         command.type = RealtimeCommandType::RobinLfoWaveform;
-        command.code = static_cast<std::uint32_t>(waveform);
-    } else if (path == "sources.test.waveform") {
-        dsp::Waveform waveform;
-        if (!tryParseWaveform(value, waveform)) {
-            if (errorMessage != nullptr) {
-                *errorMessage = "Invalid waveform value.";
-            }
-            return RealtimeParamResult::Failed;
-        }
-
-        command.type = RealtimeCommandType::TestWaveform;
         command.code = static_cast<std::uint32_t>(waveform);
     } else if (parts.size() == 5
                && parts[0] == "sources"
@@ -2472,6 +2324,11 @@ void SynthController::applyRealtimeCommandLocked(const RealtimeCommand& command)
                 return nullptr;
         }
     };
+
+    if (test_.handlesRealtimeCommand(command.type)) {
+        test_.applyRealtimeCommand(command);
+        return;
+    }
 
     switch (command.type) {
         case RealtimeCommandType::SourceLevelRobin:
@@ -2668,49 +2525,6 @@ void SynthController::applyRealtimeCommandLocked(const RealtimeCommand& command)
         case RealtimeCommandType::RobinFineTuneCents:
             robinPitchState_.fineTuneCents = std::clamp(command.value, -100.0f, 100.0f);
             syncAssignedRobinVoiceFrequenciesLocked();
-            break;
-        case RealtimeCommandType::TestActive:
-            testState_.active = command.value >= 0.5f;
-            testSource_.setActive(testState_.active);
-            break;
-        case RealtimeCommandType::TestMidiEnabled:
-            testState_.midiEnabled = command.value >= 0.5f;
-            testSource_.setMidiEnabled(testState_.midiEnabled);
-            break;
-        case RealtimeCommandType::TestFrequency:
-            testState_.frequency = std::clamp(command.value, 20.0f, 20000.0f);
-            testSource_.setFrequency(testState_.frequency);
-            break;
-        case RealtimeCommandType::TestGain:
-            testState_.gain = std::clamp(command.value, 0.0f, 1.0f);
-            testSource_.setGain(testState_.gain);
-            break;
-        case RealtimeCommandType::TestEnvelopeAttackMs:
-            testState_.envelope.attackMs = std::clamp(command.value, 0.0f, 5000.0f);
-            testSource_.setEnvelopeAttackSeconds(testState_.envelope.attackMs / 1000.0f);
-            break;
-        case RealtimeCommandType::TestEnvelopeDecayMs:
-            testState_.envelope.decayMs = std::clamp(command.value, 0.0f, 5000.0f);
-            testSource_.setEnvelopeDecaySeconds(testState_.envelope.decayMs / 1000.0f);
-            break;
-        case RealtimeCommandType::TestEnvelopeSustain:
-            testState_.envelope.sustain = std::clamp(command.value, 0.0f, 1.0f);
-            testSource_.setEnvelopeSustainLevel(testState_.envelope.sustain);
-            break;
-        case RealtimeCommandType::TestEnvelopeReleaseMs:
-            testState_.envelope.releaseMs = std::clamp(command.value, 0.0f, 5000.0f);
-            testSource_.setEnvelopeReleaseSeconds(testState_.envelope.releaseMs / 1000.0f);
-            break;
-        case RealtimeCommandType::TestOutputEnabled:
-            if (command.index >= testState_.outputs.size()) {
-                return;
-            }
-            testState_.outputs[command.index] = command.value >= 0.5f;
-            testSource_.setOutputEnabled(command.index, testState_.outputs[command.index]);
-            break;
-        case RealtimeCommandType::TestWaveform:
-            testState_.waveform = static_cast<dsp::Waveform>(command.code);
-            testSource_.setWaveform(testState_.waveform);
             break;
         case RealtimeCommandType::RobinVoiceFrequency:
             if (command.index >= voices_.size() || voices_[command.index].linkedToMaster) {
@@ -2927,6 +2741,17 @@ void SynthController::applyRealtimeCommandLocked(const RealtimeCommand& command)
                 command.subIndex,
                 voices_[command.index].oscillators[command.subIndex].waveform);
             break;
+        case RealtimeCommandType::TestActive:
+        case RealtimeCommandType::TestMidiEnabled:
+        case RealtimeCommandType::TestFrequency:
+        case RealtimeCommandType::TestGain:
+        case RealtimeCommandType::TestEnvelopeAttackMs:
+        case RealtimeCommandType::TestEnvelopeDecayMs:
+        case RealtimeCommandType::TestEnvelopeSustain:
+        case RealtimeCommandType::TestEnvelopeReleaseMs:
+        case RealtimeCommandType::TestOutputEnabled:
+        case RealtimeCommandType::TestWaveform:
+            return;
         case RealtimeCommandType::GlobalNoteOn:
             handleNoteOnLocked(command.noteNumber, command.value);
             break;
@@ -2967,9 +2792,9 @@ void SynthController::buildLiveGraphLocked() {
     liveGraph_.addSourceNode({
         "test",
         [this](double sampleRate, std::uint32_t outputChannels) {
-            testSource_.prepare(sampleRate, outputChannels);
+            test_.prepare(sampleRate, outputChannels);
         },
-        [this]() { return testMixerState_.implemented; },
+        [this]() { return test_.implemented(); },
         [this]() { return testMixerState_.enabled; },
         [this]() {
             return testMixerState_.routeTarget == SourceMixerSlotState::RouteTarget::Fx
@@ -2977,7 +2802,7 @@ void SynthController::buildLiveGraphLocked() {
                 : graph::LiveGraph::SourceRenderTarget::Dry;
         },
         [this](float* output, std::uint32_t frames, std::uint32_t channels) {
-            testSource_.renderAdd(output, frames, channels, testMixerState_.enabled, testMixerState_.level);
+            test_.renderAdd(output, frames, channels, testMixerState_.enabled, testMixerState_.level);
         },
         [this](int noteNumber, float velocity) { handleTestNoteOnLocked(noteNumber, velocity); },
         [this](int noteNumber) { handleTestNoteOffLocked(noteNumber); },
@@ -3094,10 +2919,7 @@ void SynthController::buildDefaultStateLocked() {
         copyMasterStateToVoiceLocked(voice);
     }
 
-    testState_.implemented = true;
-    testState_.playable = true;
-    testState_.outputs.assign(std::max<std::uint32_t>(1, config_.channels), false);
-    assignDefaultTestOutputs(testState_.outputs);
+    test_.resizeOutputs(std::max<std::uint32_t>(1, config_.channels));
 
     robinVoiceAssignments_.clear();
     robinNextVoiceCursor_ = 0;
@@ -3189,15 +3011,12 @@ void SynthController::resizeScaffoldStateLocked() {
     robinMixerState_.available = true;
     robinMixerState_.implemented = true;
     testMixerState_.available = true;
-    testMixerState_.implemented = true;
+    testMixerState_.implemented = test_.implemented();
     decorMixerState_.available = true;
     piecesMixerState_.available = true;
 
     const std::uint32_t outputCount = std::max<std::uint32_t>(1, config_.channels);
-    testState_.outputs.resize(outputCount, false);
-    if (std::none_of(testState_.outputs.begin(), testState_.outputs.end(), [](bool enabled) { return enabled; })) {
-        assignDefaultTestOutputs(testState_.outputs);
-    }
+    test_.resizeOutputs(outputCount);
 
     outputMixerChannels_.resize(outputCount);
     outputMixerNode_.resize(outputCount);
@@ -3206,20 +3025,7 @@ void SynthController::resizeScaffoldStateLocked() {
 }
 
 void SynthController::syncTestSourceLocked() {
-    testSource_.prepare(config_.sampleRate, config_.channels);
-    testSource_.setActive(testState_.active);
-    testSource_.setMidiEnabled(testState_.midiEnabled);
-    testSource_.setFrequency(testState_.frequency);
-    testSource_.setGain(testState_.gain);
-    testSource_.setWaveform(testState_.waveform);
-    testSource_.setEnvelopeAttackSeconds(testState_.envelope.attackMs / 1000.0f);
-    testSource_.setEnvelopeDecaySeconds(testState_.envelope.decayMs / 1000.0f);
-    testSource_.setEnvelopeSustainLevel(testState_.envelope.sustain);
-    testSource_.setEnvelopeReleaseSeconds(testState_.envelope.releaseMs / 1000.0f);
-
-    for (std::uint32_t outputIndex = 0; outputIndex < testState_.outputs.size(); ++outputIndex) {
-        testSource_.setOutputEnabled(outputIndex, testState_.outputs[outputIndex]);
-    }
+    test_.prepare(config_.sampleRate, config_.channels);
 }
 
 void SynthController::syncMidiRoutesLocked() {
@@ -3782,20 +3588,11 @@ void SynthController::handleRobinNoteOffLocked(int noteNumber) {
 }
 
 void SynthController::handleTestNoteOnLocked(int noteNumber, float velocity) {
-    if (!testState_.midiEnabled) {
-        return;
-    }
-
-    testState_.frequency = midiNoteToFrequency(noteNumber);
-    testSource_.noteOn(noteNumber, velocity);
+    test_.noteOn(noteNumber, velocity);
 }
 
 void SynthController::handleTestNoteOffLocked(int noteNumber) {
-    if (!testState_.midiEnabled) {
-        return;
-    }
-
-    testSource_.noteOff(noteNumber);
+    test_.noteOff(noteNumber);
 }
 
 }  // namespace synth::app

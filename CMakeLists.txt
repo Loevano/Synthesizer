@@ -28,6 +28,7 @@ add_library(synth_core
     src/graph/FxRackNode.cpp
     src/graph/OutputMixerNode.cpp
     src/graph/LiveGraph.cpp
+    src/app/Test.cpp
     src/app/SynthController.cpp
     src/io/MidiInput.cpp
     src/io/OscServer.cpp

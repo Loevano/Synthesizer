@@ -13,13 +13,15 @@
 #include <string_view>
 #include <vector>
 
+#include "synth/app/ControllerCommands.hpp"
+#include "synth/app/InstrumentState.hpp"
+#include "synth/app/Test.hpp"
 #include "synth/core/Logger.hpp"
 #include "synth/core/CrashDiagnostics.hpp"
 #include "synth/graph/FxRackNode.hpp"
 #include "synth/graph/LiveGraph.hpp"
 #include "synth/graph/OutputMixerNode.hpp"
 #include "synth/graph/RobinSourceNode.hpp"
-#include "synth/graph/TestSourceNode.hpp"
 #include "synth/interfaces/IAudioDriver.hpp"
 
 namespace synth::io {
@@ -93,13 +95,6 @@ struct PlaceholderSourceState {
     std::uint32_t voiceCount = 0;
 };
 
-struct EnvelopeState {
-    float attackMs = 10.0f;
-    float decayMs = 80.0f;
-    float sustain = 0.8f;
-    float releaseMs = 200.0f;
-};
-
 struct RobinPitchState {
     float transposeSemitones = 0.0f;
     float fineTuneCents = 0.0f;
@@ -128,18 +123,6 @@ struct VoiceState {
     EnvelopeState envelope;
     std::vector<bool> outputs;
     std::vector<OscillatorState> oscillators;
-};
-
-struct TestSourceState {
-    bool implemented = true;
-    bool playable = true;
-    bool active = false;
-    bool midiEnabled = true;
-    float frequency = 220.0f;
-    float gain = 0.4f;
-    dsp::Waveform waveform = dsp::Waveform::Sine;
-    EnvelopeState envelope;
-    std::vector<bool> outputs;
 };
 
 struct SaturatorState {
@@ -179,103 +162,6 @@ enum class RoutingPreset {
     RoundRobin,
     AllOutputs,
     Custom,
-};
-
-enum class RealtimeCommandType : std::uint8_t {
-    SourceLevelRobin,
-    SourceLevelTest,
-    SourceMixerEnabled,
-    SourceMixerRouteTarget,
-    OutputLevel,
-    OutputDelay,
-    OutputEqLow,
-    OutputEqMid,
-    OutputEqHigh,
-    SaturatorEnabled,
-    SaturatorInputLevel,
-    SaturatorOutputLevel,
-    ChorusEnabled,
-    ChorusDepth,
-    ChorusSpeedHz,
-    ChorusPhaseSpreadDegrees,
-    SidechainEnabled,
-    RobinLfoEnabled,
-    RobinLfoDepth,
-    RobinLfoPhaseSpreadDegrees,
-    RobinLfoPolarityFlip,
-    RobinLfoUnlinkedOutputs,
-    RobinLfoClockLinked,
-    RobinLfoTempoBpm,
-    RobinLfoRateMultiplier,
-    RobinLfoFixedFrequencyHz,
-    RobinLfoWaveform,
-    RobinMasterVcfCutoffHz,
-    RobinMasterVcfResonance,
-    RobinMasterEnvVcfAttackMs,
-    RobinMasterEnvVcfDecayMs,
-    RobinMasterEnvVcfSustain,
-    RobinMasterEnvVcfReleaseMs,
-    RobinMasterEnvVcfAmount,
-    RobinMasterEnvelopeAttackMs,
-    RobinMasterEnvelopeDecayMs,
-    RobinMasterEnvelopeSustain,
-    RobinMasterEnvelopeReleaseMs,
-    RobinMasterFrequency,
-    RobinMasterGain,
-    RobinTransposeSemitones,
-    RobinFineTuneCents,
-    TestActive,
-    TestMidiEnabled,
-    TestFrequency,
-    TestGain,
-    TestEnvelopeAttackMs,
-    TestEnvelopeDecayMs,
-    TestEnvelopeSustain,
-    TestEnvelopeReleaseMs,
-    TestOutputEnabled,
-    TestWaveform,
-    RobinVoiceGain,
-    RobinVoiceFrequency,
-    RobinVoiceVcfCutoffHz,
-    RobinVoiceVcfResonance,
-    RobinVoiceEnvVcfAttackMs,
-    RobinVoiceEnvVcfDecayMs,
-    RobinVoiceEnvVcfSustain,
-    RobinVoiceEnvVcfReleaseMs,
-    RobinVoiceEnvVcfAmount,
-    RobinVoiceEnvelopeAttackMs,
-    RobinVoiceEnvelopeDecayMs,
-    RobinVoiceEnvelopeSustain,
-    RobinVoiceEnvelopeReleaseMs,
-    RobinMasterOscillatorEnabled,
-    RobinMasterOscillatorGain,
-    RobinMasterOscillatorRelative,
-    RobinMasterOscillatorFrequency,
-    RobinMasterOscillatorWaveform,
-    RobinVoiceOscillatorEnabled,
-    RobinVoiceOscillatorGain,
-    RobinVoiceOscillatorRelative,
-    RobinVoiceOscillatorFrequency,
-    RobinVoiceOscillatorWaveform,
-    GlobalNoteOn,
-    GlobalNoteOff,
-    MidiNoteOn,
-    MidiNoteOff,
-};
-
-struct RealtimeCommand {
-    RealtimeCommandType type = RealtimeCommandType::SourceLevelRobin;
-    std::uint32_t index = 0;
-    int noteNumber = -1;
-    float value = 0.0f;
-    std::uint32_t subIndex = 0;
-    std::uint32_t code = 0;
-};
-
-enum class RealtimeParamResult : std::uint8_t {
-    NotHandled,
-    Applied,
-    Failed,
 };
 
 class SynthController {
@@ -374,10 +260,10 @@ private:
     std::unique_ptr<io::MidiInput> midiInput_;
     std::unique_ptr<io::OscServer> oscServer_;
     graph::RobinSourceNode robinSource_;
-    graph::TestSourceNode testSource_;
     graph::FxRackNode fxRackNode_;
     graph::OutputMixerNode outputMixerNode_;
     graph::LiveGraph liveGraph_;
+    Test test_;
     std::vector<VoiceState> voices_;
     std::vector<std::chrono::steady_clock::time_point> robinVoiceReleaseUntil_;
     std::vector<OscillatorState> masterOscillators_;
@@ -393,7 +279,6 @@ private:
     float robinMasterVoiceGain_ = 1.0f;
     RobinVcfState robinVcfState_;
     RobinEnvVcfState robinEnvVcfState_;
-    TestSourceState testState_;
     PlaceholderSourceState decorState_{false, true, 0};
     PlaceholderSourceState piecesState_{false, true, 0};
     SaturatorState saturatorState_;

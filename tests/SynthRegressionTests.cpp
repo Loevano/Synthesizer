@@ -51,6 +51,10 @@ public:
         return lastConfig_;
     }
 
+    void forceRunning(bool running) {
+        running_ = running;
+    }
+
 private:
     std::vector<OutputDeviceInfo> devices_;
     AudioConfig lastConfig_{};
@@ -173,6 +177,34 @@ void testStateJsonRefreshesAfterParamMutation() {
     expect(refreshedStateJson.find("\"speedHz\":1.5") != std::string::npos, "updated chorus speed in state");
 }
 
+void testQueuedRealtimeParamRefreshesStateWhileRunning() {
+    synth::app::RuntimeConfig config;
+    config.logDirectory = testLogDirectory();
+
+    auto driver = std::make_unique<FakeAudioDriver>(makeTestDevices());
+    auto* driverPtr = driver.get();
+    synth::app::SynthController controller(config, std::move(driver));
+    expect(controller.initialize(), "controller initializes");
+
+    const std::string initialStateJson = controller.stateJson();
+    expect(
+        initialStateJson.find("\"chorus\":{\"enabled\":false,\"depth\":0.5") != std::string::npos,
+        "initial chorus state cached");
+
+    driverPtr->forceRunning(true);
+
+    std::string errorMessage;
+    expect(
+        controller.setParam("processors.fx.chorus.depth", 0.9, &errorMessage),
+        "queued chorus depth update succeeds");
+    expect(errorMessage.empty(), "no queued chorus depth update error");
+
+    const std::string refreshedStateJson = controller.stateJson();
+    expect(
+        refreshedStateJson.find("\"chorus\":{\"enabled\":false,\"depth\":0.9") != std::string::npos,
+        "queued chorus depth flushed into state");
+}
+
 void testLiveGraphDryFxRenderOrder() {
     synth::graph::LiveGraph graph;
 
@@ -248,6 +280,7 @@ int main() {
         {"controller output device selection clamps channels", testControllerOutputDeviceSelectionClampsChannels},
         {"controller output channels clamp to selected device maximum", testControllerOutputChannelSelectionClampsToDeviceMaximum},
         {"state json refreshes after param mutation", testStateJsonRefreshesAfterParamMutation},
+        {"queued realtime param refreshes state while running", testQueuedRealtimeParamRefreshesStateWhileRunning},
         {"live graph render order respects dry and fx routing", testLiveGraphDryFxRenderOrder},
     };
 

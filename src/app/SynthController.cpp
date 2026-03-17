@@ -373,6 +373,7 @@ std::string SynthController::stateJson() const {
         return stateJsonCache_;
     }
 
+    const_cast<SynthController*>(this)->drainRealtimeCommandsLocked();
     std::string nextSnapshot = buildStateJsonLocked();
     {
         std::lock_guard<std::mutex> cacheLock(stateSnapshotMutex_);
@@ -744,6 +745,11 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
         std::ostringstream breadcrumb;
         breadcrumb << "setParam number path=" << path << " value=" << value;
         crashDiagnostics_.breadcrumb(breadcrumb.str());
+    }
+
+    if (const auto realtimeResult = tryEnqueueRealtimeNumericParam(path, value, errorMessage);
+        realtimeResult != RealtimeParamResult::NotHandled) {
+        return realtimeResult == RealtimeParamResult::Applied;
     }
 
     markStateSnapshotDirty();
@@ -1927,6 +1933,175 @@ float SynthController::midiNoteToFrequency(int noteNumber) {
     return 440.0f * std::pow(2.0f, static_cast<float>(noteNumber - 69) / 12.0f);
 }
 
+RealtimeParamResult SynthController::tryEnqueueRealtimeNumericParam(std::string_view path,
+                                                                    double value,
+                                                                    std::string* errorMessage) {
+    const auto parts = splitPath(path);
+    RealtimeCommand command;
+
+    if (parts.size() == 3 && parts[0] == "sourceMixer" && parts[2] == "level") {
+        if (parts[1] == "robin") {
+            command.type = RealtimeCommandType::SourceLevelRobin;
+        } else if (parts[1] == "test") {
+            command.type = RealtimeCommandType::SourceLevelTest;
+        } else {
+            return RealtimeParamResult::NotHandled;
+        }
+        command.value = static_cast<float>(std::clamp(value, 0.0, 1.0));
+    } else if (parts.size() == 4 && parts[0] == "outputMixer" && parts[1] == "output") {
+        if (!tryParseIndex(parts[2], command.index)) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "Invalid output mixer index.";
+            }
+            return RealtimeParamResult::Failed;
+        }
+
+        if (parts[3] == "level") {
+            command.type = RealtimeCommandType::OutputLevel;
+            command.value = static_cast<float>(std::clamp(value, 0.0, 1.0));
+        } else if (parts[3] == "delayMs") {
+            command.type = RealtimeCommandType::OutputDelay;
+            command.value = static_cast<float>(std::clamp(value, 0.0, 250.0));
+        } else {
+            return RealtimeParamResult::NotHandled;
+        }
+    } else if (parts.size() == 5
+               && parts[0] == "outputMixer"
+               && parts[1] == "output"
+               && parts[3] == "eq") {
+        if (!tryParseIndex(parts[2], command.index)) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "Invalid output mixer index.";
+            }
+            return RealtimeParamResult::Failed;
+        }
+
+        command.value = static_cast<float>(std::clamp(value, -24.0, 24.0));
+        if (parts[4] == "lowDb") {
+            command.type = RealtimeCommandType::OutputEqLow;
+        } else if (parts[4] == "midDb") {
+            command.type = RealtimeCommandType::OutputEqMid;
+        } else if (parts[4] == "highDb") {
+            command.type = RealtimeCommandType::OutputEqHigh;
+        } else {
+            return RealtimeParamResult::NotHandled;
+        }
+    } else if (parts.size() == 4
+               && parts[0] == "processors"
+               && parts[1] == "fx"
+               && parts[2] == "chorus") {
+        if (parts[3] == "enabled") {
+            command.type = RealtimeCommandType::ChorusEnabled;
+            command.value = value >= 0.5 ? 1.0f : 0.0f;
+        } else if (parts[3] == "depth") {
+            command.type = RealtimeCommandType::ChorusDepth;
+            command.value = static_cast<float>(std::clamp(value, 0.0, 1.0));
+        } else if (parts[3] == "speedHz") {
+            command.type = RealtimeCommandType::ChorusSpeedHz;
+            command.value = static_cast<float>(std::clamp(value, 0.01, 20.0));
+        } else if (parts[3] == "phaseSpreadDegrees") {
+            command.type = RealtimeCommandType::ChorusPhaseSpreadDegrees;
+            command.value = static_cast<float>(std::clamp(value, 0.0, 360.0));
+        } else {
+            return RealtimeParamResult::NotHandled;
+        }
+    } else {
+        return RealtimeParamResult::NotHandled;
+    }
+
+    markStateSnapshotDirty();
+    if (driver_ != nullptr && driver_->isRunning()) {
+        enqueueRealtimeCommand(command);
+        return RealtimeParamResult::Applied;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    applyRealtimeCommandLocked(command);
+    return RealtimeParamResult::Applied;
+}
+
+void SynthController::enqueueRealtimeCommand(RealtimeCommand command) {
+    std::lock_guard<std::mutex> lock(realtimeCommandMutex_);
+    pendingRealtimeCommands_.push_back(command);
+}
+
+void SynthController::drainRealtimeCommandsLocked() {
+    std::deque<RealtimeCommand> commands;
+    {
+        std::lock_guard<std::mutex> lock(realtimeCommandMutex_);
+        if (pendingRealtimeCommands_.empty()) {
+            return;
+        }
+        commands.swap(pendingRealtimeCommands_);
+    }
+
+    for (const auto& command : commands) {
+        applyRealtimeCommandLocked(command);
+    }
+}
+
+void SynthController::applyRealtimeCommandLocked(const RealtimeCommand& command) {
+    switch (command.type) {
+        case RealtimeCommandType::SourceLevelRobin:
+            applyRobinLevelLocked(command.value);
+            break;
+        case RealtimeCommandType::SourceLevelTest:
+            applyTestLevelLocked(command.value);
+            break;
+        case RealtimeCommandType::OutputLevel:
+            if (command.index >= outputMixerChannels_.size()) {
+                return;
+            }
+            outputMixerChannels_[command.index].level = std::clamp(command.value, 0.0f, 1.0f);
+            outputMixerNode_.setLevel(command.index, outputMixerChannels_[command.index].level);
+            break;
+        case RealtimeCommandType::OutputDelay:
+            if (command.index >= outputMixerChannels_.size()) {
+                return;
+            }
+            outputMixerChannels_[command.index].delayMs = std::clamp(command.value, 0.0f, 250.0f);
+            outputMixerNode_.setDelayMs(command.index, outputMixerChannels_[command.index].delayMs);
+            break;
+        case RealtimeCommandType::OutputEqLow:
+            if (command.index >= outputMixerChannels_.size()) {
+                return;
+            }
+            outputMixerChannels_[command.index].eq.lowDb = std::clamp(command.value, -24.0f, 24.0f);
+            outputMixerNode_.setEqLow(command.index, outputMixerChannels_[command.index].eq.lowDb);
+            break;
+        case RealtimeCommandType::OutputEqMid:
+            if (command.index >= outputMixerChannels_.size()) {
+                return;
+            }
+            outputMixerChannels_[command.index].eq.midDb = std::clamp(command.value, -24.0f, 24.0f);
+            outputMixerNode_.setEqMid(command.index, outputMixerChannels_[command.index].eq.midDb);
+            break;
+        case RealtimeCommandType::OutputEqHigh:
+            if (command.index >= outputMixerChannels_.size()) {
+                return;
+            }
+            outputMixerChannels_[command.index].eq.highDb = std::clamp(command.value, -24.0f, 24.0f);
+            outputMixerNode_.setEqHigh(command.index, outputMixerChannels_[command.index].eq.highDb);
+            break;
+        case RealtimeCommandType::ChorusEnabled:
+            chorusState_.enabled = command.value >= 0.5f;
+            fxRackNode_.setChorusEnabled(chorusState_.enabled);
+            break;
+        case RealtimeCommandType::ChorusDepth:
+            chorusState_.depth = std::clamp(command.value, 0.0f, 1.0f);
+            fxRackNode_.setChorusDepth(chorusState_.depth);
+            break;
+        case RealtimeCommandType::ChorusSpeedHz:
+            chorusState_.speedHz = std::clamp(command.value, 0.01f, 20.0f);
+            fxRackNode_.setChorusSpeedHz(chorusState_.speedHz);
+            break;
+        case RealtimeCommandType::ChorusPhaseSpreadDegrees:
+            chorusState_.phaseSpreadDegrees = std::clamp(command.value, 0.0f, 360.0f);
+            fxRackNode_.setChorusPhaseSpreadDegrees(chorusState_.phaseSpreadDegrees);
+            break;
+    }
+}
+
 void SynthController::buildLiveGraphLocked() {
     liveGraph_.clear();
 
@@ -2380,6 +2555,7 @@ void SynthController::renderAudioLocked(float* output, std::uint32_t frames, std
         return;
     }
 
+    drainRealtimeCommandsLocked();
     liveGraph_.render(output, frames, channels);
 }
 

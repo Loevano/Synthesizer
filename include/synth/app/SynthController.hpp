@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -181,6 +182,32 @@ enum class RoutingPreset {
     Custom,
 };
 
+enum class RealtimeCommandType : std::uint8_t {
+    SourceLevelRobin,
+    SourceLevelTest,
+    OutputLevel,
+    OutputDelay,
+    OutputEqLow,
+    OutputEqMid,
+    OutputEqHigh,
+    ChorusEnabled,
+    ChorusDepth,
+    ChorusSpeedHz,
+    ChorusPhaseSpreadDegrees,
+};
+
+struct RealtimeCommand {
+    RealtimeCommandType type = RealtimeCommandType::SourceLevelRobin;
+    std::uint32_t index = 0;
+    float value = 0.0f;
+};
+
+enum class RealtimeParamResult : std::uint8_t {
+    NotHandled,
+    Applied,
+    Failed,
+};
+
 class SynthController {
 public:
     explicit SynthController(
@@ -216,6 +243,10 @@ private:
     static std::string escapeJson(std::string_view value);
     static bool tryParseIndex(std::string_view value, std::uint32_t& index);
     static float midiNoteToFrequency(int noteNumber);
+    RealtimeParamResult tryEnqueueRealtimeNumericParam(std::string_view path, double value, std::string* errorMessage);
+    void enqueueRealtimeCommand(RealtimeCommand command);
+    void drainRealtimeCommandsLocked();
+    void applyRealtimeCommandLocked(const RealtimeCommand& command);
     std::string buildStateJsonLocked() const;
     void markStateSnapshotDirty() const;
     void logRobinMasterOscillatorUpdateLocked(std::string_view path, std::string_view valueDescription);
@@ -314,6 +345,8 @@ private:
     bool debugRobinOscillatorParams_ = false;
     bool debugCrashBreadcrumbs_ = false;
     mutable std::mutex mutex_;
+    mutable std::mutex realtimeCommandMutex_;
+    std::deque<RealtimeCommand> pendingRealtimeCommands_;
     mutable std::mutex stateSnapshotMutex_;
     mutable std::string stateJsonCache_;
     mutable std::atomic<bool> stateSnapshotDirty_{true};

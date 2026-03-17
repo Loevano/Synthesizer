@@ -1,6 +1,6 @@
 # GitHub Workflow
 
-This project should normally land changes through short-lived branches and pull requests into `main`.
+This project should normally land changes through short-lived branches into `dev`, then promote `dev` into `main`.
 
 ## Initial setup
 
@@ -13,11 +13,24 @@ gh auth login
 
 This creates a private repo, adds `origin`, and pushes the current branch.
 
+## Branch model
+
+- `main`
+  Stable branch. Keep this release-ready.
+- `dev`
+  Integration branch for tested ongoing work.
+- `feature/<name>`
+  Short-lived work branch created from `dev`.
+- `hotfix/<name>`
+  Urgent fix branch created from `main`.
+
 ## Standard branch flow
 
-Create a branch for a focused change:
+Create a branch for a focused change from `dev`:
 
 ```bash
+git checkout dev
+git pull --ff-only
 git checkout -b fix/robin-crash-logs
 ```
 
@@ -45,8 +58,18 @@ git push -u origin fix/robin-crash-logs
 Open the PR:
 
 ```bash
-gh pr create --base main --fill
+gh pr create --base dev --fill
 ```
+
+Merge the feature branch into `dev` once checks pass.
+
+When `dev` is stable, open a second PR:
+
+```bash
+gh pr create --base main --head dev --fill
+```
+
+That PR is the promotion step from tested integration work into stable `main`.
 
 ## PR expectations
 
@@ -65,7 +88,7 @@ Recommended workflow:
 2. ask for one focused change
 3. verify the result
 4. ask for commit and push
-5. open a PR into `main`
+5. open a PR into `dev`
 
 If the change is UI-heavy, include screenshots.
 If the change is crash-related, run:
@@ -86,5 +109,20 @@ If you want to keep a working note for a slice of work:
 
 ## Related docs
 
-- Contributor setup and prompting guide: [CONTRIBUTING.md](../CONTRIBUTING.md)
-- Architecture: [docs/ARCHITECTURE.md](ARCHITECTURE.md)
+- Contributor setup and prompting guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
+- User manual: [User Manual.md](User%20Manual.md)
+
+## Recommended branch protection
+
+For `main`:
+- require pull requests before merge
+- require passing CI checks
+- require branch to be up to date before merge
+- block force pushes
+- block deletion
+
+For `dev`:
+- require pull requests before merge
+- require passing CI checks
+- block force pushes

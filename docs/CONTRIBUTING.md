@@ -60,10 +60,10 @@ If the app is already open, relaunch it after UI changes so the rebuilt bundled 
 
 The most effective workflow here is:
 1. make one focused request
-2. implement it on a branch
+2. implement it on a branch from `dev`
 3. verify it
 4. commit and push
-5. open a PR into `main`
+5. open a PR into `dev`
 
 Do not batch unrelated UI, DSP, routing, and infrastructure changes into one vague request if you can avoid it. The tighter the slice, the better the result.
 
@@ -139,9 +139,17 @@ If you report a crash, include:
 
 Do not do feature work directly on `main`.
 
-Create a branch for each focused change:
+Use this branch model:
+- `main`: stable, shareable, release-ready
+- `dev`: integration branch for tested ongoing work
+- `feature/<name>`: short-lived feature or refactor branch from `dev`
+- `hotfix/<name>`: urgent fix branch from `main`
+
+Create a feature branch from `dev` for each focused change:
 
 ```bash
+git checkout dev
+git pull --ff-only
 git checkout -b fix/chorus-pops
 ```
 
@@ -151,6 +159,17 @@ Examples:
 - `docs/vibe-contributing-guide`
 
 Keep the branch scoped to one area of work. That makes review and rollback much easier.
+
+Merge flow:
+1. branch from `dev`
+2. open PR into `dev`
+3. merge into `dev` when checks are green
+4. periodically open PR `dev -> main`
+5. merge `main` hotfixes back into `dev` if needed
+
+Recommended GitHub branch protection:
+- `main`: require PRs and passing CI, block force-push and deletion
+- `dev`: require PRs and passing CI, block force-push
 
 ## Verification Before Commit
 
@@ -204,7 +223,9 @@ Push your branch:
 git push -u origin fix/chorus-pops
 ```
 
-Open a PR into `main`.
+Open a PR into `dev` for normal work.
+
+Only open a PR into `main` when promoting a tested batch from `dev`.
 
 A good PR description includes:
 - what changed
@@ -236,7 +257,7 @@ If you use GitHub CLI:
 
 ```bash
 gh auth login
-gh pr create --base main --fill
+gh pr create --base dev --fill
 ```
 
 If you are creating a fresh remote:

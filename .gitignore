@@ -1,4 +1,6 @@
 /build/
+/build-release/
+/dist/
 /logs/
 /Synthesizer.app/
 /Synthesizer.zip

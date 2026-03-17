@@ -182,7 +182,9 @@ enum class RoutingPreset {
 
 class SynthController {
 public:
-    explicit SynthController(RuntimeConfig config = {});
+    explicit SynthController(
+        RuntimeConfig config = {},
+        std::unique_ptr<interfaces::IAudioDriver> driver = {});
     ~SynthController();
 
     bool initialize();

@@ -5,6 +5,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(BUILD_TESTING "Build regression tests" ON)
+if(BUILD_TESTING)
+    enable_testing()
+endif()
+
 add_library(synth_core
     src/core/CrashDiagnostics.cpp
     src/core/Logger.cpp
@@ -81,4 +86,12 @@ if(APPLE)
             "-framework Cocoa"
             "-framework WebKit"
     )
+endif()
+
+if(BUILD_TESTING)
+    add_executable(synth_tests
+        tests/SynthRegressionTests.cpp
+    )
+    target_link_libraries(synth_tests PRIVATE synth_core)
+    add_test(NAME synth_tests COMMAND synth_tests)
 endif()

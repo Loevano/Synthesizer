@@ -160,10 +160,13 @@ std::string queryDefaultOutputDeviceName() {
 
 }  // namespace
 
-SynthController::SynthController(RuntimeConfig config)
+SynthController::SynthController(
+    RuntimeConfig config,
+    std::unique_ptr<interfaces::IAudioDriver> driver)
     : config_(resolveRuntimeConfig(std::move(config))),
       logger_(config_.logDirectory),
       crashDiagnostics_(config_.logDirectory),
+      driver_(std::move(driver)),
       debugRobinOscillatorParams_(envFlagEnabled("SYNTH_DEBUG_ROBIN")),
       debugCrashBreadcrumbs_(envFlagEnabled("SYNTH_DEBUG_CRASH")) {}
 
@@ -194,7 +197,9 @@ bool SynthController::initialize() {
     outputDeviceName_ = "Unavailable";
 #endif
 
-    driver_ = interfaces::createAudioDriver(logger_);
+    if (!driver_) {
+        driver_ = interfaces::createAudioDriver(logger_);
+    }
     if (!driver_) {
         logger_.error("Could not create audio driver.");
         return false;

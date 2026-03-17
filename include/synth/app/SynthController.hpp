@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -215,6 +216,8 @@ private:
     static std::string escapeJson(std::string_view value);
     static bool tryParseIndex(std::string_view value, std::uint32_t& index);
     static float midiNoteToFrequency(int noteNumber);
+    std::string buildStateJsonLocked() const;
+    void markStateSnapshotDirty() const;
     void logRobinMasterOscillatorUpdateLocked(std::string_view path, std::string_view valueDescription);
     float tunedRobinFrequencyLocked(float baseFrequencyHz) const;
     void copyMasterStateToVoiceLocked(VoiceState& voice) const;
@@ -311,6 +314,9 @@ private:
     bool debugRobinOscillatorParams_ = false;
     bool debugCrashBreadcrumbs_ = false;
     mutable std::mutex mutex_;
+    mutable std::mutex stateSnapshotMutex_;
+    mutable std::string stateJsonCache_;
+    mutable std::atomic<bool> stateSnapshotDirty_{true};
     bool initialized_ = false;
 };
 

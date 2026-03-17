@@ -231,6 +231,7 @@ bool SynthController::initialize() {
     }
 
     initialized_ = true;
+    markStateSnapshotDirty();
     return true;
 }
 
@@ -271,6 +272,7 @@ bool SynthController::startAudio() {
         logger_.error("Audio failed to start.");
         midiEnabled_ = false;
         oscEnabled_ = false;
+        markStateSnapshotDirty();
         return false;
     }
 
@@ -330,6 +332,7 @@ bool SynthController::startAudio() {
         oscEnabled_ = true;
     }
 
+    markStateSnapshotDirty();
     return true;
 }
 
@@ -349,6 +352,8 @@ void SynthController::stopAudio() {
         driver_->stop();
         logger_.info("Stopped.");
     }
+
+    markStateSnapshotDirty();
 }
 
 bool SynthController::isRunning() const {
@@ -356,8 +361,32 @@ bool SynthController::isRunning() const {
 }
 
 std::string SynthController::stateJson() const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    if (!stateSnapshotDirty_.load(std::memory_order_acquire)) {
+        std::lock_guard<std::mutex> cacheLock(stateSnapshotMutex_);
+        return stateJsonCache_;
+    }
 
+    std::unique_lock<std::mutex> lock(mutex_);
+    if (!stateSnapshotDirty_.load(std::memory_order_relaxed)) {
+        lock.unlock();
+        std::lock_guard<std::mutex> cacheLock(stateSnapshotMutex_);
+        return stateJsonCache_;
+    }
+
+    std::string nextSnapshot = buildStateJsonLocked();
+    {
+        std::lock_guard<std::mutex> cacheLock(stateSnapshotMutex_);
+        stateJsonCache_ = nextSnapshot;
+    }
+    stateSnapshotDirty_.store(false, std::memory_order_release);
+    return nextSnapshot;
+}
+
+void SynthController::markStateSnapshotDirty() const {
+    stateSnapshotDirty_.store(true, std::memory_order_release);
+}
+
+std::string SynthController::buildStateJsonLocked() const {
     std::ostringstream json;
     const auto sourceOrder = liveGraph_.sourceOrder();
     const auto activeSourceNames = liveGraph_.activeSourceNames();
@@ -717,6 +746,7 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
         crashDiagnostics_.breadcrumb(breadcrumb.str());
     }
 
+    markStateSnapshotDirty();
     std::unique_lock<std::mutex> lock(mutex_);
     const auto parts = splitPath(path);
 
@@ -1440,6 +1470,7 @@ bool SynthController::setParam(std::string_view path, std::string_view value, st
             "setParam string path=" + std::string(path) + " value=" + std::string(value));
     }
 
+    markStateSnapshotDirty();
     std::unique_lock<std::mutex> lock(mutex_);
     const auto parts = splitPath(path);
 
@@ -2615,6 +2646,7 @@ void SynthController::handleNoteOnLocked(int noteNumber, float velocity) {
     heldMidiNotes_.push_back(noteNumber);
     activeMidiNote_ = noteNumber;
     liveGraph_.noteOn(noteNumber, velocity);
+    markStateSnapshotDirty();
 }
 
 void SynthController::handleNoteOffLocked(int noteNumber) {
@@ -2626,12 +2658,14 @@ void SynthController::handleNoteOffLocked(int noteNumber) {
     heldMidiNotes_.erase(newEnd, heldMidiNotes_.end());
     activeMidiNote_ = heldMidiNotes_.empty() ? -1 : heldMidiNotes_.back();
     liveGraph_.noteOff(noteNumber);
+    markStateSnapshotDirty();
 }
 
 void SynthController::handleMidiNoteOnLocked(std::uint32_t sourceIndex, int noteNumber, float velocity) {
     heldMidiNotes_.erase(std::remove(heldMidiNotes_.begin(), heldMidiNotes_.end(), noteNumber), heldMidiNotes_.end());
     heldMidiNotes_.push_back(noteNumber);
     activeMidiNote_ = noteNumber;
+    markStateSnapshotDirty();
 
     const MidiSourceRouteState* routeState = findMidiRouteLocked(sourceIndex);
     if (routeState == nullptr) {
@@ -2654,6 +2688,7 @@ void SynthController::handleMidiNoteOffLocked(std::uint32_t sourceIndex, int not
 
     heldMidiNotes_.erase(newEnd, heldMidiNotes_.end());
     activeMidiNote_ = heldMidiNotes_.empty() ? -1 : heldMidiNotes_.back();
+    markStateSnapshotDirty();
 
     const MidiSourceRouteState* routeState = findMidiRouteLocked(sourceIndex);
     if (routeState == nullptr) {

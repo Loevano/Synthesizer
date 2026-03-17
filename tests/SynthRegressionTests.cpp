@@ -153,6 +153,26 @@ void testControllerOutputChannelSelectionClampsToDeviceMaximum() {
     expectEqual(controller.config().channels, static_cast<std::uint32_t>(8), "channels clamped to device maximum");
 }
 
+void testStateJsonRefreshesAfterParamMutation() {
+    synth::app::RuntimeConfig config;
+    config.logDirectory = testLogDirectory();
+
+    synth::app::SynthController controller(config, makeFakeDriver());
+    expect(controller.initialize(), "controller initializes");
+
+    const std::string initialStateJson = controller.stateJson();
+    expect(initialStateJson.find("\"speedHz\":0.25") != std::string::npos, "initial chorus speed in state");
+
+    std::string errorMessage;
+    expect(
+        controller.setParam("processors.fx.chorus.speedHz", 1.5, &errorMessage),
+        "chorus speed update succeeds");
+    expect(errorMessage.empty(), "no chorus speed update error");
+
+    const std::string refreshedStateJson = controller.stateJson();
+    expect(refreshedStateJson.find("\"speedHz\":1.5") != std::string::npos, "updated chorus speed in state");
+}
+
 void testLiveGraphDryFxRenderOrder() {
     synth::graph::LiveGraph graph;
 
@@ -227,6 +247,7 @@ int main() {
         {"controller initializes from injected driver", testControllerInitializesFromInjectedDriver},
         {"controller output device selection clamps channels", testControllerOutputDeviceSelectionClampsChannels},
         {"controller output channels clamp to selected device maximum", testControllerOutputChannelSelectionClampsToDeviceMaximum},
+        {"state json refreshes after param mutation", testStateJsonRefreshesAfterParamMutation},
         {"live graph render order respects dry and fx routing", testLiveGraphDryFxRenderOrder},
     };
 

@@ -47,6 +47,16 @@ cd Synthesizer
 If you just want to try the app and a release is available, you do not need Xcode.
 Download the packaged `.zip` from GitHub Releases, unzip it, and run `Synthesizer.app`.
 
+Official releases are intended to come from tagged `main` builds and use signing/notarization.
+
+If you open an older unsigned test build and macOS says the app is "damaged", right-click
+`Synthesizer.app` and choose `Open`, or remove quarantine manually:
+
+```bash
+xattr -dr com.apple.quarantine /path/to/Synthesizer.app
+open /path/to/Synthesizer.app
+```
+
 Run the macOS app:
 
 ```bash
@@ -181,6 +191,7 @@ This is already usable as a multichannel synth sandbox, but it is still an evolv
 - Data flow: [docs/Data flow.md](docs/Data%20flow.md)
 - Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md)
 - Implementation plan: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
+- Release and signing guide: [docs/RELEASING.md](docs/RELEASING.md)
 - Feature notes: [docs/What should it do?.md](docs/What%20should%20it%20do%3F.md)
 - Changelog: [docs/CHANGELOG.md](docs/CHANGELOG.md)
 - GitHub workflow: [docs/GITHUB.md](docs/GITHUB.md)
@@ -206,9 +217,11 @@ This repo now includes a release workflow for packaged macOS app builds.
 - GitHub Actions workflow: [.github/workflows/release.yml](.github/workflows/release.yml)
 
 Release behavior:
-- `workflow_dispatch` builds a packaged macOS artifact
-- pushing a tag like `v0.2.0` builds the macOS app, zips it, and attaches it to a GitHub Release
+- `dev` is the integration/source branch and is not intended for public app releases
+- pushing a tag like `v1.0.0` on `main` runs the release workflow
+- the release workflow is intended to sign, notarize, and publish the macOS app zip
 
-Current release packaging is intended for testers first:
-- the app can be downloaded and run without Xcode
-- the app is not automatically signed or notarized by this workflow
+Release setup note:
+- signing and notarization require Apple release secrets in GitHub Actions
+- until those secrets are configured, tagged main releases will fail instead of silently publishing an unsigned main release
+- older unsigned tester builds may still need the quarantine workaround in [docs/RELEASING.md](docs/RELEASING.md)

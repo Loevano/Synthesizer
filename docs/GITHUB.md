@@ -73,7 +73,7 @@ That PR is the promotion step from tested integration work into stable `main`.
 
 ## Release flow
 
-This repo also supports packaged macOS app releases.
+This repo supports public releases from `main` and source/integration work on `dev`.
 
 Local packaging:
 
@@ -84,16 +84,34 @@ Local packaging:
 GitHub Actions release workflow:
 - file: [.github/workflows/release.yml](../.github/workflows/release.yml)
 - manual trigger: `workflow_dispatch`
-- release trigger: push a tag like `v0.2.0`
+- public release trigger: push a tag like `v1.0.0` on `main`
 
-Tag release behavior:
+Branch intent:
+- `dev`: source and integration work, validated by CI
+- `main`: stable branch, eligible for signed/notarized tagged releases
+
+Tagged main release behavior:
+- verifies the tagged commit is on `origin/main`
 - builds the macOS app bundle
+- signs the app with `Developer ID`
+- notarizes and staples the app
 - packages it into a `.zip`
 - uploads the zip as a GitHub Release asset
 
-Current note:
-- this packages the app for download
-- it does not sign or notarize the app
+Required GitHub secrets for the release workflow:
+- `APPLE_SIGNING_IDENTITY`
+- `APPLE_DEVELOPER_ID_P12_BASE64`
+- `APPLE_DEVELOPER_ID_P12_PASSWORD`
+- `APPLE_API_KEY_ID`
+- `APPLE_API_ISSUER_ID`
+- `APPLE_API_PRIVATE_KEY`
+- optional: `APPLE_KEYCHAIN_PASSWORD`
+
+Important note:
+- if the signing/notarization secrets are missing, tagged `main` releases should fail
+- this is intentional so `main` does not silently publish unsigned public releases
+- local or older unsigned tester builds may still hit Gatekeeper quarantine warnings
+- see [RELEASING.md](RELEASING.md) for the full signing/notarization and fallback guidance
 
 ## PR expectations
 

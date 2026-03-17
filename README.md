@@ -47,9 +47,11 @@ cd Synthesizer
 If you just want to try the app and a release is available, you do not need Xcode.
 Download the packaged `.zip` from GitHub Releases, unzip it, and run `Synthesizer.app`.
 
-Official releases are intended to come from tagged `main` builds and use signing/notarization.
+Official releases are intended to come from tagged `main` builds.
 
-If you open an older unsigned test build and macOS says the app is "damaged", right-click
+Current releases are packaged but unsigned.
+
+If macOS says the app is "damaged", right-click
 `Synthesizer.app` and choose `Open`, or remove quarantine manually:
 
 ```bash
@@ -219,9 +221,9 @@ This repo now includes a release workflow for packaged macOS app builds.
 Release behavior:
 - `dev` is the integration/source branch and is not intended for public app releases
 - pushing a tag like `v1.0.0` on `main` runs the release workflow
-- the release workflow is intended to sign, notarize, and publish the macOS app zip
+- the release workflow builds and publishes an unsigned macOS app zip
 
 Release setup note:
-- signing and notarization require Apple release secrets in GitHub Actions
-- until those secrets are configured, tagged main releases will fail instead of silently publishing an unsigned main release
-- older unsigned tester builds may still need the quarantine workaround in [docs/RELEASING.md](docs/RELEASING.md)
+- the app can be downloaded and run without Xcode
+- macOS may still show Gatekeeper/quarantine warnings for downloaded builds
+- if that happens, use the workaround in [docs/RELEASING.md](docs/RELEASING.md)

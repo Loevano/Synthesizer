@@ -93,25 +93,13 @@ Branch intent:
 Tagged main release behavior:
 - verifies the tagged commit is on `origin/main`
 - builds the macOS app bundle
-- signs the app with `Developer ID`
-- notarizes and staples the app
 - packages it into a `.zip`
 - uploads the zip as a GitHub Release asset
 
-Required GitHub secrets for the release workflow:
-- `APPLE_SIGNING_IDENTITY`
-- `APPLE_DEVELOPER_ID_P12_BASE64`
-- `APPLE_DEVELOPER_ID_P12_PASSWORD`
-- `APPLE_API_KEY_ID`
-- `APPLE_API_ISSUER_ID`
-- `APPLE_API_PRIVATE_KEY`
-- optional: `APPLE_KEYCHAIN_PASSWORD`
-
 Important note:
-- if the signing/notarization secrets are missing, tagged `main` releases should fail
-- this is intentional so `main` does not silently publish unsigned public releases
-- local or older unsigned tester builds may still hit Gatekeeper quarantine warnings
-- see [RELEASING.md](RELEASING.md) for the full signing/notarization and fallback guidance
+- this publishes an unsigned packaged app
+- local or downloaded builds may hit Gatekeeper quarantine warnings
+- see [RELEASING.md](RELEASING.md) for the workaround and future signing options
 
 ## PR expectations
 

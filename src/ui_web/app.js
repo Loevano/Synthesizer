@@ -106,7 +106,7 @@ const UI_RESET_DEFAULTS = {
       enabled: false,
       depth: 0.5,
       speedHz: 0.25,
-      phaseSpreadDegrees: 0,
+      phaseSpreadDegrees: 360,
     },
     sidechain: {
       enabled: false,

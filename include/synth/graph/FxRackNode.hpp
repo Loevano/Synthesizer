@@ -26,7 +26,7 @@ private:
     float chorusBlend_ = 0.0f;
     float chorusDepth_ = 0.5f;
     float chorusSpeedHz_ = 0.25f;
-    float chorusPhaseSpreadDegrees_ = 0.0f;
+    float chorusPhaseSpreadDegrees_ = 360.0f;
     double sampleRate_ = 48000.0;
 };
 

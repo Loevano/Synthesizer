@@ -83,9 +83,10 @@ void FxRackNode::updateChorusPhaseOffsets() {
         return;
     }
 
-    const float denominator = chorusStages_.size() > 1 ? static_cast<float>(chorusStages_.size() - 1) : 1.0f;
+    const float channelCount = static_cast<float>(chorusStages_.size());
     for (std::size_t channel = 0; channel < chorusStages_.size(); ++channel) {
-        const float phaseOffset = chorusPhaseSpreadDegrees_ * (static_cast<float>(channel) / denominator);
+        // Spread the requested phase arc across the outputs without landing the final channel on a wrapped 360-degree duplicate.
+        const float phaseOffset = chorusPhaseSpreadDegrees_ * (static_cast<float>(channel) / channelCount);
         chorusStages_[channel].setPhaseOffsetDegrees(phaseOffset);
     }
 }

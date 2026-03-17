@@ -151,7 +151,7 @@ struct ChorusState {
     bool enabled = false;
     float depth = 0.5f;
     float speedHz = 0.25f;
-    float phaseSpreadDegrees = 0.0f;
+    float phaseSpreadDegrees = 360.0f;
 };
 
 struct SidechainState {

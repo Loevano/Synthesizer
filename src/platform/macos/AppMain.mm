@@ -165,6 +165,7 @@ static void handleUncaughtNsException(NSException* exception) {
     dispatch_queue_t bridgeQueue_;
     BOOL debugBridge_;
     BOOL debugCrash_;
+    BOOL debugUi_;
 }
 
 - (void)bringMainWindowToFront {
@@ -215,6 +216,7 @@ static void handleUncaughtNsException(NSException* exception) {
     (void)notification;
     debugBridge_ = envFlagEnabled("SYNTH_DEBUG_BRIDGE") || envFlagEnabled("SYNTH_DEBUG_ROBIN");
     debugCrash_ = envFlagEnabled("SYNTH_DEBUG_CRASH");
+    debugUi_ = envFlagEnabled("SYNTH_DEBUG_UI") || envFlagEnabled("SYNTH_DEBUG_ROBIN");
     bridgeQueue_ = dispatch_queue_create("com.loevano.synth.bridge", DISPATCH_QUEUE_SERIAL);
 
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
@@ -253,6 +255,14 @@ static void handleUncaughtNsException(NSException* exception) {
                                injectionTime:WKUserScriptInjectionTimeAtDocumentStart
                             forMainFrameOnly:YES];
     [userContentController addUserScript:bootstrapScript];
+    NSString* flagsSource = [NSString
+        stringWithFormat:@"window.__SYNTH_FLAGS__ = Object.freeze({ debugUi: %@ });",
+                         debugUi_ ? @"true" : @"false"];
+    WKUserScript* flagsScript =
+        [[WKUserScript alloc] initWithSource:flagsSource
+                               injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+                            forMainFrameOnly:YES];
+    [userContentController addUserScript:flagsScript];
 
     WKWebViewConfiguration* config = [[WKWebViewConfiguration alloc] init];
     [config setUserContentController:userContentController];

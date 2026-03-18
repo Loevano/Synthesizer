@@ -226,6 +226,8 @@ const UI_RESET_DEFAULTS = {
   },
 };
 
+const debugUiEnabled = Boolean(window.__SYNTH_FLAGS__?.debugUi);
+
 const elements = {
   tabs: Array.from(document.querySelectorAll(".page-tab")),
   pages: Array.from(document.querySelectorAll(".page")),
@@ -247,6 +249,8 @@ const elements = {
   channelsValue: document.getElementById("channelsValue"),
   bufferValue: document.getElementById("bufferValue"),
   refreshButton: document.getElementById("refreshButton"),
+  debugStatePanel: document.getElementById("debugStatePanel"),
+  robinDebugPanel: document.getElementById("robinDebugPanel"),
   stateView: document.getElementById("stateView"),
   statusText: document.getElementById("statusText"),
   midiDeviceGrid: document.getElementById("midiDeviceGrid"),
@@ -1089,6 +1093,9 @@ function parseVoiceOscillatorKey(key) {
 }
 
 function updateStateView() {
+  if (!debugUiEnabled) {
+    return;
+  }
   const programPage = document.getElementById("page-program");
   if (!programPage?.classList.contains("is-active")) {
     return;
@@ -1096,7 +1103,46 @@ function updateStateView() {
   elements.stateView.textContent = state ? JSON.stringify(state, null, 2) : "";
 }
 
+function applyDebugUiVisibility() {
+  if (elements.debugStatePanel) {
+    elements.debugStatePanel.hidden = !debugUiEnabled;
+  }
+  if (elements.robinDebugPanel) {
+    elements.robinDebugPanel.hidden = !debugUiEnabled;
+  }
+  if (!debugUiEnabled && elements.stateView) {
+    elements.stateView.textContent = "";
+  }
+}
+
 function applyRobinDebugVisibility() {
+  if (!debugUiEnabled) {
+    if (elements.robinMasterMacrosModule) {
+      elements.robinMasterMacrosModule.hidden = false;
+    }
+    if (elements.robinMasterOscModule) {
+      elements.robinMasterOscModule.hidden = false;
+    }
+    if (elements.robinMasterEnvVcfModule) {
+      elements.robinMasterEnvVcfModule.hidden = false;
+    }
+    if (elements.robinMasterAmpModule) {
+      elements.robinMasterAmpModule.hidden = false;
+    }
+    if (elements.robinMasterVcfModule) {
+      elements.robinMasterVcfModule.hidden = false;
+    }
+    if (elements.robinMasterLfoModule) {
+      elements.robinMasterLfoModule.hidden = false;
+    }
+    if (elements.robinMasterSpreadModule) {
+      elements.robinMasterSpreadModule.hidden = false;
+    }
+    if (elements.selectedVoiceEditor) {
+      elements.selectedVoiceEditor.hidden = false;
+    }
+    return;
+  }
   if (elements.robinMasterMacrosModule) {
     elements.robinMasterMacrosModule.hidden = !robinDebugModuleVisibility.macros;
   }
@@ -1124,6 +1170,10 @@ function applyRobinDebugVisibility() {
 }
 
 function bindRobinDebugControls() {
+  if (!debugUiEnabled) {
+    applyRobinDebugVisibility();
+    return;
+  }
   const debugControls = [
     ["macros", elements.robinDebugMacros],
     ["osc", elements.robinDebugOsc],
@@ -4249,6 +4299,7 @@ function bindTestOutputControls() {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  applyDebugUiVisibility();
   bindRobinDebugControls();
 
   document.addEventListener(

@@ -12,6 +12,92 @@ const SOURCE_ROUTE_LABELS = {
   fx: "Through FX Chain",
 };
 
+const ROBIN_SPREAD_ALGORITHM_LABELS = {
+  linear: "Linear",
+  random: "Random",
+  alternating: "Alternating",
+};
+
+const ROBIN_SPREAD_TARGET_CONFIG = {
+  "vcf-cutoff": {
+    label: "VCF Cutoff",
+    min: -36,
+    max: 36,
+    step: 1,
+    format: (value) => `${value > 0 ? "+" : ""}${Math.round(value)} st`,
+  },
+  "vcf-resonance": {
+    label: "VCF Resonance",
+    min: -4,
+    max: 4,
+    step: 0.01,
+    format: (value) => `${value > 0 ? "+" : ""}${Number(value).toFixed(2)}`,
+  },
+  "env-vcf-amount": {
+    label: "ENV VCF Amount",
+    min: -1.5,
+    max: 1.5,
+    step: 0.01,
+    format: (value) => `${value > 0 ? "+" : ""}${Number(value).toFixed(2)}`,
+  },
+  "env-vcf-attack": {
+    label: "ENV VCF Attack",
+    min: -95,
+    max: 500,
+    step: 1,
+    format: (value) => `${value > 0 ? "+" : ""}${Math.round(value)}%`,
+  },
+  "env-vcf-decay": {
+    label: "ENV VCF Decay",
+    min: -95,
+    max: 500,
+    step: 1,
+    format: (value) => `${value > 0 ? "+" : ""}${Math.round(value)}%`,
+  },
+  "env-vcf-release": {
+    label: "ENV VCF Release",
+    min: -95,
+    max: 500,
+    step: 1,
+    format: (value) => `${value > 0 ? "+" : ""}${Math.round(value)}%`,
+  },
+  "amp-attack": {
+    label: "AMP Attack",
+    min: -95,
+    max: 500,
+    step: 1,
+    format: (value) => `${value > 0 ? "+" : ""}${Math.round(value)}%`,
+  },
+  "amp-decay": {
+    label: "AMP Decay",
+    min: -95,
+    max: 500,
+    step: 1,
+    format: (value) => `${value > 0 ? "+" : ""}${Math.round(value)}%`,
+  },
+  "amp-release": {
+    label: "AMP Release",
+    min: -95,
+    max: 500,
+    step: 1,
+    format: (value) => `${value > 0 ? "+" : ""}${Math.round(value)}%`,
+  },
+  "osc-level": {
+    label: "OSC Level",
+    min: -24,
+    max: 24,
+    step: 0.5,
+    format: (value) => `${value > 0 ? "+" : ""}${Number(value).toFixed(1)} dB`,
+  },
+  "osc-detune": {
+    label: "OSC Detune",
+    min: -100,
+    max: 100,
+    step: 1,
+    format: (value) => `${value > 0 ? "+" : ""}${Math.round(value)} ct`,
+  },
+};
+
 const UI_RESET_DEFAULTS = {
   sourceMixer: {
     robin: { enabled: false, level: 0.15, routeTarget: "dry" },
@@ -53,6 +139,14 @@ const UI_RESET_DEFAULTS = {
       sustain: 0.8,
       releaseMs: 200,
     },
+    spreadSlots: [
+      { enabled: false, target: "vcf-cutoff", algorithm: "linear", depth: 0, start: 0, end: 0, seed: 17 },
+      { enabled: false, target: "osc-detune", algorithm: "random", depth: 0, start: 0, end: 0, seed: 37 },
+      { enabled: false, target: "amp-release", algorithm: "alternating", depth: 0, start: 0, end: 0, seed: 73 },
+      { enabled: false, target: "osc-level", algorithm: "linear", depth: 0, start: 0, end: 0, seed: 101 },
+      { enabled: false, target: "env-vcf-amount", algorithm: "random", depth: 0, start: 0, end: 0, seed: 131 },
+      { enabled: false, target: "amp-attack", algorithm: "alternating", depth: 0, start: 0, end: 0, seed: 167 },
+    ],
   },
   robinVoice: {
     active: true,
@@ -194,6 +288,8 @@ const elements = {
   oscillatorRows: document.getElementById("oscillatorRows"),
   robinLinkBadge: document.getElementById("robinLinkBadge"),
   robinLinkNote: document.getElementById("robinLinkNote"),
+  robinPerformanceMacros: document.getElementById("robinPerformanceMacros"),
+  robinSpreadSlots: document.getElementById("robinSpreadSlots"),
   testActive: document.getElementById("testActive"),
   testMidiEnabled: document.getElementById("testMidiEnabled"),
   testFrequency: document.getElementById("testFrequency"),
@@ -249,6 +345,8 @@ let nextMutationSequence = 1;
 let latestRenderedSequence = 0;
 const inFlightParams = new Map();
 const queuedParams = new Map();
+const scheduledLiveParams = new Map();
+let liveParamFrameHandle = null;
 let activeRangeInput = null;
 let hasDeferredRender = false;
 let selectedRobinVoiceIndex = null;
@@ -271,6 +369,54 @@ function getOutputMixer() {
 
 function getRobin() {
   return state?.sources?.robin ?? null;
+}
+
+function normalizeRobinSpreadSlot(slot, slotIndex) {
+  const defaults = getRobinSpreadSlotDefault(slotIndex);
+  const target = typeof slot?.target === "string" ? slot.target : defaults.target;
+  return {
+    enabled: Boolean(slot?.enabled ?? defaults.enabled),
+    target,
+    algorithm: typeof slot?.algorithm === "string" ? slot.algorithm : defaults.algorithm,
+    depth: clampValue(slot?.depth ?? defaults.depth, 0, 1),
+    start: clampRobinSpreadValue(target, slot?.start ?? defaults.start),
+    end: clampRobinSpreadValue(target, slot?.end ?? defaults.end),
+    seed: Math.round(clampValue(slot?.seed ?? defaults.seed, 1, 9999)),
+  };
+}
+
+function getRobinSpreadSlots() {
+  const robin = getRobin();
+  if (!robin) {
+    return [];
+  }
+
+  if (!Array.isArray(robin.spreadSlots)) {
+    robin.spreadSlots = UI_RESET_DEFAULTS.robin.spreadSlots.map((slot, slotIndex) => normalizeRobinSpreadSlot(slot, slotIndex));
+    return robin.spreadSlots;
+  }
+
+  robin.spreadSlots = UI_RESET_DEFAULTS.robin.spreadSlots.map((defaults, slotIndex) =>
+    normalizeRobinSpreadSlot(robin.spreadSlots[slotIndex] ?? defaults, slotIndex),
+  );
+  return robin.spreadSlots;
+}
+
+function getRobinSpreadSlotDefault(slotIndex) {
+  return UI_RESET_DEFAULTS.robin.spreadSlots[slotIndex] ?? UI_RESET_DEFAULTS.robin.spreadSlots[0];
+}
+
+function getRobinSpreadTargetConfig(target) {
+  return ROBIN_SPREAD_TARGET_CONFIG[target] ?? ROBIN_SPREAD_TARGET_CONFIG["vcf-cutoff"];
+}
+
+function clampRobinSpreadValue(target, value) {
+  const config = getRobinSpreadTargetConfig(target);
+  return clampValue(value, config.min, config.max);
+}
+
+function formatRobinSpreadValue(target, value) {
+  return getRobinSpreadTargetConfig(target).format(Number(value));
 }
 
 function getTest() {
@@ -491,6 +637,35 @@ function getResetValueForControl(control) {
     return oscillator.relativeToVoice
       ? UI_RESET_DEFAULTS.oscillator.frequencyValue
       : (getRobin()?.frequency ?? UI_RESET_DEFAULTS.robin.frequency);
+  }
+
+  if (control.dataset.robinSpreadEnabled) {
+    return getRobinSpreadSlotDefault(Number(control.dataset.robinSpreadEnabled)).enabled;
+  }
+
+  if (control.dataset.robinSpreadTarget) {
+    return getRobinSpreadSlotDefault(Number(control.dataset.robinSpreadTarget)).target;
+  }
+
+  if (control.dataset.robinSpreadAlgorithm) {
+    return getRobinSpreadSlotDefault(Number(control.dataset.robinSpreadAlgorithm)).algorithm;
+  }
+
+  if (control.dataset.robinSpreadStart) {
+    return getRobinSpreadSlotDefault(Number(control.dataset.robinSpreadStart)).start;
+  }
+
+  if (control.dataset.robinSpreadEnd) {
+    return getRobinSpreadSlotDefault(Number(control.dataset.robinSpreadEnd)).end;
+  }
+
+  if (control.dataset.robinSpreadDepth || control.dataset.robinMacroDepth) {
+    const slotIndex = Number(control.dataset.robinSpreadDepth ?? control.dataset.robinMacroDepth);
+    return getRobinSpreadSlotDefault(slotIndex).depth;
+  }
+
+  if (control.dataset.robinSpreadSeed) {
+    return getRobinSpreadSlotDefault(Number(control.dataset.robinSpreadSeed)).seed;
   }
 
   if (control.dataset.testOutput) {
@@ -849,6 +1024,10 @@ function parseVoiceOscillatorKey(key) {
 }
 
 function updateStateView() {
+  const programPage = document.getElementById("page-program");
+  if (!programPage?.classList.contains("is-active")) {
+    return;
+  }
   elements.stateView.textContent = state ? JSON.stringify(state, null, 2) : "";
 }
 
@@ -869,6 +1048,39 @@ function drainQueuedParam(path) {
   }
 
   dispatchParam(path, nextRequest.value, { silent: nextRequest.silent });
+}
+
+function scheduleLiveParamFlush() {
+  if (liveParamFrameHandle !== null) {
+    return;
+  }
+
+  const flush = () => {
+    liveParamFrameHandle = null;
+    const pendingParams = Array.from(scheduledLiveParams.entries());
+    scheduledLiveParams.clear();
+    pendingParams.forEach(([path, value]) => {
+      emitLiveParam(path, value, { silent: true });
+    });
+  };
+
+  if (typeof window.requestAnimationFrame === "function") {
+    liveParamFrameHandle = window.requestAnimationFrame(flush);
+  } else {
+    liveParamFrameHandle = window.setTimeout(flush, 16);
+  }
+}
+
+function emitLiveParam(path, value, { silent = false } = {}) {
+  if (!window.synth) {
+    return;
+  }
+
+  window.synth.setParamFast(path, value).catch((error) => {
+    if (!silent) {
+      setStatus(`Failed to update ${path}: ${error.message}`);
+    }
+  });
 }
 
 function refreshRobinMasterOscillatorUi(field) {
@@ -1011,6 +1223,45 @@ function applyRobinEnvVcfUpdate(field, rawValue) {
   }
 
   robin.envVcf[field] = clampValue(rawValue, 0, 5000);
+}
+
+function applyRobinSpreadSlotUpdate(slotIndex, field, rawValue) {
+  const robin = getRobin();
+  const slot = robin?.spreadSlots?.[slotIndex];
+  if (!slot) {
+    return;
+  }
+
+  if (field === "enabled") {
+    slot.enabled = Boolean(rawValue);
+    return;
+  }
+
+  if (field === "target") {
+    slot.target = String(rawValue);
+    slot.start = clampRobinSpreadValue(slot.target, slot.start);
+    slot.end = clampRobinSpreadValue(slot.target, slot.end);
+    return;
+  }
+
+  if (field === "algorithm") {
+    slot.algorithm = String(rawValue);
+    return;
+  }
+
+  if (field === "depth") {
+    slot.depth = clampValue(rawValue, 0, 1);
+    return;
+  }
+
+  if (field === "seed") {
+    slot.seed = Math.round(clampValue(rawValue, 1, 9999));
+    return;
+  }
+
+  if (field === "start" || field === "end") {
+    slot[field] = clampRobinSpreadValue(slot.target, rawValue);
+  }
 }
 
 function applyRobinVoiceUpdate(voiceIndex, field, rawValue) {
@@ -1375,7 +1626,9 @@ function applyTempStateMutation(applyLocalState = null, rerender = null) {
   }
 
   if (activeRangeInput) {
-    hasDeferredRender = true;
+    if (typeof rerender === "function") {
+      hasDeferredRender = true;
+    }
     return;
   }
 
@@ -1395,10 +1648,12 @@ function setParamTemp(path, value, { silent = false, applyLocalState = null, rer
 }
 
 function setParamTempLive(path, value, applyLocalState = null) {
-  setParamTemp(path, value, {
-    silent: true,
-    applyLocalState,
-  });
+  if (typeof applyLocalState === "function") {
+    applyLocalState();
+  }
+  updateStateView();
+  scheduledLiveParams.set(path, value);
+  scheduleLiveParamFlush();
 }
 
 function setStatus(message) {
@@ -1432,6 +1687,9 @@ function selectPage(pageName) {
   elements.pages.forEach((page) => {
     page.classList.toggle("is-active", page.id === `page-${pageName}`);
   });
+  if (pageName === "program") {
+    updateStateView();
+  }
 }
 
 function formatRoutingPresetLabel(value) {
@@ -2464,6 +2722,250 @@ function renderOscillators() {
   ensureRotaryControls(elements.oscillatorRows);
 }
 
+function renderRobinPerformanceMacros() {
+  if (!elements.robinPerformanceMacros) {
+    return;
+  }
+
+  const spreadSlots = getRobinSpreadSlots();
+  if (!spreadSlots.length) {
+    elements.robinPerformanceMacros.innerHTML = "";
+    return;
+  }
+
+  elements.robinPerformanceMacros.innerHTML = spreadSlots
+    .map((slot, slotIndex) => `
+      <label class="field field--compact robin-performance-macro">
+        <span>Macro ${slotIndex + 1}</span>
+        <small>${getRobinSpreadTargetConfig(slot.target).label}</small>
+        <input
+          type="range"
+          data-control-style="linear"
+          min="0"
+          max="1"
+          step="0.01"
+          value="${slot.depth}"
+          data-robin-macro-depth="${slotIndex}"
+        >
+        <output>${Math.round(Number(slot.depth) * 100)}%</output>
+      </label>
+    `)
+    .join("");
+
+  bindRobinPerformanceMacros();
+  ensureRotaryControls(elements.robinPerformanceMacros);
+}
+
+function bindRobinPerformanceMacros() {
+  document.querySelectorAll("[data-robin-macro-depth]").forEach((input) => {
+    const output = input.parentElement.querySelector("output");
+    input.addEventListener("input", () => {
+      const slotIndex = Number(input.dataset.robinMacroDepth);
+      const nextValue = Number(input.value);
+      output.textContent = `${Math.round(nextValue * 100)}%`;
+      setParamTempLive(`sources.robin.spread.${slotIndex}.depth`, nextValue, () => {
+        applyRobinSpreadSlotUpdate(slotIndex, "depth", nextValue);
+      });
+    });
+  });
+}
+
+function renderRobinSpreadSlots() {
+  if (!elements.robinSpreadSlots) {
+    return;
+  }
+
+  const spreadSlots = getRobinSpreadSlots();
+  if (!spreadSlots.length) {
+    elements.robinSpreadSlots.innerHTML = "";
+    return;
+  }
+
+  elements.robinSpreadSlots.innerHTML = spreadSlots
+    .map((slot, slotIndex) => {
+      const targetConfig = getRobinSpreadTargetConfig(slot.target);
+      const seedField = slot.algorithm === "random"
+        ? `
+          <label class="field field--compact robin-spread-slot__field robin-spread-slot__field--seed">
+            <span>Seed</span>
+            <input
+              type="range"
+              data-control-style="linear"
+              min="1"
+              max="9999"
+              step="1"
+              value="${slot.seed}"
+              data-robin-spread-seed="${slotIndex}"
+            >
+            <output>${Math.round(Number(slot.seed))}</output>
+          </label>
+        `
+        : "";
+
+      return `
+        <section class="robin-spread-slot ${slot.enabled ? "is-enabled" : ""}">
+          <div class="robin-voice-module__header">
+            <h4>Spread ${slotIndex + 1}</h4>
+            <label class="toggle-pill">
+              <input
+                type="checkbox"
+                data-robin-spread-enabled="${slotIndex}"
+                ${slot.enabled ? "checked" : ""}
+              >
+              <span>Enabled</span>
+            </label>
+          </div>
+
+          <div class="robin-spread-slot__selectors">
+            <label class="field field--compact">
+              <span>Target</span>
+              <select data-robin-spread-target="${slotIndex}">
+                ${Object.entries(ROBIN_SPREAD_TARGET_CONFIG)
+                  .map(([value, config]) => `<option value="${value}" ${slot.target === value ? "selected" : ""}>${config.label}</option>`)
+                  .join("")}
+              </select>
+            </label>
+
+            <label class="field field--compact">
+              <span>Algorithm</span>
+              <select data-robin-spread-algorithm="${slotIndex}">
+                ${Object.entries(ROBIN_SPREAD_ALGORITHM_LABELS)
+                  .map(([value, label]) => `<option value="${value}" ${slot.algorithm === value ? "selected" : ""}>${label}</option>`)
+                  .join("")}
+              </select>
+            </label>
+          </div>
+
+          <div class="robin-spread-slot__range-grid">
+            <label class="field field--compact robin-spread-slot__field">
+              <span>Start</span>
+              <input
+                type="range"
+                data-control-style="linear"
+                min="${targetConfig.min}"
+                max="${targetConfig.max}"
+                step="${targetConfig.step}"
+                value="${slot.start}"
+                data-robin-spread-start="${slotIndex}"
+              >
+              <output>${formatRobinSpreadValue(slot.target, slot.start)}</output>
+            </label>
+
+            <label class="field field--compact robin-spread-slot__field">
+              <span>End</span>
+              <input
+                type="range"
+                data-control-style="linear"
+                min="${targetConfig.min}"
+                max="${targetConfig.max}"
+                step="${targetConfig.step}"
+                value="${slot.end}"
+                data-robin-spread-end="${slotIndex}"
+              >
+              <output>${formatRobinSpreadValue(slot.target, slot.end)}</output>
+            </label>
+
+            ${seedField}
+          </div>
+
+          <p class="robin-spread-slot__copy">
+            Linked voices stay on the master template, then receive ${targetConfig.label.toLowerCase()} offsets by linked
+            voice order. Use Macro ${slotIndex + 1} above to control this slot's depth.
+          </p>
+        </section>
+      `;
+    })
+    .join("");
+
+  bindRobinSpreadControls();
+  ensureRotaryControls(elements.robinSpreadSlots);
+}
+
+function bindRobinSpreadControls() {
+  document.querySelectorAll("[data-robin-spread-enabled]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const slotIndex = Number(input.dataset.robinSpreadEnabled);
+      setParamTemp(`sources.robin.spread.${slotIndex}.enabled`, input.checked, {
+        applyLocalState: () => {
+          applyRobinSpreadSlotUpdate(slotIndex, "enabled", input.checked);
+        },
+        rerender: () => {
+          renderRobinPerformanceMacros();
+          renderRobinSpreadSlots();
+        },
+      });
+    });
+  });
+
+  document.querySelectorAll("[data-robin-spread-target]").forEach((select) => {
+    select.addEventListener("change", () => {
+      const slotIndex = Number(select.dataset.robinSpreadTarget);
+      setParamTemp(`sources.robin.spread.${slotIndex}.target`, select.value, {
+        applyLocalState: () => {
+          applyRobinSpreadSlotUpdate(slotIndex, "target", select.value);
+        },
+        rerender: () => {
+          renderRobinPerformanceMacros();
+          renderRobinSpreadSlots();
+        },
+      });
+    });
+  });
+
+  document.querySelectorAll("[data-robin-spread-algorithm]").forEach((select) => {
+    select.addEventListener("change", () => {
+      const slotIndex = Number(select.dataset.robinSpreadAlgorithm);
+      setParamTemp(`sources.robin.spread.${slotIndex}.algorithm`, select.value, {
+        applyLocalState: () => {
+          applyRobinSpreadSlotUpdate(slotIndex, "algorithm", select.value);
+        },
+        rerender: () => {
+          renderRobinPerformanceMacros();
+          renderRobinSpreadSlots();
+        },
+      });
+    });
+  });
+
+  document.querySelectorAll("[data-robin-spread-start]").forEach((input) => {
+    const output = input.parentElement.querySelector("output");
+    input.addEventListener("input", () => {
+      const slotIndex = Number(input.dataset.robinSpreadStart);
+      const target = getRobinSpreadSlots()[slotIndex]?.target ?? "vcf-cutoff";
+      const nextValue = Number(input.value);
+      output.textContent = formatRobinSpreadValue(target, nextValue);
+      setParamTempLive(`sources.robin.spread.${slotIndex}.start`, nextValue, () => {
+        applyRobinSpreadSlotUpdate(slotIndex, "start", nextValue);
+      });
+    });
+  });
+
+  document.querySelectorAll("[data-robin-spread-end]").forEach((input) => {
+    const output = input.parentElement.querySelector("output");
+    input.addEventListener("input", () => {
+      const slotIndex = Number(input.dataset.robinSpreadEnd);
+      const target = getRobinSpreadSlots()[slotIndex]?.target ?? "vcf-cutoff";
+      const nextValue = Number(input.value);
+      output.textContent = formatRobinSpreadValue(target, nextValue);
+      setParamTempLive(`sources.robin.spread.${slotIndex}.end`, nextValue, () => {
+        applyRobinSpreadSlotUpdate(slotIndex, "end", nextValue);
+      });
+    });
+  });
+
+  document.querySelectorAll("[data-robin-spread-seed]").forEach((input) => {
+    const output = input.parentElement.querySelector("output");
+    input.addEventListener("input", () => {
+      const slotIndex = Number(input.dataset.robinSpreadSeed);
+      const nextValue = Number(input.value);
+      output.textContent = String(Math.round(nextValue));
+      setParamTempLive(`sources.robin.spread.${slotIndex}.seed`, nextValue, () => {
+        applyRobinSpreadSlotUpdate(slotIndex, "seed", nextValue);
+      });
+    });
+  });
+}
+
 function renderDecorOutputGrid() {
   const engine = getEngine();
   const decor = getDecor();
@@ -2683,7 +3185,9 @@ function applyStateToUi(nextState) {
   renderSourceMixer();
   renderOutputMixer();
   renderVoices();
+  renderRobinPerformanceMacros();
   renderOscillators();
+  renderRobinSpreadSlots();
   renderTestSource();
   renderDecorOutputGrid();
   renderFxOutputGrid();

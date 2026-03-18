@@ -313,6 +313,18 @@
             </div>
           </section>
 
+          <section class="robin-voice-module robin-master-layout__macros">
+            <div class="robin-voice-module__header">
+              <h3>Performance Macros</h3>
+              <span>Mapped to spread depth</span>
+            </div>
+            <p class="robin-voice-module__copy">
+              Six live macros sit above the oscillator bank and currently open or close the corresponding spread slot
+              depth for performance moves.
+            </p>
+            <div id="robinPerformanceMacros" class="robin-performance-macro-grid"></div>
+          </section>
+
           <section class="robin-voice-module robin-master-layout__osc">
             <div class="robin-voice-module__header">
               <h3>OSC Bank</h3>
@@ -431,21 +443,16 @@
             </div>
           </section>
 
-          <section class="robin-voice-module robin-voice-module--planned robin-master-layout__modulation">
+          <section class="robin-voice-module robin-master-layout__modulation">
             <div class="robin-voice-module__header">
               <h3>Modulation</h3>
-              <span>Scaffold</span>
+              <span>Linked voice spread</span>
             </div>
             <p class="robin-voice-module__copy">
-              Bottom-row space reserved for future master modulation tools: section spread, offset curves, and routing
-              algorithms that sit on top of the linked voice template.
+              Spread slots add static variation on top of the master template. They only affect enabled voices that are
+              still linked to master, and they distribute offsets by linked voice order rather than speaker output.
             </p>
-            <div class="token-row">
-              <span class="token">Section Spread</span>
-              <span class="token">Offset Curves</span>
-              <span class="token">Voice Motion</span>
-              <span class="token">Routing Logic</span>
-            </div>
+            <div id="robinSpreadSlots" class="robin-spread-grid"></div>
           </section>
         </div>
       </article>

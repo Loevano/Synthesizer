@@ -376,6 +376,62 @@ void testQueuedRobinLfoParamsRefreshStateWhileRunning() {
         "queued robin lfo state flushed");
 }
 
+void testQueuedRobinSpreadParamsRefreshStateWhileRunning() {
+    synth::app::RuntimeConfig config;
+    config.logDirectory = testLogDirectory();
+
+    auto driver = std::make_unique<FakeAudioDriver>(makeTestDevices());
+    auto* driverPtr = driver.get();
+    synth::app::SynthController controller(config, std::move(driver));
+    expect(controller.initialize(), "controller initializes");
+
+    driverPtr->forceRunning(true);
+
+    std::string errorMessage;
+    expect(
+        controller.setParam("sources.robin.spread.0.enabled", 1.0, &errorMessage),
+        "queued robin spread enabled update succeeds");
+    expect(errorMessage.empty(), "no robin spread enabled error");
+
+    expect(
+        controller.setParam("sources.robin.spread.0.target", "osc-detune", &errorMessage),
+        "queued robin spread target update succeeds");
+    expect(errorMessage.empty(), "no robin spread target error");
+
+    expect(
+        controller.setParam("sources.robin.spread.0.algorithm", "random", &errorMessage),
+        "queued robin spread algorithm update succeeds");
+    expect(errorMessage.empty(), "no robin spread algorithm error");
+
+    expect(
+        controller.setParam("sources.robin.spread.0.depth", 0.8, &errorMessage),
+        "queued robin spread depth update succeeds");
+    expect(errorMessage.empty(), "no robin spread depth error");
+
+    expect(
+        controller.setParam("sources.robin.spread.0.start", -12.0, &errorMessage),
+        "queued robin spread start update succeeds");
+    expect(errorMessage.empty(), "no robin spread start error");
+
+    expect(
+        controller.setParam("sources.robin.spread.0.end", 9.0, &errorMessage),
+        "queued robin spread end update succeeds");
+    expect(errorMessage.empty(), "no robin spread end error");
+
+    expect(
+        controller.setParam("sources.robin.spread.0.seed", 91.0, &errorMessage),
+        "queued robin spread seed update succeeds");
+    expect(errorMessage.empty(), "no robin spread seed error");
+
+    const std::string refreshedStateJson = controller.stateJson();
+    expect(
+        refreshedStateJson.find(
+            "\"spreadSlots\":[{\"index\":0,\"enabled\":true,\"target\":\"osc-detune\","
+            "\"algorithm\":\"random\",\"depth\":0.8,\"start\":-12,\"end\":9,\"seed\":91}")
+            != std::string::npos,
+        "queued robin spread state flushed");
+}
+
 void testQueuedTestAndMixerFxParamsRefreshStateWhileRunning() {
     synth::app::RuntimeConfig config;
     config.logDirectory = testLogDirectory();
@@ -629,6 +685,7 @@ int main() {
         {"queued global note refreshes state while running", testQueuedGlobalNoteRefreshesStateWhileRunning},
         {"queued robin master params refresh state while running", testQueuedRobinMasterParamsRefreshStateWhileRunning},
         {"queued robin lfo params refresh state while running", testQueuedRobinLfoParamsRefreshStateWhileRunning},
+        {"queued robin spread params refresh state while running", testQueuedRobinSpreadParamsRefreshStateWhileRunning},
         {"queued test and mixer/fx params refresh state while running", testQueuedTestAndMixerFxParamsRefreshStateWhileRunning},
         {"queued robin voice params refresh state while running", testQueuedRobinVoiceParamsRefreshStateWhileRunning},
         {"live graph render order respects dry and fx routing", testLiveGraphDryFxRenderOrder},

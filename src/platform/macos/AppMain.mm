@@ -49,6 +49,34 @@ constexpr const char* kBridgeScript = R"JS(
       return request("setParamFast", { path, value });
     }
   };
+
+  const sendClientError = (kind, payload) => {
+    try {
+      window.webkit.messageHandlers.synth.postMessage({
+        requestId: 0,
+        type: kind,
+        payload,
+      });
+    } catch (error) {
+      // Keep the page alive even if the native bridge is unavailable.
+    }
+  };
+
+  window.addEventListener("error", (event) => {
+    sendClientError("jsError", {
+      message: event.message || "Unknown JS error",
+      source: event.filename || "",
+      line: event.lineno || 0,
+      column: event.colno || 0,
+    });
+  });
+
+  window.addEventListener("unhandledrejection", (event) => {
+    const reason = event.reason instanceof Error
+      ? (event.reason.stack || event.reason.message)
+      : String(event.reason || "Unknown rejection");
+    sendClientError("jsRejection", { message: reason });
+  });
 })();
 )JS";
 
@@ -245,6 +273,33 @@ static void handleUncaughtNsException(NSException* exception) {
     }
 
     const NSInteger requestId = [requestIdNumber integerValue];
+
+    if ([type isEqualToString:@"jsError"] || [type isEqualToString:@"jsRejection"]) {
+        NSString* messageText = payload[@"message"];
+        NSString* source = payload[@"source"];
+        NSNumber* line = payload[@"line"];
+        NSNumber* column = payload[@"column"];
+
+        std::string logLine = "Web UI ";
+        logLine += [type isEqualToString:@"jsError"] ? "error: " : "rejection: ";
+        logLine += messageText != nil ? std::string([messageText UTF8String]) : "Unknown";
+
+        if (source != nil && [source length] > 0) {
+            logLine += " source=" + std::string([source UTF8String]);
+        }
+        if (line != nil) {
+            logLine += " line=" + std::to_string([line longLongValue]);
+        }
+        if (column != nil) {
+            logLine += " column=" + std::to_string([column longLongValue]);
+        }
+
+        controller_->logger().error(logLine);
+        if (debugCrash_) {
+            controller_->crashDiagnostics().breadcrumb(logLine);
+        }
+        return;
+    }
 
     if ([type isEqualToString:@"getState"]) {
         if (debugCrash_) {

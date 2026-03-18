@@ -998,6 +998,76 @@ select,
   grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
 }
 
+.robin-spread-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.robin-spread-slot {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 52%),
+    rgba(13, 19, 24, 0.78);
+}
+
+.robin-spread-slot.is-enabled {
+  border-color: rgba(143, 224, 207, 0.24);
+}
+
+.robin-spread-slot__selectors,
+.robin-spread-slot__range-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.robin-spread-slot__field,
+.robin-spread-slot__field--seed {
+  margin-bottom: 0;
+}
+
+.robin-spread-slot__field--seed {
+  grid-column: 1 / -1;
+}
+
+.robin-spread-slot__copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.robin-performance-macro-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 10px;
+}
+
+.robin-performance-macro {
+  margin-bottom: 0;
+  justify-items: center;
+  align-content: start;
+  gap: 6px;
+  padding: 10px 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(14, 20, 25, 0.72);
+}
+
+.robin-performance-macro small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-align: center;
+  min-height: 1.7em;
+}
+
 .robin-master-layout__layout {
   grid-column: span 5;
 }
@@ -1006,6 +1076,7 @@ select,
   grid-column: span 7;
 }
 
+.robin-master-layout__macros,
 .robin-master-layout__osc,
 .robin-master-layout__modulation {
   grid-column: 1 / -1;
@@ -1211,6 +1282,7 @@ select,
 
   .robin-master-layout__layout,
   .robin-master-layout__pitch,
+  .robin-master-layout__macros,
   .robin-master-layout__osc,
   .robin-master-layout__env-vcf,
   .robin-master-layout__amp,
@@ -1220,6 +1292,7 @@ select,
     grid-column: auto;
   }
 
+  .robin-master-layout__macros,
   .robin-master-layout__osc,
   .robin-master-layout__modulation {
     grid-column: 1 / -1;
@@ -1268,6 +1341,8 @@ select,
 
   .robin-voice-module__grid,
   .robin-voice-module__grid--compact,
+  .robin-spread-slot__selectors,
+  .robin-spread-slot__range-grid,
   .robin-master-layout,
   .robin-master-layout__meta-grid,
   .robin-voice-osc__config,

@@ -1001,6 +1001,45 @@ function ensureRotaryControls(root = document) {
   });
 }
 
+function setTextContent(node, text) {
+  if (node && node.textContent !== text) {
+    node.textContent = text;
+  }
+}
+
+function syncCheckboxInput(input, checked) {
+  if (input instanceof HTMLInputElement) {
+    input.checked = checked;
+  }
+}
+
+function syncSelectInput(select, value) {
+  if (select instanceof HTMLSelectElement && select.value !== value) {
+    select.value = value;
+  }
+}
+
+function syncRangeField(input, value, outputText, { min = null, max = null, step = null, label = null } = {}) {
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+
+  if (label != null) {
+    setTextContent(input.parentElement?.querySelector("span"), label);
+  }
+  if (min != null) {
+    input.min = String(min);
+  }
+  if (max != null) {
+    input.max = String(max);
+  }
+  if (step != null) {
+    input.step = String(step);
+  }
+  input.value = String(value);
+  setTextContent(input.parentElement?.querySelector("output"), outputText);
+}
+
 function getRobinMasterOscillators() {
   return getRobin()?.masterOscillators ?? [];
 }
@@ -1163,9 +1202,55 @@ function emitLiveParam(path, value, { silent = false } = {}) {
   });
 }
 
-function refreshRobinMasterOscillatorUi(field) {
-  renderRobinLinkState();
-  renderOscillators();
+function findRobinVoiceByIndex(voiceIndex) {
+  return getRobin()?.voices?.find((voice) => voice.index === voiceIndex) ?? null;
+}
+
+function syncRobinVoiceRowByIndex(voiceIndex) {
+  const voice = findRobinVoiceByIndex(voiceIndex);
+  const row = elements.voicesGrid?.querySelector(`[data-voice-row="${voiceIndex}"]`);
+  if (!voice || !(row instanceof HTMLElement)) {
+    return;
+  }
+
+  syncVoiceOverviewRow(row, voice, getRobinMasterOscillators().length, getSelectedRobinVoice());
+}
+
+function syncSelectedVoiceEditorByIndex(voiceIndex) {
+  const selectedVoice = getSelectedRobinVoice();
+  if (!selectedVoice || selectedVoice.index !== voiceIndex) {
+    return;
+  }
+
+  renderSelectedVoiceEditor(selectedVoice);
+}
+
+function syncRobinVoiceSelectionUi(previousSelectedVoiceIndex = null, extraVoiceIndices = []) {
+  const selectedVoice = getSelectedRobinVoice();
+  const voiceIndices = new Set(extraVoiceIndices);
+  if (previousSelectedVoiceIndex != null) {
+    voiceIndices.add(previousSelectedVoiceIndex);
+  }
+  if (selectedVoice) {
+    voiceIndices.add(selectedVoice.index);
+  }
+
+  voiceIndices.forEach((voiceIndex) => {
+    syncRobinVoiceRowByIndex(voiceIndex);
+  });
+  renderSelectedVoiceEditor(selectedVoice);
+}
+
+function refreshRobinMasterOscillatorUi(oscillatorIndex) {
+  const oscillator = getRobinMasterOscillators()[Number(oscillatorIndex)];
+  const section = elements.oscillatorRows?.querySelector(`[data-master-osc="${oscillatorIndex}"]`);
+  if (!oscillator || !(section instanceof HTMLElement)) {
+    renderOscillators();
+    return;
+  }
+
+  syncMasterOscillatorSection(section, oscillator);
+  ensureRotaryControls(section);
 }
 
 function applyRobinMasterOscillatorUpdate(oscillatorIndex, field, rawValue) {
@@ -2331,29 +2416,145 @@ function renderVoiceOverviewTokens(voice, masterOscillatorCount) {
   `;
 }
 
-function renderSelectedVoiceEditor(selectedVoice) {
-  if (!elements.selectedVoiceEditor) {
-    return;
+function buildVoiceOverviewActions(voice, selected) {
+  if (voice.linkedToMaster) {
+    return `<span class="voice-overview-row__hint">${voice.active ? "Using master" : "Disabled"}</span>`;
   }
 
-  if (!selectedVoice) {
-    elements.selectedVoiceEditor.innerHTML = `
-      <div class="panel-header">
-        <div>
-          <p class="section-kicker">Selected Voice</p>
-          <h2>Local Voice Editor</h2>
-        </div>
-        <span class="status-tag">Waiting</span>
+  return `
+    <button
+      type="button"
+      class="ghost-button ghost-button--compact ${selected ? "is-selected" : ""}"
+      data-voice-select="${voice.index}"
+    >
+      ${selected ? "Editing" : "Edit"}
+    </button>
+  `;
+}
+
+function buildVoiceOverviewRowMarkup(voice, masterOscillatorCount, selectedVoice) {
+  const linked = Boolean(voice.linkedToMaster);
+  const selected = selectedVoice?.index === voice.index;
+  const rowClasses = [
+    "voice-overview-row",
+    voice.active ? "is-active" : "is-inactive",
+    linked ? "is-linked" : "is-local",
+    selected ? "is-selected" : "",
+  ].join(" ");
+
+  return `
+    <article class="${rowClasses}" data-voice-row="${voice.index}">
+      <div class="voice-overview-row__identity">
+        <strong>Voice ${voice.index + 1}</strong>
+        <span class="voice-overview-row__state" data-voice-state>${linked ? "Linked" : "Local"}</span>
       </div>
-      <p class="note">
-        Unlink a Robin voice to open one local editor at a time. The overview above stays dense while detailed editing
-        happens here.
-      </p>
-    `;
-    return;
-  }
 
-  elements.selectedVoiceEditor.innerHTML = `
+      <div class="voice-overview-row__summary token-row" data-voice-summary>
+        ${renderVoiceOverviewTokens(voice, masterOscillatorCount)}
+      </div>
+
+      <div class="voice-overview-row__controls">
+        <label class="toggle-pill">
+          <input type="checkbox" data-voice-active="${voice.index}" ${voice.active ? "checked" : ""}>
+          <span>Enabled</span>
+        </label>
+        <label class="toggle-pill">
+          <input type="checkbox" data-voice-linked="${voice.index}" ${linked ? "checked" : ""}>
+          <span>Linked</span>
+        </label>
+      </div>
+
+      <div class="voice-overview-row__actions" data-voice-actions>
+        ${buildVoiceOverviewActions(voice, selected)}
+      </div>
+    </article>
+  `;
+}
+
+function buildSelectedVoiceEditorEmptyMarkup() {
+  return `
+    <div class="panel-header">
+      <div>
+        <p class="section-kicker">Selected Voice</p>
+        <h2>Local Voice Editor</h2>
+      </div>
+      <span class="status-tag">Waiting</span>
+    </div>
+    <p class="note">
+      Unlink a Robin voice to open one local editor at a time. The overview above stays dense while detailed editing
+      happens here.
+    </p>
+  `;
+}
+
+function buildSelectedVoiceOscillatorMarkup(voiceIndex, oscillator) {
+  return `
+    <section class="robin-voice-osc" data-voice-editor-osc="${oscillator.index}">
+      <div class="robin-voice-module__header">
+        <h4>Osc ${oscillator.index + 1}</h4>
+        <label class="toggle-pill">
+          <input
+            type="checkbox"
+            data-voice-osc-enabled="${voiceIndex}:${oscillator.index}"
+            ${oscillator.enabled ? "checked" : ""}
+          >
+          <span>Enabled</span>
+        </label>
+      </div>
+
+      <div class="robin-voice-osc__fields">
+        <div class="robin-voice-osc__config">
+          <label class="field field--compact">
+            <span>Shape</span>
+            <select data-voice-osc-waveform="${voiceIndex}:${oscillator.index}">
+              ${renderWaveformOptions(oscillator.waveform)}
+            </select>
+          </label>
+
+          <label class="toggle-pill toggle-pill--block robin-voice-osc__toggle">
+            <input
+              type="checkbox"
+              data-voice-osc-relative="${voiceIndex}:${oscillator.index}"
+              ${oscillator.relativeToVoice ? "checked" : ""}
+            >
+            <span>${oscillator.relativeToVoice ? "Track Voice Root" : "Use Absolute Hz"}</span>
+          </label>
+        </div>
+
+        <div class="robin-voice-osc__knobs">
+          <label class="field field--compact">
+            <span>Level</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value="${oscillator.gain}"
+              data-voice-osc-gain="${voiceIndex}:${oscillator.index}"
+            >
+            <output>${Number(oscillator.gain).toFixed(2)}</output>
+          </label>
+
+          <label class="field field--compact">
+            <span>${oscillator.relativeToVoice ? "Ratio" : "Frequency"}</span>
+            <input
+              type="range"
+              min="${oscillator.relativeToVoice ? "0.01" : "20"}"
+              max="${oscillator.relativeToVoice ? "8" : "20000"}"
+              step="${oscillator.relativeToVoice ? "0.01" : "1"}"
+              value="${oscillator.frequencyValue}"
+              data-voice-osc-frequency="${voiceIndex}:${oscillator.index}"
+            >
+            <output>${formatOscillatorFrequencyLabel(oscillator)}</output>
+          </label>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function buildSelectedVoiceEditorMarkup(selectedVoice) {
+  return `
     <div class="panel-header">
       <div>
         <p class="section-kicker">Selected Voice</p>
@@ -2379,69 +2580,7 @@ function renderSelectedVoiceEditor(selectedVoice) {
 
         <div class="robin-voice-osc-grid">
           ${selectedVoice.oscillators
-            .map((oscillator) => `
-              <section class="robin-voice-osc">
-                <div class="robin-voice-module__header">
-                  <h4>Osc ${oscillator.index + 1}</h4>
-                  <label class="toggle-pill">
-                    <input
-                      type="checkbox"
-                      data-voice-osc-enabled="${selectedVoice.index}:${oscillator.index}"
-                      ${oscillator.enabled ? "checked" : ""}
-                    >
-                    <span>Enabled</span>
-                  </label>
-                </div>
-
-                <div class="robin-voice-osc__fields">
-                  <div class="robin-voice-osc__config">
-                    <label class="field field--compact">
-                      <span>Shape</span>
-                      <select data-voice-osc-waveform="${selectedVoice.index}:${oscillator.index}">
-                        ${renderWaveformOptions(oscillator.waveform)}
-                      </select>
-                    </label>
-
-                    <label class="toggle-pill toggle-pill--block robin-voice-osc__toggle">
-                      <input
-                        type="checkbox"
-                        data-voice-osc-relative="${selectedVoice.index}:${oscillator.index}"
-                        ${oscillator.relativeToVoice ? "checked" : ""}
-                      >
-                      <span>${oscillator.relativeToVoice ? "Track Voice Root" : "Use Absolute Hz"}</span>
-                    </label>
-                  </div>
-
-                  <div class="robin-voice-osc__knobs">
-                    <label class="field field--compact">
-                      <span>Level</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.01"
-                        value="${oscillator.gain}"
-                        data-voice-osc-gain="${selectedVoice.index}:${oscillator.index}"
-                      >
-                      <output>${Number(oscillator.gain).toFixed(2)}</output>
-                    </label>
-
-                    <label class="field field--compact">
-                      <span>${oscillator.relativeToVoice ? "Ratio" : "Frequency"}</span>
-                      <input
-                        type="range"
-                        min="${oscillator.relativeToVoice ? "0.01" : "20"}"
-                        max="${oscillator.relativeToVoice ? "8" : "20000"}"
-                        step="${oscillator.relativeToVoice ? "0.01" : "1"}"
-                        value="${oscillator.frequencyValue}"
-                        data-voice-osc-frequency="${selectedVoice.index}:${oscillator.index}"
-                      >
-                      <output>${formatOscillatorFrequencyLabel(oscillator)}</output>
-                    </label>
-                  </div>
-                </div>
-              </section>
-            `)
+            .map((oscillator) => buildSelectedVoiceOscillatorMarkup(selectedVoice.index, oscillator))
             .join("")}
         </div>
       </section>
@@ -2656,71 +2795,294 @@ function renderSelectedVoiceEditor(selectedVoice) {
   `;
 }
 
+function getSelectedVoiceEditorRenderKey(selectedVoice) {
+  return selectedVoice ? `${selectedVoice.index}:${selectedVoice.oscillators.length}` : "waiting";
+}
+
+function syncVoiceOverviewRow(row, voice, masterOscillatorCount, selectedVoice) {
+  if (!(row instanceof HTMLElement)) {
+    return;
+  }
+
+  const linked = Boolean(voice.linkedToMaster);
+  const selected = selectedVoice?.index === voice.index;
+  row.className = [
+    "voice-overview-row",
+    voice.active ? "is-active" : "is-inactive",
+    linked ? "is-linked" : "is-local",
+    selected ? "is-selected" : "",
+  ].join(" ");
+
+  setTextContent(row.querySelector("[data-voice-state]"), linked ? "Linked" : "Local");
+  const summaryMarkup = renderVoiceOverviewTokens(voice, masterOscillatorCount);
+  const summary = row.querySelector("[data-voice-summary]");
+  if (summary && summary.innerHTML !== summaryMarkup) {
+    summary.innerHTML = summaryMarkup;
+  }
+
+  syncCheckboxInput(row.querySelector(`[data-voice-active="${voice.index}"]`), voice.active);
+  syncCheckboxInput(row.querySelector(`[data-voice-linked="${voice.index}"]`), linked);
+
+  const actionsMarkup = buildVoiceOverviewActions(voice, selected);
+  const actions = row.querySelector("[data-voice-actions]");
+  if (actions && actions.innerHTML !== actionsMarkup) {
+    actions.innerHTML = actionsMarkup;
+  }
+}
+
+function syncSelectedVoiceEditorFields(selectedVoice) {
+  if (!elements.selectedVoiceEditor || !selectedVoice) {
+    return;
+  }
+
+  const root = elements.selectedVoiceEditor;
+  const voiceIndex = selectedVoice.index;
+  const renderKey = getSelectedVoiceEditorRenderKey(selectedVoice);
+  const oscillatorSections = Array.from(root.querySelectorAll("[data-voice-editor-osc]"));
+  if (oscillatorSections.length !== selectedVoice.oscillators.length) {
+    root.innerHTML = buildSelectedVoiceEditorMarkup(selectedVoice);
+    root.dataset.renderKey = renderKey;
+  }
+
+  const resetButton = root.querySelector("[data-voice-reset-master]");
+  if (resetButton instanceof HTMLButtonElement) {
+    resetButton.dataset.voiceResetMaster = String(voiceIndex);
+  }
+
+  syncRangeField(
+    root.querySelector(`[data-voice-frequency="${voiceIndex}"]`),
+    selectedVoice.frequency,
+    `${Math.round(Number(selectedVoice.frequency))} Hz`,
+  );
+  syncRangeField(
+    root.querySelector(`[data-voice-gain="${voiceIndex}"]`),
+    selectedVoice.gain,
+    Number(selectedVoice.gain).toFixed(2),
+  );
+  syncRangeField(
+    root.querySelector(`[data-voice-vcf="${voiceIndex}:cutoffHz"]`),
+    selectedVoice.vcf.cutoffHz,
+    `${Math.round(Number(selectedVoice.vcf.cutoffHz))} Hz`,
+  );
+  syncRangeField(
+    root.querySelector(`[data-voice-vcf="${voiceIndex}:resonance"]`),
+    selectedVoice.vcf.resonance,
+    Number(selectedVoice.vcf.resonance).toFixed(2),
+  );
+
+  [
+    ["attackMs", `${Math.round(Number(selectedVoice.envVcf.attackMs))} ms`],
+    ["decayMs", `${Math.round(Number(selectedVoice.envVcf.decayMs))} ms`],
+    ["sustain", Number(selectedVoice.envVcf.sustain).toFixed(2)],
+    ["releaseMs", `${Math.round(Number(selectedVoice.envVcf.releaseMs))} ms`],
+    ["amount", Number(selectedVoice.envVcf.amount).toFixed(2)],
+  ].forEach(([field, outputText]) => {
+    syncRangeField(
+      root.querySelector(`[data-voice-env-vcf="${voiceIndex}:${field}"]`),
+      selectedVoice.envVcf[field],
+      outputText,
+    );
+  });
+
+  [
+    ["attackMs", `${Math.round(Number(selectedVoice.envelope.attackMs))} ms`],
+    ["decayMs", `${Math.round(Number(selectedVoice.envelope.decayMs))} ms`],
+    ["sustain", Number(selectedVoice.envelope.sustain).toFixed(2)],
+    ["releaseMs", `${Math.round(Number(selectedVoice.envelope.releaseMs))} ms`],
+  ].forEach(([field, outputText]) => {
+    syncRangeField(
+      root.querySelector(`[data-voice-envelope="${voiceIndex}:${field}"]`),
+      selectedVoice.envelope[field],
+      outputText,
+    );
+  });
+
+  selectedVoice.oscillators.forEach((oscillator) => {
+    const oscillatorKey = `${voiceIndex}:${oscillator.index}`;
+    const section = root.querySelector(`[data-voice-editor-osc="${oscillator.index}"]`);
+    if (!(section instanceof HTMLElement)) {
+      return;
+    }
+
+    syncCheckboxInput(section.querySelector(`[data-voice-osc-enabled="${oscillatorKey}"]`), oscillator.enabled);
+    syncSelectInput(section.querySelector(`[data-voice-osc-waveform="${oscillatorKey}"]`), oscillator.waveform);
+
+    const relativeInput = section.querySelector(`[data-voice-osc-relative="${oscillatorKey}"]`);
+    syncCheckboxInput(relativeInput, oscillator.relativeToVoice);
+    setTextContent(
+      relativeInput?.parentElement?.querySelector("span"),
+      oscillator.relativeToVoice ? "Track Voice Root" : "Use Absolute Hz",
+    );
+
+    syncRangeField(
+      section.querySelector(`[data-voice-osc-gain="${oscillatorKey}"]`),
+      oscillator.gain,
+      Number(oscillator.gain).toFixed(2),
+    );
+    syncRangeField(
+      section.querySelector(`[data-voice-osc-frequency="${oscillatorKey}"]`),
+      oscillator.frequencyValue,
+      formatOscillatorFrequencyLabel(oscillator),
+      {
+        min: oscillator.relativeToVoice ? 0.01 : 20,
+        max: oscillator.relativeToVoice ? 8 : 20000,
+        step: oscillator.relativeToVoice ? 0.01 : 1,
+        label: oscillator.relativeToVoice ? "Ratio" : "Frequency",
+      },
+    );
+  });
+}
+
+function renderSelectedVoiceEditor(selectedVoice) {
+  if (!elements.selectedVoiceEditor) {
+    return;
+  }
+
+  const nextKey = getSelectedVoiceEditorRenderKey(selectedVoice);
+  if (elements.selectedVoiceEditor.dataset.renderKey !== nextKey) {
+    elements.selectedVoiceEditor.innerHTML = selectedVoice
+      ? buildSelectedVoiceEditorMarkup(selectedVoice)
+      : buildSelectedVoiceEditorEmptyMarkup();
+    elements.selectedVoiceEditor.dataset.renderKey = nextKey;
+  }
+
+  if (!selectedVoice) {
+    return;
+  }
+
+  syncSelectedVoiceEditorFields(selectedVoice);
+  ensureRotaryControls(elements.selectedVoiceEditor);
+}
+
 function renderVoices() {
   const robin = getRobin();
   if (!robin) {
     elements.voicesGrid.innerHTML = "";
     if (elements.selectedVoiceEditor) {
       elements.selectedVoiceEditor.innerHTML = "";
+      elements.selectedVoiceEditor.dataset.renderKey = "";
     }
     return;
   }
 
   const selectedVoice = getSelectedRobinVoice();
   const masterOscillatorCount = getRobinMasterOscillators().length;
-  elements.voicesGrid.innerHTML = robin.voices
-    .map((voice) => {
-      const linked = Boolean(voice.linkedToMaster);
-      const selected = selectedVoice?.index === voice.index;
-      const rowClasses = [
-        "voice-overview-row",
-        voice.active ? "is-active" : "is-inactive",
-        linked ? "is-linked" : "is-local",
-        selected ? "is-selected" : "",
-      ].join(" ");
-      return `
-        <article class="${rowClasses}">
-          <div class="voice-overview-row__identity">
-            <strong>Voice ${voice.index + 1}</strong>
-            <span class="voice-overview-row__state">${linked ? "Linked" : "Local"}</span>
-          </div>
+  let rows = Array.from(elements.voicesGrid.querySelectorAll("[data-voice-row]"));
+  const needsRebuild = rows.length !== robin.voices.length
+    || rows.some((row, index) => Number(row.dataset.voiceRow) !== robin.voices[index].index);
 
-          <div class="voice-overview-row__summary token-row">
-            ${renderVoiceOverviewTokens(voice, masterOscillatorCount)}
-          </div>
+  if (needsRebuild) {
+    elements.voicesGrid.innerHTML = robin.voices
+      .map((voice) => buildVoiceOverviewRowMarkup(voice, masterOscillatorCount, selectedVoice))
+      .join("");
+    rows = Array.from(elements.voicesGrid.querySelectorAll("[data-voice-row]"));
+  }
 
-          <div class="voice-overview-row__controls">
-            <label class="toggle-pill">
-              <input type="checkbox" data-voice-active="${voice.index}" ${voice.active ? "checked" : ""}>
-              <span>Enabled</span>
-            </label>
-            <label class="toggle-pill">
-              <input type="checkbox" data-voice-linked="${voice.index}" ${linked ? "checked" : ""}>
-              <span>Linked</span>
-            </label>
-          </div>
-
-          <div class="voice-overview-row__actions">
-            ${linked
-              ? `<span class="voice-overview-row__hint">${voice.active ? "Using master" : "Disabled"}</span>`
-              : `
-                <button
-                  type="button"
-                  class="ghost-button ghost-button--compact ${selected ? "is-selected" : ""}"
-                  data-voice-select="${voice.index}"
-                >
-                  ${selected ? "Editing" : "Edit"}
-                </button>
-              `}
-          </div>
-        </article>
-      `;
-    })
-    .join("");
+  rows.forEach((row, index) => {
+    syncVoiceOverviewRow(row, robin.voices[index], masterOscillatorCount, selectedVoice);
+  });
 
   renderSelectedVoiceEditor(selectedVoice);
   bindVoiceControls();
-  ensureRotaryControls(elements.selectedVoiceEditor);
+}
+
+function buildMasterOscillatorMarkup(oscillator) {
+  return `
+    <section class="robin-voice-osc robin-master-osc" data-master-osc="${oscillator.index}">
+      <div class="robin-voice-module__header">
+        <h4>Master Osc ${oscillator.index + 1}</h4>
+        <label class="toggle-pill">
+          <input
+            type="checkbox"
+            data-osc-enabled="${oscillator.index}"
+            ${oscillator.enabled ? "checked" : ""}
+          >
+          <span>Enabled</span>
+        </label>
+      </div>
+
+      <div class="robin-voice-osc__fields">
+        <div class="robin-voice-osc__config">
+          <label class="field field--compact">
+            <span>Shape</span>
+            <select data-osc-waveform="${oscillator.index}">
+              ${renderWaveformOptions(oscillator.waveform)}
+            </select>
+          </label>
+
+          <label class="toggle-pill toggle-pill--block robin-voice-osc__toggle">
+            <input
+              type="checkbox"
+              data-osc-relative="${oscillator.index}"
+              ${oscillator.relativeToVoice ? "checked" : ""}
+            >
+            <span>${oscillator.relativeToVoice ? "Track Voice Root" : "Use Absolute Hz"}</span>
+          </label>
+        </div>
+
+        <div class="robin-voice-osc__knobs">
+          <label class="field field--compact">
+            <span>Level</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value="${oscillator.gain}"
+              data-osc-gain="${oscillator.index}"
+            >
+            <output>${Number(oscillator.gain).toFixed(2)}</output>
+          </label>
+
+          <label class="field field--compact">
+            <span>${oscillator.relativeToVoice ? "Ratio" : "Frequency"}</span>
+            <input
+              type="range"
+              min="${oscillator.relativeToVoice ? "0.01" : "20"}"
+              max="${oscillator.relativeToVoice ? "8" : "20000"}"
+              step="${oscillator.relativeToVoice ? "0.01" : "1"}"
+              value="${oscillator.frequencyValue}"
+              data-osc-frequency="${oscillator.index}"
+            >
+            <output>${formatOscillatorFrequencyLabel(oscillator)}</output>
+          </label>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function syncMasterOscillatorSection(section, oscillator) {
+  if (!(section instanceof HTMLElement)) {
+    return;
+  }
+
+  syncCheckboxInput(section.querySelector(`[data-osc-enabled="${oscillator.index}"]`), oscillator.enabled);
+  syncSelectInput(section.querySelector(`[data-osc-waveform="${oscillator.index}"]`), oscillator.waveform);
+
+  const relativeInput = section.querySelector(`[data-osc-relative="${oscillator.index}"]`);
+  syncCheckboxInput(relativeInput, oscillator.relativeToVoice);
+  setTextContent(
+    relativeInput?.parentElement?.querySelector("span"),
+    oscillator.relativeToVoice ? "Track Voice Root" : "Use Absolute Hz",
+  );
+
+  syncRangeField(
+    section.querySelector(`[data-osc-gain="${oscillator.index}"]`),
+    oscillator.gain,
+    Number(oscillator.gain).toFixed(2),
+  );
+  syncRangeField(
+    section.querySelector(`[data-osc-frequency="${oscillator.index}"]`),
+    oscillator.frequencyValue,
+    formatOscillatorFrequencyLabel(oscillator),
+    {
+      min: oscillator.relativeToVoice ? 0.01 : 20,
+      max: oscillator.relativeToVoice ? 8 : 20000,
+      step: oscillator.relativeToVoice ? 0.01 : 1,
+      label: oscillator.relativeToVoice ? "Ratio" : "Frequency",
+    },
+  );
 }
 
 function renderOscillators() {
@@ -2730,73 +3092,20 @@ function renderOscillators() {
     return;
   }
 
-  elements.oscillatorRows.innerHTML = oscillators
-    .map(
-      (oscillator) => `
-        <section class="robin-voice-osc robin-master-osc">
-          <div class="robin-voice-module__header">
-            <h4>Master Osc ${oscillator.index + 1}</h4>
-            <label class="toggle-pill">
-              <input
-                type="checkbox"
-                data-osc-enabled="${oscillator.index}"
-                ${oscillator.enabled ? "checked" : ""}
-              >
-              <span>Enabled</span>
-            </label>
-          </div>
+  let sections = Array.from(elements.oscillatorRows.querySelectorAll("[data-master-osc]"));
+  const needsRebuild = sections.length !== oscillators.length
+    || sections.some((section, index) => Number(section.dataset.masterOsc) !== oscillators[index].index);
 
-          <div class="robin-voice-osc__fields">
-            <div class="robin-voice-osc__config">
-              <label class="field field--compact">
-                <span>Shape</span>
-                <select data-osc-waveform="${oscillator.index}">
-                  ${renderWaveformOptions(oscillator.waveform)}
-                </select>
-              </label>
+  if (needsRebuild) {
+    elements.oscillatorRows.innerHTML = oscillators
+      .map((oscillator) => buildMasterOscillatorMarkup(oscillator))
+      .join("");
+    sections = Array.from(elements.oscillatorRows.querySelectorAll("[data-master-osc]"));
+  }
 
-              <label class="toggle-pill toggle-pill--block robin-voice-osc__toggle">
-                <input
-                  type="checkbox"
-                  data-osc-relative="${oscillator.index}"
-                  ${oscillator.relativeToVoice ? "checked" : ""}
-                >
-                <span>${oscillator.relativeToVoice ? "Track Voice Root" : "Use Absolute Hz"}</span>
-              </label>
-            </div>
-
-            <div class="robin-voice-osc__knobs">
-              <label class="field field--compact">
-                <span>Level</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value="${oscillator.gain}"
-                  data-osc-gain="${oscillator.index}"
-                >
-                <output>${Number(oscillator.gain).toFixed(2)}</output>
-              </label>
-
-              <label class="field field--compact">
-                <span>${oscillator.relativeToVoice ? "Ratio" : "Frequency"}</span>
-                <input
-                  type="range"
-                  min="${oscillator.relativeToVoice ? "0.01" : "20"}"
-                  max="${oscillator.relativeToVoice ? "8" : "20000"}"
-                  step="${oscillator.relativeToVoice ? "0.01" : "1"}"
-                  value="${oscillator.frequencyValue}"
-                  data-osc-frequency="${oscillator.index}"
-                >
-                <output>${formatOscillatorFrequencyLabel(oscillator)}</output>
-              </label>
-            </div>
-          </div>
-        </section>
-      `,
-    )
-    .join("");
+  sections.forEach((section, index) => {
+    syncMasterOscillatorSection(section, oscillators[index]);
+  });
 
   bindOscillatorControls();
   ensureRotaryControls(elements.oscillatorRows);
@@ -3525,7 +3834,7 @@ function setLinkedOscillatorParamFast(oscillatorIndex, field, value) {
       applyRobinMasterOscillatorUpdate(numericOscillatorIndex, field, value);
     },
     rerender: () => {
-      refreshRobinMasterOscillatorUi(field);
+      refreshRobinMasterOscillatorUi(numericOscillatorIndex);
     },
   });
 }
@@ -3611,47 +3920,66 @@ function bindOutputMixerControls() {
 }
 
 function bindVoiceControls() {
-  document.querySelectorAll("[data-voice-active]").forEach((input) => {
-    input.addEventListener("change", () => {
-      const voiceIndex = Number(input.dataset.voiceActive);
-      setParamTemp(`sources.robin.voice.${voiceIndex}.active`, input.checked, {
-        applyLocalState: () => {
-          applyRobinVoiceUpdate(voiceIndex, "active", input.checked);
-        },
-        rerender: () => {
-          renderVoices();
-        },
-      });
-    });
-  });
-
-  document.querySelectorAll("[data-voice-select]").forEach((button) => {
-    button.addEventListener("click", () => {
-      selectedRobinVoiceIndex = Number(button.dataset.voiceSelect);
-      renderVoices();
-    });
-  });
-
-  document.querySelectorAll("[data-voice-linked]").forEach((input) => {
-    input.addEventListener("change", () => {
-      const voiceIndex = Number(input.dataset.voiceLinked);
-      if (!input.checked) {
-        selectedRobinVoiceIndex = voiceIndex;
+  if (elements.voicesGrid && elements.voicesGrid.dataset.bound !== "true") {
+    elements.voicesGrid.addEventListener("click", (event) => {
+      const button = event.target instanceof Element ? event.target.closest("[data-voice-select]") : null;
+      if (!(button instanceof HTMLButtonElement)) {
+        return;
       }
-      setParamTemp(`sources.robin.voice.${voiceIndex}.linkedToMaster`, input.checked, {
-        applyLocalState: () => {
-          applyRobinVoiceUpdate(voiceIndex, "linkedToMaster", input.checked);
-        },
-        rerender: () => {
-          renderRobinLinkState();
-          renderVoices();
-        },
-      });
-    });
-  });
 
-  document.querySelectorAll("[data-voice-reset-master]").forEach((button) => {
-    button.addEventListener("click", () => {
+      const previousSelectedVoiceIndex = getSelectedRobinVoice()?.index ?? null;
+      selectedRobinVoiceIndex = Number(button.dataset.voiceSelect);
+      syncRobinVoiceSelectionUi(previousSelectedVoiceIndex);
+    });
+
+    elements.voicesGrid.addEventListener("change", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) {
+        return;
+      }
+
+      if (target.dataset.voiceActive != null) {
+        const voiceIndex = Number(target.dataset.voiceActive);
+        setParamTemp(`sources.robin.voice.${voiceIndex}.active`, target.checked, {
+          applyLocalState: () => {
+            applyRobinVoiceUpdate(voiceIndex, "active", target.checked);
+          },
+          rerender: () => {
+            renderRobinLinkState();
+            syncRobinVoiceRowByIndex(voiceIndex);
+          },
+        });
+        return;
+      }
+
+      if (target.dataset.voiceLinked != null) {
+        const voiceIndex = Number(target.dataset.voiceLinked);
+        const previousSelectedVoiceIndex = getSelectedRobinVoice()?.index ?? null;
+        if (!target.checked) {
+          selectedRobinVoiceIndex = voiceIndex;
+        }
+        setParamTemp(`sources.robin.voice.${voiceIndex}.linkedToMaster`, target.checked, {
+          applyLocalState: () => {
+            applyRobinVoiceUpdate(voiceIndex, "linkedToMaster", target.checked);
+          },
+          rerender: () => {
+            renderRobinLinkState();
+            syncRobinVoiceSelectionUi(previousSelectedVoiceIndex, [voiceIndex]);
+          },
+        });
+      }
+    });
+
+    elements.voicesGrid.dataset.bound = "true";
+  }
+
+  if (elements.selectedVoiceEditor && elements.selectedVoiceEditor.dataset.bound !== "true") {
+    elements.selectedVoiceEditor.addEventListener("click", (event) => {
+      const button = event.target instanceof Element ? event.target.closest("[data-voice-reset-master]") : null;
+      if (!(button instanceof HTMLButtonElement)) {
+        return;
+      }
+
       const voiceIndex = Number(button.dataset.voiceResetMaster);
       const voice = getRobin()?.voices?.[voiceIndex];
       if (!voice) {
@@ -3663,214 +3991,214 @@ function bindVoiceControls() {
           cloneMasterStateToVoiceUi(voice);
         },
         rerender: () => {
-          renderVoices();
+          syncRobinVoiceRowByIndex(voiceIndex);
+          syncSelectedVoiceEditorByIndex(voiceIndex);
         },
       });
     });
-  });
 
-  document.querySelectorAll("[data-voice-frequency]").forEach((input) => {
-    const output = input.parentElement.querySelector("output");
-    input.addEventListener("input", () => {
-      const nextValue = Number(input.value);
-      output.textContent = `${Math.round(nextValue)} Hz`;
-      setParamTempLive(
-        `sources.robin.voice.${input.dataset.voiceFrequency}.frequency`,
-        nextValue,
-        () => {
-          applyRobinVoiceUpdate(Number(input.dataset.voiceFrequency), "frequency", nextValue);
-        },
-      );
-    });
-  });
+    elements.selectedVoiceEditor.addEventListener("change", (event) => {
+      const target = event.target;
 
-  document.querySelectorAll("[data-voice-gain]").forEach((input) => {
-    const output = input.parentElement.querySelector("output");
-    input.addEventListener("input", () => {
-      const nextValue = Number(input.value);
-      output.textContent = nextValue.toFixed(2);
-      setParamTempLive(
-        `sources.robin.voice.${input.dataset.voiceGain}.gain`,
-        nextValue,
-        () => {
-          applyRobinVoiceUpdate(Number(input.dataset.voiceGain), "gain", nextValue);
-        },
-      );
-    });
-  });
-
-  document.querySelectorAll("[data-voice-vcf]").forEach((input) => {
-    const output = input.parentElement.querySelector("output");
-    input.addEventListener("input", () => {
-      const [voiceIndex, field] = input.dataset.voiceVcf.split(":");
-      const numericVoiceIndex = Number(voiceIndex);
-      const nextValue = Number(input.value);
-      output.textContent = field === "cutoffHz"
-        ? `${Math.round(nextValue)} Hz`
-        : nextValue.toFixed(2);
-      setParamTempLive(`sources.robin.voice.${voiceIndex}.vcf.${field}`, nextValue, () => {
-        applyRobinVoiceVcfUpdate(numericVoiceIndex, field, nextValue);
-      });
-    });
-  });
-
-  document.querySelectorAll("[data-voice-env-vcf]").forEach((input) => {
-    const output = input.parentElement.querySelector("output");
-    input.addEventListener("input", () => {
-      const [voiceIndex, field] = input.dataset.voiceEnvVcf.split(":");
-      const numericVoiceIndex = Number(voiceIndex);
-      const nextValue = Number(input.value);
-      output.textContent = field === "sustain" || field === "amount"
-        ? nextValue.toFixed(2)
-        : `${Math.round(nextValue)} ms`;
-      setParamTempLive(`sources.robin.voice.${voiceIndex}.envVcf.${field}`, nextValue, () => {
-        applyRobinVoiceEnvVcfUpdate(numericVoiceIndex, field, nextValue);
-      });
-    });
-  });
-
-  document.querySelectorAll("[data-voice-envelope]").forEach((input) => {
-    const output = input.parentElement.querySelector("output");
-    input.addEventListener("input", () => {
-      const [voiceIndex, field] = input.dataset.voiceEnvelope.split(":");
-      const numericVoiceIndex = Number(voiceIndex);
-      const nextValue = Number(input.value);
-      output.textContent = field === "sustain"
-        ? nextValue.toFixed(2)
-        : `${Math.round(nextValue)} ms`;
-      setParamTempLive(`sources.robin.voice.${voiceIndex}.envelope.${field}`, nextValue, () => {
-        applyRobinVoiceEnvelopeUpdate(numericVoiceIndex, field, nextValue);
-      });
-    });
-  });
-
-  document.querySelectorAll("[data-voice-osc-enabled]").forEach((input) => {
-    input.addEventListener("change", () => {
-      const key = parseVoiceOscillatorKey(input.dataset.voiceOscEnabled);
-      if (!key) {
-        return;
-      }
-      setParamTemp(`sources.robin.voice.${key.voiceIndex}.oscillator.${key.oscillatorIndex}.enabled`, input.checked, {
-        applyLocalState: () => {
-          applyRobinVoiceOscillatorUpdate(key.voiceIndex, key.oscillatorIndex, "enabled", input.checked);
-        },
-      });
-    });
-  });
-
-  document.querySelectorAll("[data-voice-osc-waveform]").forEach((select) => {
-    select.addEventListener("change", () => {
-      const key = parseVoiceOscillatorKey(select.dataset.voiceOscWaveform);
-      if (!key) {
-        return;
-      }
-      setParamTemp(`sources.robin.voice.${key.voiceIndex}.oscillator.${key.oscillatorIndex}.waveform`, select.value, {
-        applyLocalState: () => {
-          applyRobinVoiceOscillatorUpdate(key.voiceIndex, key.oscillatorIndex, "waveform", select.value);
-        },
-      });
-    });
-  });
-
-  document.querySelectorAll("[data-voice-osc-relative]").forEach((input) => {
-    input.addEventListener("change", () => {
-      const key = parseVoiceOscillatorKey(input.dataset.voiceOscRelative);
-      if (!key) {
-        return;
-      }
-      setParamTemp(`sources.robin.voice.${key.voiceIndex}.oscillator.${key.oscillatorIndex}.relative`, input.checked, {
-        applyLocalState: () => {
-          applyRobinVoiceOscillatorUpdate(key.voiceIndex, key.oscillatorIndex, "relative", input.checked);
-        },
-        rerender: () => {
-          renderVoices();
-        },
-      });
-    });
-  });
-
-  document.querySelectorAll("[data-voice-osc-gain]").forEach((input) => {
-    const output = input.parentElement.querySelector("output");
-    input.addEventListener("input", () => {
-      const key = parseVoiceOscillatorKey(input.dataset.voiceOscGain);
-      if (!key) {
-        return;
-      }
-      const nextValue = Number(input.value);
-      output.textContent = nextValue.toFixed(2);
-      setParamTempLive(`sources.robin.voice.${key.voiceIndex}.oscillator.${key.oscillatorIndex}.gain`, nextValue, () => {
-        applyRobinVoiceOscillatorUpdate(key.voiceIndex, key.oscillatorIndex, "gain", nextValue);
-      });
-    });
-  });
-
-  document.querySelectorAll("[data-voice-osc-frequency]").forEach((input) => {
-    const output = input.parentElement.querySelector("output");
-    input.addEventListener("input", () => {
-      const key = parseVoiceOscillatorKey(input.dataset.voiceOscFrequency);
-      if (!key) {
+      if (target instanceof HTMLInputElement && target.dataset.voiceOscEnabled != null) {
+        const key = parseVoiceOscillatorKey(target.dataset.voiceOscEnabled);
+        if (!key) {
+          return;
+        }
+        setParamTemp(`sources.robin.voice.${key.voiceIndex}.oscillator.${key.oscillatorIndex}.enabled`, target.checked, {
+          applyLocalState: () => {
+            applyRobinVoiceOscillatorUpdate(key.voiceIndex, key.oscillatorIndex, "enabled", target.checked);
+          },
+          rerender: () => {
+            syncRobinVoiceRowByIndex(key.voiceIndex);
+            syncSelectedVoiceEditorByIndex(key.voiceIndex);
+          },
+        });
         return;
       }
 
-      const oscillator = getRobin()?.voices?.[key.voiceIndex]?.oscillators?.[key.oscillatorIndex];
-      if (!oscillator) {
+      if (target instanceof HTMLSelectElement && target.dataset.voiceOscWaveform != null) {
+        const key = parseVoiceOscillatorKey(target.dataset.voiceOscWaveform);
+        if (!key) {
+          return;
+        }
+        setParamTemp(`sources.robin.voice.${key.voiceIndex}.oscillator.${key.oscillatorIndex}.waveform`, target.value, {
+          applyLocalState: () => {
+            applyRobinVoiceOscillatorUpdate(key.voiceIndex, key.oscillatorIndex, "waveform", target.value);
+          },
+        });
         return;
       }
 
-      const nextValue = Number(input.value);
-      output.textContent = oscillator.relativeToVoice
-        ? `${nextValue.toFixed(2)}x voice root`
-        : `${Math.round(nextValue)} Hz`;
-      setParamTempLive(`sources.robin.voice.${key.voiceIndex}.oscillator.${key.oscillatorIndex}.frequency`, nextValue, () => {
-        applyRobinVoiceOscillatorUpdate(key.voiceIndex, key.oscillatorIndex, "frequency", nextValue);
-      });
+      if (target instanceof HTMLInputElement && target.dataset.voiceOscRelative != null) {
+        const key = parseVoiceOscillatorKey(target.dataset.voiceOscRelative);
+        if (!key) {
+          return;
+        }
+        setParamTemp(`sources.robin.voice.${key.voiceIndex}.oscillator.${key.oscillatorIndex}.relative`, target.checked, {
+          applyLocalState: () => {
+            applyRobinVoiceOscillatorUpdate(key.voiceIndex, key.oscillatorIndex, "relative", target.checked);
+          },
+          rerender: () => {
+            syncSelectedVoiceEditorByIndex(key.voiceIndex);
+          },
+        });
+      }
     });
-  });
+
+    elements.selectedVoiceEditor.addEventListener("input", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) {
+        return;
+      }
+
+      const output = target.parentElement?.querySelector("output");
+
+      if (target.dataset.voiceFrequency != null) {
+        const nextValue = Number(target.value);
+        setTextContent(output, `${Math.round(nextValue)} Hz`);
+        setParamTempLive(`sources.robin.voice.${target.dataset.voiceFrequency}.frequency`, nextValue, () => {
+          applyRobinVoiceUpdate(Number(target.dataset.voiceFrequency), "frequency", nextValue);
+        });
+        return;
+      }
+
+      if (target.dataset.voiceGain != null) {
+        const nextValue = Number(target.value);
+        setTextContent(output, nextValue.toFixed(2));
+        setParamTempLive(`sources.robin.voice.${target.dataset.voiceGain}.gain`, nextValue, () => {
+          applyRobinVoiceUpdate(Number(target.dataset.voiceGain), "gain", nextValue);
+        });
+        return;
+      }
+
+      if (target.dataset.voiceVcf != null) {
+        const [voiceIndex, field] = target.dataset.voiceVcf.split(":");
+        const numericVoiceIndex = Number(voiceIndex);
+        const nextValue = Number(target.value);
+        setTextContent(output, field === "cutoffHz" ? `${Math.round(nextValue)} Hz` : nextValue.toFixed(2));
+        setParamTempLive(`sources.robin.voice.${voiceIndex}.vcf.${field}`, nextValue, () => {
+          applyRobinVoiceVcfUpdate(numericVoiceIndex, field, nextValue);
+        });
+        return;
+      }
+
+      if (target.dataset.voiceEnvVcf != null) {
+        const [voiceIndex, field] = target.dataset.voiceEnvVcf.split(":");
+        const numericVoiceIndex = Number(voiceIndex);
+        const nextValue = Number(target.value);
+        setTextContent(output, field === "sustain" || field === "amount"
+          ? nextValue.toFixed(2)
+          : `${Math.round(nextValue)} ms`);
+        setParamTempLive(`sources.robin.voice.${voiceIndex}.envVcf.${field}`, nextValue, () => {
+          applyRobinVoiceEnvVcfUpdate(numericVoiceIndex, field, nextValue);
+        });
+        return;
+      }
+
+      if (target.dataset.voiceEnvelope != null) {
+        const [voiceIndex, field] = target.dataset.voiceEnvelope.split(":");
+        const numericVoiceIndex = Number(voiceIndex);
+        const nextValue = Number(target.value);
+        setTextContent(output, field === "sustain" ? nextValue.toFixed(2) : `${Math.round(nextValue)} ms`);
+        setParamTempLive(`sources.robin.voice.${voiceIndex}.envelope.${field}`, nextValue, () => {
+          applyRobinVoiceEnvelopeUpdate(numericVoiceIndex, field, nextValue);
+        });
+        return;
+      }
+
+      if (target.dataset.voiceOscGain != null) {
+        const key = parseVoiceOscillatorKey(target.dataset.voiceOscGain);
+        if (!key) {
+          return;
+        }
+        const nextValue = Number(target.value);
+        setTextContent(output, nextValue.toFixed(2));
+        setParamTempLive(`sources.robin.voice.${key.voiceIndex}.oscillator.${key.oscillatorIndex}.gain`, nextValue, () => {
+          applyRobinVoiceOscillatorUpdate(key.voiceIndex, key.oscillatorIndex, "gain", nextValue);
+        });
+        return;
+      }
+
+      if (target.dataset.voiceOscFrequency != null) {
+        const key = parseVoiceOscillatorKey(target.dataset.voiceOscFrequency);
+        if (!key) {
+          return;
+        }
+
+        const oscillator = getRobin()?.voices?.[key.voiceIndex]?.oscillators?.[key.oscillatorIndex];
+        if (!oscillator) {
+          return;
+        }
+
+        const nextValue = Number(target.value);
+        setTextContent(output, oscillator.relativeToVoice
+          ? `${nextValue.toFixed(2)}x voice root`
+          : `${Math.round(nextValue)} Hz`);
+        setParamTempLive(`sources.robin.voice.${key.voiceIndex}.oscillator.${key.oscillatorIndex}.frequency`, nextValue, () => {
+          applyRobinVoiceOscillatorUpdate(key.voiceIndex, key.oscillatorIndex, "frequency", nextValue);
+        });
+      }
+    });
+
+    elements.selectedVoiceEditor.dataset.bound = "true";
+  }
 }
 
 function bindOscillatorControls() {
-  document.querySelectorAll("[data-osc-enabled]").forEach((input) => {
-    input.addEventListener("change", () => {
-      setLinkedOscillatorParamFast(input.dataset.oscEnabled, "enabled", input.checked);
-    });
+  if (!elements.oscillatorRows || elements.oscillatorRows.dataset.bound === "true") {
+    return;
+  }
+
+  elements.oscillatorRows.addEventListener("change", (event) => {
+    const target = event.target;
+
+    if (target instanceof HTMLInputElement && target.dataset.oscEnabled != null) {
+      setLinkedOscillatorParamFast(target.dataset.oscEnabled, "enabled", target.checked);
+      return;
+    }
+
+    if (target instanceof HTMLSelectElement && target.dataset.oscWaveform != null) {
+      setLinkedOscillatorParamFast(target.dataset.oscWaveform, "waveform", target.value);
+      return;
+    }
+
+    if (target instanceof HTMLInputElement && target.dataset.oscRelative != null) {
+      setLinkedOscillatorParamFast(target.dataset.oscRelative, "relative", target.checked);
+    }
   });
 
-  document.querySelectorAll("[data-osc-waveform]").forEach((select) => {
-    select.addEventListener("change", () => {
-      setLinkedOscillatorParamFast(select.dataset.oscWaveform, "waveform", select.value);
-    });
-  });
+  elements.oscillatorRows.addEventListener("input", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) {
+      return;
+    }
 
-  document.querySelectorAll("[data-osc-relative]").forEach((input) => {
-    input.addEventListener("change", () => {
-      setLinkedOscillatorParamFast(input.dataset.oscRelative, "relative", input.checked);
-    });
-  });
+    const output = target.parentElement?.querySelector("output");
 
-  document.querySelectorAll("[data-osc-gain]").forEach((input) => {
-    const output = input.parentElement.querySelector("output");
-    input.addEventListener("input", () => {
-      const nextValue = Number(input.value);
-      output.textContent = nextValue.toFixed(2);
-      setLinkedOscillatorParamFast(input.dataset.oscGain, "gain", nextValue);
-    });
-  });
+    if (target.dataset.oscGain != null) {
+      const nextValue = Number(target.value);
+      setTextContent(output, nextValue.toFixed(2));
+      setLinkedOscillatorParamFast(target.dataset.oscGain, "gain", nextValue);
+      return;
+    }
 
-  document.querySelectorAll("[data-osc-frequency]").forEach((input) => {
-    const output = input.parentElement.querySelector("output");
-    input.addEventListener("input", () => {
-      const oscillatorIndex = Number(input.dataset.oscFrequency);
+    if (target.dataset.oscFrequency != null) {
+      const oscillatorIndex = Number(target.dataset.oscFrequency);
       const oscillator = getRobinMasterOscillators()[oscillatorIndex];
       if (!oscillator) {
         return;
       }
 
-      output.textContent = oscillator.relativeToVoice
-        ? `${Number(input.value).toFixed(2)}x voice root`
-        : `${Math.round(Number(input.value))} Hz`;
-      setLinkedOscillatorParamFast(input.dataset.oscFrequency, "frequency", Number(input.value));
-    });
+      const nextValue = Number(target.value);
+      setTextContent(output, oscillator.relativeToVoice
+        ? `${nextValue.toFixed(2)}x voice root`
+        : `${Math.round(nextValue)} Hz`);
+      setLinkedOscillatorParamFast(target.dataset.oscFrequency, "frequency", nextValue);
+    }
   });
+
+  elements.oscillatorRows.dataset.bound = "true";
 }
 
 function bindMidiDeviceControls() {

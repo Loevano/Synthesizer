@@ -114,6 +114,29 @@ enum class RoutingPreset {
     Custom,
 };
 
+struct RobinStateSnapshot {
+    std::vector<VoiceState> voices;
+    std::vector<OscillatorState> masterOscillators;
+    RobinPitchState pitch;
+    LfoState lfo;
+    RoutingPreset routingPreset = RoutingPreset::Forward;
+    EnvelopeState envelope;
+    float masterVoiceGain = 1.0f;
+    RobinVcfState vcf;
+    RobinEnvVcfState envVcf;
+    std::array<RobinSpreadSlot, 6> spreadSlots {{
+        {false, RobinSpreadTarget::VcfCutoff, RobinSpreadAlgorithm::Linear, 0.0f, 0.0f, 0.0f, 17},
+        {false, RobinSpreadTarget::OscDetune, RobinSpreadAlgorithm::Random, 0.0f, 0.0f, 0.0f, 37},
+        {false, RobinSpreadTarget::AmpRelease, RobinSpreadAlgorithm::Alternating, 0.0f, 0.0f, 0.0f, 73},
+        {false, RobinSpreadTarget::OscLevel, RobinSpreadAlgorithm::Linear, 0.0f, 0.0f, 0.0f, 101},
+        {false, RobinSpreadTarget::EnvVcfAmount, RobinSpreadAlgorithm::Random, 0.0f, 0.0f, 0.0f, 131},
+        {false, RobinSpreadTarget::AmpAttack, RobinSpreadAlgorithm::Alternating, 0.0f, 0.0f, 0.0f, 167},
+    }};
+    float baseFrequencyHz = 400.0f;
+    std::uint32_t oscillatorsPerVoice = 6;
+    std::uint32_t outputChannelCount = 2;
+};
+
 class Robin final : public Instrument {
 public:
     Robin() = default;
@@ -158,6 +181,8 @@ public:
     void appendStateJson(std::ostringstream& json) const override;
     bool implemented() const override;
     bool playable() const override;
+    RobinStateSnapshot stateSnapshot() const;
+    void applyStateSnapshot(const RobinStateSnapshot& state);
 
     audio::Synth& synth();
     const audio::Synth& synth() const;

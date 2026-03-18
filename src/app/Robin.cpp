@@ -357,7 +357,6 @@ RealtimeParamResult Robin::tryBuildRealtimeNumericCommand(const std::vector<std:
                                                           RealtimeCommand& command,
                                                           std::string* errorMessage) const {
     if ((parts.size() == 1 && parts[0] == "lfo")
-        || (parts.size() == 1 && parts[0] == "frequency")
         || (parts.size() == 1 && parts[0] == "gain")) {
         return RealtimeParamResult::NotHandled;
     }
@@ -439,6 +438,13 @@ RealtimeParamResult Robin::tryBuildRealtimeNumericCommand(const std::vector<std:
     if (parts.size() == 3 && parts[0] == "sources" && parts[1] == "robin" && parts[2] == "gain") {
         command.type = RealtimeCommandType::RobinMasterGain;
         command.value = static_cast<float>(std::clamp(value, 0.0, 1.0));
+        return RealtimeParamResult::Applied;
+    }
+
+    if ((parts.size() == 1 && parts[0] == "frequency")
+        || (parts.size() == 3 && parts[0] == "sources" && parts[1] == "robin" && parts[2] == "frequency")) {
+        command.type = RealtimeCommandType::RobinMasterFrequency;
+        command.value = static_cast<float>(std::clamp(value, 20.0, 20000.0));
         return RealtimeParamResult::Applied;
     }
 
@@ -527,6 +533,22 @@ RealtimeParamResult Robin::tryBuildRealtimeNumericCommand(const std::vector<std:
                 *errorMessage = "Invalid voice index.";
             }
             return RealtimeParamResult::Failed;
+        }
+
+        if (parts.size() == 5 && parts[4] == "active") {
+            command.type = RealtimeCommandType::RobinVoiceActive;
+            command.value = value >= 0.5 ? 1.0f : 0.0f;
+            return RealtimeParamResult::Applied;
+        }
+        if (parts.size() == 5 && parts[4] == "linkedToMaster") {
+            command.type = RealtimeCommandType::RobinVoiceLinkedToMaster;
+            command.value = value >= 0.5 ? 1.0f : 0.0f;
+            return RealtimeParamResult::Applied;
+        }
+        if (parts.size() == 5 && parts[4] == "resetToMasterState") {
+            command.type = RealtimeCommandType::RobinVoiceResetToMasterState;
+            command.value = value >= 0.5 ? 1.0f : 0.0f;
+            return RealtimeParamResult::Applied;
         }
 
         if (parts.size() == 5 && parts[4] == "frequency") {
@@ -653,6 +675,25 @@ RealtimeParamResult Robin::tryBuildRealtimeNumericCommand(const std::vector<std:
         }
     }
 
+    if (parts.size() == 6 && parts[0] == "sources" && parts[1] == "robin" && parts[2] == "voice" && parts[4] == "output") {
+        if (!tryParseIndex(parts[3], command.index) || command.index >= voices_.size()) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "Invalid voice index.";
+            }
+            return RealtimeParamResult::Failed;
+        }
+        if (!tryParseIndex(parts[5], command.subIndex) || command.subIndex >= voices_[command.index].outputs.size()) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "Invalid output index.";
+            }
+            return RealtimeParamResult::Failed;
+        }
+
+        command.type = RealtimeCommandType::RobinVoiceOutputEnabled;
+        command.value = value >= 0.5 ? 1.0f : 0.0f;
+        return RealtimeParamResult::Applied;
+    }
+
     return RealtimeParamResult::NotHandled;
 }
 
@@ -693,6 +734,21 @@ RealtimeParamResult Robin::tryBuildRealtimeStringCommand(const std::vector<std::
             command.code = static_cast<std::uint32_t>(algorithm);
             return RealtimeParamResult::Applied;
         }
+    }
+
+    if ((parts.size() == 1 && parts[0] == "routingPreset")
+        || (parts.size() == 3 && parts[0] == "sources" && parts[1] == "robin" && parts[2] == "routingPreset")) {
+        RoutingPreset preset;
+        if (!tryParseRoutingPreset(value, preset)) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "Invalid routing preset.";
+            }
+            return RealtimeParamResult::Failed;
+        }
+
+        command.type = RealtimeCommandType::RobinRoutingPreset;
+        command.code = static_cast<std::uint32_t>(preset);
+        return RealtimeParamResult::Applied;
     }
 
     if ((parts.size() == 2 && parts[0] == "lfo" && parts[1] == "waveform")
@@ -791,7 +847,9 @@ bool Robin::handlesRealtimeCommand(RealtimeCommandType type) const {
         case RealtimeCommandType::RobinMasterEnvelopeDecayMs:
         case RealtimeCommandType::RobinMasterEnvelopeSustain:
         case RealtimeCommandType::RobinMasterEnvelopeReleaseMs:
+        case RealtimeCommandType::RobinMasterFrequency:
         case RealtimeCommandType::RobinMasterGain:
+        case RealtimeCommandType::RobinRoutingPreset:
         case RealtimeCommandType::RobinTransposeSemitones:
         case RealtimeCommandType::RobinFineTuneCents:
         case RealtimeCommandType::RobinSpreadEnabled:
@@ -801,6 +859,10 @@ bool Robin::handlesRealtimeCommand(RealtimeCommandType type) const {
         case RealtimeCommandType::RobinSpreadStart:
         case RealtimeCommandType::RobinSpreadEnd:
         case RealtimeCommandType::RobinSpreadSeed:
+        case RealtimeCommandType::RobinVoiceActive:
+        case RealtimeCommandType::RobinVoiceLinkedToMaster:
+        case RealtimeCommandType::RobinVoiceResetToMasterState:
+        case RealtimeCommandType::RobinVoiceOutputEnabled:
         case RealtimeCommandType::RobinVoiceGain:
         case RealtimeCommandType::RobinVoiceFrequency:
         case RealtimeCommandType::RobinVoiceVcfCutoffHz:
@@ -875,6 +937,14 @@ void Robin::applyRealtimeCommand(const RealtimeCommand& command) {
         case RealtimeCommandType::RobinMasterGain:
             masterVoiceGain_ = std::clamp(command.value, 0.0f, 1.0f);
             syncLinkedVoices(false, kSyncGain);
+            break;
+        case RealtimeCommandType::RobinMasterFrequency:
+            setBaseFrequency(command.value);
+            break;
+        case RealtimeCommandType::RobinRoutingPreset:
+            routingPreset_ = static_cast<RoutingPreset>(command.code);
+            resetRoutingState();
+            syncAllVoices();
             break;
         case RealtimeCommandType::RobinMasterVcfCutoffHz:
             vcfState_.cutoffHz = std::clamp(command.value, 20.0f, 20000.0f);
@@ -984,6 +1054,41 @@ void Robin::applyRealtimeCommand(const RealtimeCommand& command) {
             }
             spreadSlots_[command.index].seed = static_cast<std::uint32_t>(std::clamp(command.value, 1.0f, 9999.0f));
             syncLinkedVoices(false, spreadTargetSyncMask(spreadSlots_[command.index].target));
+            break;
+        case RealtimeCommandType::RobinVoiceActive:
+            if (command.index >= voices_.size()) {
+                return;
+            }
+            voices_[command.index].active = command.value >= 0.5f;
+            syncAllVoices();
+            break;
+        case RealtimeCommandType::RobinVoiceLinkedToMaster:
+            if (command.index >= voices_.size()) {
+                return;
+            }
+            voices_[command.index].linkedToMaster = command.value >= 0.5f;
+            syncAllVoices();
+            break;
+        case RealtimeCommandType::RobinVoiceResetToMasterState:
+            if (command.index >= voices_.size() || command.value < 0.5f) {
+                return;
+            }
+            copyMasterStateToVoice(voices_[command.index]);
+            if (!voices_[command.index].linkedToMaster) {
+                syncVoiceState(command.index);
+            }
+            break;
+        case RealtimeCommandType::RobinVoiceOutputEnabled:
+            if (command.index >= voices_.size() || command.subIndex >= voices_[command.index].outputs.size()) {
+                return;
+            }
+            voices_[command.index].outputs[command.subIndex] = command.value >= 0.5f;
+            routingPreset_ = RoutingPreset::Custom;
+            resetRoutingState();
+            sourceNode_.synth().setVoiceOutputEnabled(
+                command.index,
+                command.subIndex,
+                voices_[command.index].outputs[command.subIndex]);
             break;
         case RealtimeCommandType::RobinVoiceFrequency:
             if (command.index >= voices_.size() || voices_[command.index].linkedToMaster) {
@@ -1333,6 +1438,73 @@ bool Robin::implemented() const {
 
 bool Robin::playable() const {
     return true;
+}
+
+RobinStateSnapshot Robin::stateSnapshot() const {
+    RobinStateSnapshot state;
+    state.voices = voices_;
+    state.masterOscillators = masterOscillators_;
+    state.pitch = pitchState_;
+    state.lfo = lfoState_;
+    state.routingPreset = routingPreset_;
+    state.envelope = envelopeState_;
+    state.masterVoiceGain = masterVoiceGain_;
+    state.vcf = vcfState_;
+    state.envVcf = envVcfState_;
+    state.spreadSlots = spreadSlots_;
+    state.baseFrequencyHz = baseFrequencyHz_;
+    state.oscillatorsPerVoice = oscillatorsPerVoice_;
+    state.outputChannelCount = outputChannelCount_;
+    return state;
+}
+
+void Robin::applyStateSnapshot(const RobinStateSnapshot& state) {
+    const std::uint32_t voiceCount = std::max<std::uint32_t>(
+        1u,
+        static_cast<std::uint32_t>(std::max<std::size_t>(1u, state.voices.size())));
+    const std::uint32_t oscillatorCount = std::max<std::uint32_t>(1u, state.oscillatorsPerVoice);
+    const std::uint32_t outputCount = std::max<std::uint32_t>(1u, state.outputChannelCount);
+
+    configureStructure(voiceCount, oscillatorCount, outputCount);
+
+    pitchState_ = state.pitch;
+    lfoState_ = state.lfo;
+    routingPreset_ = state.routingPreset;
+    envelopeState_ = state.envelope;
+    masterVoiceGain_ = std::clamp(state.masterVoiceGain, 0.0f, 1.0f);
+    vcfState_ = state.vcf;
+    envVcfState_ = state.envVcf;
+    spreadSlots_ = state.spreadSlots;
+    baseFrequencyHz_ = std::clamp(state.baseFrequencyHz, 20.0f, 20000.0f);
+
+    const std::size_t masterOscillatorCount = std::min(masterOscillators_.size(), state.masterOscillators.size());
+    for (std::size_t oscillatorIndex = 0; oscillatorIndex < masterOscillatorCount; ++oscillatorIndex) {
+        masterOscillators_[oscillatorIndex] = state.masterOscillators[oscillatorIndex];
+    }
+
+    const std::size_t voiceCountToCopy = std::min(voices_.size(), state.voices.size());
+    for (std::size_t voiceIndex = 0; voiceIndex < voiceCountToCopy; ++voiceIndex) {
+        voices_[voiceIndex] = state.voices[voiceIndex];
+    }
+
+    for (std::uint32_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
+        auto& voice = voices_[voiceIndex];
+        voice.outputs.resize(outputCount, false);
+        if (std::none_of(voice.outputs.begin(), voice.outputs.end(), [](bool enabled) { return enabled; })
+            && !voice.outputs.empty()) {
+            voice.outputs[voiceIndex % voice.outputs.size()] = true;
+        }
+        voice.oscillators.resize(oscillatorCount);
+    }
+
+    sourceNode_.synth().clearNotes();
+    voiceAssignments_.clear();
+    voiceReleaseUntil_.assign(voices_.size(), std::chrono::steady_clock::time_point::min());
+    nextVoiceCursor_ = 0;
+    autoActivatedVoice0_ = false;
+    resetRoutingState();
+    syncLfo();
+    syncAllVoices();
 }
 
 audio::Synth& Robin::synth() {

@@ -46,6 +46,8 @@ public:
 
     void resizeOutputs(std::uint32_t outputCount);
     std::uint32_t outputCount() const;
+    const TestSourceState& state() const;
+    void applyState(const TestSourceState& state);
 
 private:
     static void assignDefaultOutputs(std::vector<bool>& outputs);

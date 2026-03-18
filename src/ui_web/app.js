@@ -290,6 +290,21 @@ const elements = {
   robinLinkNote: document.getElementById("robinLinkNote"),
   robinPerformanceMacros: document.getElementById("robinPerformanceMacros"),
   robinSpreadSlots: document.getElementById("robinSpreadSlots"),
+  robinDebugMacros: document.getElementById("robinDebugMacros"),
+  robinDebugOsc: document.getElementById("robinDebugOsc"),
+  robinDebugEnvVcf: document.getElementById("robinDebugEnvVcf"),
+  robinDebugAmp: document.getElementById("robinDebugAmp"),
+  robinDebugVcf: document.getElementById("robinDebugVcf"),
+  robinDebugLfo: document.getElementById("robinDebugLfo"),
+  robinDebugSpread: document.getElementById("robinDebugSpread"),
+  robinDebugVoiceEditor: document.getElementById("robinDebugVoiceEditor"),
+  robinMasterMacrosModule: document.getElementById("robinMasterMacrosModule"),
+  robinMasterOscModule: document.getElementById("robinMasterOscModule"),
+  robinMasterEnvVcfModule: document.getElementById("robinMasterEnvVcfModule"),
+  robinMasterAmpModule: document.getElementById("robinMasterAmpModule"),
+  robinMasterVcfModule: document.getElementById("robinMasterVcfModule"),
+  robinMasterLfoModule: document.getElementById("robinMasterLfoModule"),
+  robinMasterSpreadModule: document.getElementById("robinMasterSpreadModule"),
   testActive: document.getElementById("testActive"),
   testMidiEnabled: document.getElementById("testMidiEnabled"),
   testFrequency: document.getElementById("testFrequency"),
@@ -350,6 +365,17 @@ let liveParamFrameHandle = null;
 let activeRangeInput = null;
 let hasDeferredRender = false;
 let selectedRobinVoiceIndex = null;
+let expandedRobinSpreadSlotIndex = 0;
+const robinDebugModuleVisibility = {
+  macros: true,
+  osc: true,
+  envVcf: true,
+  amp: true,
+  vcf: true,
+  lfo: true,
+  spread: true,
+  voiceEditor: true,
+};
 
 function getEngine() {
   return state?.engine ?? null;
@@ -1029,6 +1055,60 @@ function updateStateView() {
     return;
   }
   elements.stateView.textContent = state ? JSON.stringify(state, null, 2) : "";
+}
+
+function applyRobinDebugVisibility() {
+  if (elements.robinMasterMacrosModule) {
+    elements.robinMasterMacrosModule.hidden = !robinDebugModuleVisibility.macros;
+  }
+  if (elements.robinMasterOscModule) {
+    elements.robinMasterOscModule.hidden = !robinDebugModuleVisibility.osc;
+  }
+  if (elements.robinMasterEnvVcfModule) {
+    elements.robinMasterEnvVcfModule.hidden = !robinDebugModuleVisibility.envVcf;
+  }
+  if (elements.robinMasterAmpModule) {
+    elements.robinMasterAmpModule.hidden = !robinDebugModuleVisibility.amp;
+  }
+  if (elements.robinMasterVcfModule) {
+    elements.robinMasterVcfModule.hidden = !robinDebugModuleVisibility.vcf;
+  }
+  if (elements.robinMasterLfoModule) {
+    elements.robinMasterLfoModule.hidden = !robinDebugModuleVisibility.lfo;
+  }
+  if (elements.robinMasterSpreadModule) {
+    elements.robinMasterSpreadModule.hidden = !robinDebugModuleVisibility.spread;
+  }
+  if (elements.selectedVoiceEditor) {
+    elements.selectedVoiceEditor.hidden = !robinDebugModuleVisibility.voiceEditor;
+  }
+}
+
+function bindRobinDebugControls() {
+  const debugControls = [
+    ["macros", elements.robinDebugMacros],
+    ["osc", elements.robinDebugOsc],
+    ["envVcf", elements.robinDebugEnvVcf],
+    ["amp", elements.robinDebugAmp],
+    ["vcf", elements.robinDebugVcf],
+    ["lfo", elements.robinDebugLfo],
+    ["spread", elements.robinDebugSpread],
+    ["voiceEditor", elements.robinDebugVoiceEditor],
+  ];
+
+  debugControls.forEach(([key, input]) => {
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
+
+    input.checked = robinDebugModuleVisibility[key];
+    input.addEventListener("change", () => {
+      robinDebugModuleVisibility[key] = input.checked;
+      applyRobinDebugVisibility();
+    });
+  });
+
+  applyRobinDebugVisibility();
 }
 
 function drainQueuedParam(path) {
@@ -2732,42 +2812,71 @@ function renderRobinPerformanceMacros() {
     elements.robinPerformanceMacros.innerHTML = "";
     return;
   }
+  let macroCards = Array.from(elements.robinPerformanceMacros.querySelectorAll("[data-robin-macro-slot]"));
+  if (macroCards.length !== spreadSlots.length) {
+    elements.robinPerformanceMacros.innerHTML = spreadSlots
+      .map((_, slotIndex) => `
+        <label class="field field--compact robin-performance-macro" data-robin-macro-slot="${slotIndex}">
+          <span>Macro ${slotIndex + 1}</span>
+          <small data-robin-macro-target></small>
+          <input
+            type="range"
+            data-control-style="linear"
+            min="0"
+            max="1"
+            step="0.01"
+            data-robin-macro-depth="${slotIndex}"
+          >
+          <output data-robin-macro-output></output>
+        </label>
+      `)
+      .join("");
+    macroCards = Array.from(elements.robinPerformanceMacros.querySelectorAll("[data-robin-macro-slot]"));
+  }
 
-  elements.robinPerformanceMacros.innerHTML = spreadSlots
-    .map((slot, slotIndex) => `
-      <label class="field field--compact robin-performance-macro">
-        <span>Macro ${slotIndex + 1}</span>
-        <small>${getRobinSpreadTargetConfig(slot.target).label}</small>
-        <input
-          type="range"
-          data-control-style="linear"
-          min="0"
-          max="1"
-          step="0.01"
-          value="${slot.depth}"
-          data-robin-macro-depth="${slotIndex}"
-        >
-        <output>${Math.round(Number(slot.depth) * 100)}%</output>
-      </label>
-    `)
-    .join("");
+  macroCards.forEach((card, slotIndex) => {
+    const slot = spreadSlots[slotIndex];
+    const target = card.querySelector("[data-robin-macro-target]");
+    const input = card.querySelector("[data-robin-macro-depth]");
+    const output = card.querySelector("[data-robin-macro-output]");
+
+    if (target) {
+      target.textContent = getRobinSpreadTargetConfig(slot.target).label;
+    }
+    if (input instanceof HTMLInputElement) {
+      input.value = String(slot.depth);
+    }
+    if (output) {
+      output.textContent = `${Math.round(Number(slot.depth) * 100)}%`;
+    }
+  });
 
   bindRobinPerformanceMacros();
-  ensureRotaryControls(elements.robinPerformanceMacros);
 }
 
 function bindRobinPerformanceMacros() {
-  document.querySelectorAll("[data-robin-macro-depth]").forEach((input) => {
-    const output = input.parentElement.querySelector("output");
-    input.addEventListener("input", () => {
-      const slotIndex = Number(input.dataset.robinMacroDepth);
-      const nextValue = Number(input.value);
+  if (!elements.robinPerformanceMacros || elements.robinPerformanceMacros.dataset.bound === "true") {
+    return;
+  }
+
+  elements.robinPerformanceMacros.addEventListener("input", (event) => {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement) || input.dataset.robinMacroDepth == null) {
+      return;
+    }
+
+    const output = input.parentElement?.querySelector("[data-robin-macro-output]");
+    const slotIndex = Number(input.dataset.robinMacroDepth);
+    const nextValue = Number(input.value);
+    if (output) {
       output.textContent = `${Math.round(nextValue * 100)}%`;
-      setParamTempLive(`sources.robin.spread.${slotIndex}.depth`, nextValue, () => {
-        applyRobinSpreadSlotUpdate(slotIndex, "depth", nextValue);
-      });
+    }
+    setParamTempLive(`sources.robin.spread.${slotIndex}.depth`, nextValue, () => {
+      applyRobinSpreadSlotUpdate(slotIndex, "depth", nextValue);
     });
   });
+
+  elements.robinPerformanceMacros.dataset.bound = "true";
 }
 
 function renderRobinSpreadSlots() {
@@ -2781,189 +2890,281 @@ function renderRobinSpreadSlots() {
     return;
   }
 
-  elements.robinSpreadSlots.innerHTML = spreadSlots
-    .map((slot, slotIndex) => {
-      const targetConfig = getRobinSpreadTargetConfig(slot.target);
-      const seedField = slot.algorithm === "random"
-        ? `
-          <label class="field field--compact robin-spread-slot__field robin-spread-slot__field--seed">
-            <span>Seed</span>
-            <input
-              type="range"
-              data-control-style="linear"
-              min="1"
-              max="9999"
-              step="1"
-              value="${slot.seed}"
-              data-robin-spread-seed="${slotIndex}"
-            >
-            <output>${Math.round(Number(slot.seed))}</output>
-          </label>
-        `
-        : "";
+  if (expandedRobinSpreadSlotIndex >= spreadSlots.length) {
+    expandedRobinSpreadSlotIndex = 0;
+  }
+  let slotSections = Array.from(elements.robinSpreadSlots.querySelectorAll("[data-robin-spread-slot]"));
+  if (slotSections.length !== spreadSlots.length) {
+    const targetOptions = Object.entries(ROBIN_SPREAD_TARGET_CONFIG)
+      .map(([value, config]) => `<option value="${value}">${config.label}</option>`)
+      .join("");
+    const algorithmOptions = Object.entries(ROBIN_SPREAD_ALGORITHM_LABELS)
+      .map(([value, label]) => `<option value="${value}">${label}</option>`)
+      .join("");
 
-      return `
-        <section class="robin-spread-slot ${slot.enabled ? "is-enabled" : ""}">
-          <div class="robin-voice-module__header">
-            <h4>Spread ${slotIndex + 1}</h4>
+    elements.robinSpreadSlots.innerHTML = spreadSlots
+      .map((_, slotIndex) => `
+        <section class="robin-spread-slot" data-robin-spread-slot="${slotIndex}">
+          <div class="robin-spread-slot__topline">
+            <button
+              type="button"
+              class="robin-spread-slot__toggle"
+              data-robin-spread-open="${slotIndex}"
+              aria-expanded="false"
+            >
+              <span>Spread ${slotIndex + 1}</span>
+              <small data-robin-spread-summary></small>
+            </button>
             <label class="toggle-pill">
               <input
                 type="checkbox"
                 data-robin-spread-enabled="${slotIndex}"
-                ${slot.enabled ? "checked" : ""}
               >
               <span>Enabled</span>
             </label>
           </div>
 
-          <div class="robin-spread-slot__selectors">
-            <label class="field field--compact">
-              <span>Target</span>
-              <select data-robin-spread-target="${slotIndex}">
-                ${Object.entries(ROBIN_SPREAD_TARGET_CONFIG)
-                  .map(([value, config]) => `<option value="${value}" ${slot.target === value ? "selected" : ""}>${config.label}</option>`)
-                  .join("")}
-              </select>
-            </label>
+          <div class="robin-spread-slot__body" data-robin-spread-body hidden>
+            <div class="robin-spread-slot__selectors">
+              <label class="field field--compact">
+                <span>Target</span>
+                <select data-robin-spread-target="${slotIndex}">
+                  ${targetOptions}
+                </select>
+              </label>
 
-            <label class="field field--compact">
-              <span>Algorithm</span>
-              <select data-robin-spread-algorithm="${slotIndex}">
-                ${Object.entries(ROBIN_SPREAD_ALGORITHM_LABELS)
-                  .map(([value, label]) => `<option value="${value}" ${slot.algorithm === value ? "selected" : ""}>${label}</option>`)
-                  .join("")}
-              </select>
-            </label>
+              <label class="field field--compact">
+                <span>Algorithm</span>
+                <select data-robin-spread-algorithm="${slotIndex}">
+                  ${algorithmOptions}
+                </select>
+              </label>
+            </div>
+
+            <div class="robin-spread-slot__range-grid">
+              <label class="field field--compact robin-spread-slot__field">
+                <span>Start</span>
+                <input
+                  type="range"
+                  data-control-style="linear"
+                  data-robin-spread-start="${slotIndex}"
+                >
+                <output data-robin-spread-start-output></output>
+              </label>
+
+              <label class="field field--compact robin-spread-slot__field">
+                <span>End</span>
+                <input
+                  type="range"
+                  data-control-style="linear"
+                  data-robin-spread-end="${slotIndex}"
+                >
+                <output data-robin-spread-end-output></output>
+              </label>
+
+              <label class="field field--compact robin-spread-slot__field robin-spread-slot__field--seed" data-robin-spread-seed-field>
+                <span>Seed</span>
+                <input
+                  type="range"
+                  data-control-style="linear"
+                  min="1"
+                  max="9999"
+                  step="1"
+                  data-robin-spread-seed="${slotIndex}"
+                >
+                <output data-robin-spread-seed-output></output>
+              </label>
+            </div>
+
+            <p class="robin-spread-slot__copy" data-robin-spread-copy></p>
           </div>
-
-          <div class="robin-spread-slot__range-grid">
-            <label class="field field--compact robin-spread-slot__field">
-              <span>Start</span>
-              <input
-                type="range"
-                data-control-style="linear"
-                min="${targetConfig.min}"
-                max="${targetConfig.max}"
-                step="${targetConfig.step}"
-                value="${slot.start}"
-                data-robin-spread-start="${slotIndex}"
-              >
-              <output>${formatRobinSpreadValue(slot.target, slot.start)}</output>
-            </label>
-
-            <label class="field field--compact robin-spread-slot__field">
-              <span>End</span>
-              <input
-                type="range"
-                data-control-style="linear"
-                min="${targetConfig.min}"
-                max="${targetConfig.max}"
-                step="${targetConfig.step}"
-                value="${slot.end}"
-                data-robin-spread-end="${slotIndex}"
-              >
-              <output>${formatRobinSpreadValue(slot.target, slot.end)}</output>
-            </label>
-
-            ${seedField}
-          </div>
-
-          <p class="robin-spread-slot__copy">
-            Linked voices stay on the master template, then receive ${targetConfig.label.toLowerCase()} offsets by linked
-            voice order. Use Macro ${slotIndex + 1} above to control this slot's depth.
-          </p>
         </section>
-      `;
-    })
-    .join("");
+      `)
+      .join("");
+    slotSections = Array.from(elements.robinSpreadSlots.querySelectorAll("[data-robin-spread-slot]"));
+  }
+
+  slotSections.forEach((section, slotIndex) => {
+    const slot = spreadSlots[slotIndex];
+    const isOpen = slotIndex === expandedRobinSpreadSlotIndex;
+    const targetConfig = getRobinSpreadTargetConfig(slot.target);
+    const summary = section.querySelector("[data-robin-spread-summary]");
+    const toggle = section.querySelector("[data-robin-spread-open]");
+    const enabled = section.querySelector("[data-robin-spread-enabled]");
+    const body = section.querySelector("[data-robin-spread-body]");
+    const target = section.querySelector("[data-robin-spread-target]");
+    const algorithm = section.querySelector("[data-robin-spread-algorithm]");
+    const start = section.querySelector("[data-robin-spread-start]");
+    const startOutput = section.querySelector("[data-robin-spread-start-output]");
+    const end = section.querySelector("[data-robin-spread-end]");
+    const endOutput = section.querySelector("[data-robin-spread-end-output]");
+    const seedField = section.querySelector("[data-robin-spread-seed-field]");
+    const seed = section.querySelector("[data-robin-spread-seed]");
+    const seedOutput = section.querySelector("[data-robin-spread-seed-output]");
+    const copy = section.querySelector("[data-robin-spread-copy]");
+
+    section.classList.toggle("is-enabled", slot.enabled);
+    section.classList.toggle("is-open", isOpen);
+    if (summary) {
+      summary.textContent = `${targetConfig.label} · ${ROBIN_SPREAD_ALGORITHM_LABELS[slot.algorithm]}`;
+    }
+    if (toggle instanceof HTMLButtonElement) {
+      toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    }
+    if (enabled instanceof HTMLInputElement) {
+      enabled.checked = slot.enabled;
+    }
+    if (body instanceof HTMLElement) {
+      body.hidden = !isOpen;
+    }
+    if (target instanceof HTMLSelectElement) {
+      target.value = slot.target;
+    }
+    if (algorithm instanceof HTMLSelectElement) {
+      algorithm.value = slot.algorithm;
+    }
+    if (start instanceof HTMLInputElement) {
+      start.min = String(targetConfig.min);
+      start.max = String(targetConfig.max);
+      start.step = String(targetConfig.step);
+      start.value = String(slot.start);
+    }
+    if (startOutput) {
+      startOutput.textContent = formatRobinSpreadValue(slot.target, slot.start);
+    }
+    if (end instanceof HTMLInputElement) {
+      end.min = String(targetConfig.min);
+      end.max = String(targetConfig.max);
+      end.step = String(targetConfig.step);
+      end.value = String(slot.end);
+    }
+    if (endOutput) {
+      endOutput.textContent = formatRobinSpreadValue(slot.target, slot.end);
+    }
+    if (seedField instanceof HTMLElement) {
+      seedField.hidden = slot.algorithm !== "random";
+    }
+    if (seed instanceof HTMLInputElement) {
+      seed.value = String(slot.seed);
+    }
+    if (seedOutput) {
+      seedOutput.textContent = String(Math.round(Number(slot.seed)));
+    }
+    if (copy) {
+      copy.textContent =
+        `Linked voices stay on the master template, then receive ${targetConfig.label.toLowerCase()} offsets by linked voice order. Use Macro ${slotIndex + 1} above to control this slot's depth.`;
+    }
+  });
 
   bindRobinSpreadControls();
-  ensureRotaryControls(elements.robinSpreadSlots);
 }
 
 function bindRobinSpreadControls() {
-  document.querySelectorAll("[data-robin-spread-enabled]").forEach((input) => {
-    input.addEventListener("change", () => {
-      const slotIndex = Number(input.dataset.robinSpreadEnabled);
-      setParamTemp(`sources.robin.spread.${slotIndex}.enabled`, input.checked, {
+  if (!elements.robinSpreadSlots || elements.robinSpreadSlots.dataset.bound === "true") {
+    return;
+  }
+
+  elements.robinSpreadSlots.addEventListener("click", (event) => {
+    const button = event.target instanceof Element ? event.target.closest("[data-robin-spread-open]") : null;
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    expandedRobinSpreadSlotIndex = Number(button.dataset.robinSpreadOpen);
+    renderRobinSpreadSlots();
+  });
+
+  elements.robinSpreadSlots.addEventListener("change", (event) => {
+    const target = event.target;
+
+    if (target instanceof HTMLInputElement && target.dataset.robinSpreadEnabled != null) {
+      const slotIndex = Number(target.dataset.robinSpreadEnabled);
+      setParamTemp(`sources.robin.spread.${slotIndex}.enabled`, target.checked, {
         applyLocalState: () => {
-          applyRobinSpreadSlotUpdate(slotIndex, "enabled", input.checked);
+          applyRobinSpreadSlotUpdate(slotIndex, "enabled", target.checked);
+        },
+        rerender: () => {
+          renderRobinSpreadSlots();
+        },
+      });
+      return;
+    }
+
+    if (target instanceof HTMLSelectElement && target.dataset.robinSpreadTarget != null) {
+      const slotIndex = Number(target.dataset.robinSpreadTarget);
+      setParamTemp(`sources.robin.spread.${slotIndex}.target`, target.value, {
+        applyLocalState: () => {
+          applyRobinSpreadSlotUpdate(slotIndex, "target", target.value);
         },
         rerender: () => {
           renderRobinPerformanceMacros();
           renderRobinSpreadSlots();
         },
       });
-    });
-  });
+      return;
+    }
 
-  document.querySelectorAll("[data-robin-spread-target]").forEach((select) => {
-    select.addEventListener("change", () => {
-      const slotIndex = Number(select.dataset.robinSpreadTarget);
-      setParamTemp(`sources.robin.spread.${slotIndex}.target`, select.value, {
+    if (target instanceof HTMLSelectElement && target.dataset.robinSpreadAlgorithm != null) {
+      const slotIndex = Number(target.dataset.robinSpreadAlgorithm);
+      setParamTemp(`sources.robin.spread.${slotIndex}.algorithm`, target.value, {
         applyLocalState: () => {
-          applyRobinSpreadSlotUpdate(slotIndex, "target", select.value);
+          applyRobinSpreadSlotUpdate(slotIndex, "algorithm", target.value);
         },
         rerender: () => {
-          renderRobinPerformanceMacros();
           renderRobinSpreadSlots();
         },
       });
-    });
+    }
   });
 
-  document.querySelectorAll("[data-robin-spread-algorithm]").forEach((select) => {
-    select.addEventListener("change", () => {
-      const slotIndex = Number(select.dataset.robinSpreadAlgorithm);
-      setParamTemp(`sources.robin.spread.${slotIndex}.algorithm`, select.value, {
-        applyLocalState: () => {
-          applyRobinSpreadSlotUpdate(slotIndex, "algorithm", select.value);
-        },
-        rerender: () => {
-          renderRobinPerformanceMacros();
-          renderRobinSpreadSlots();
-        },
-      });
-    });
-  });
+  elements.robinSpreadSlots.addEventListener("input", (event) => {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
 
-  document.querySelectorAll("[data-robin-spread-start]").forEach((input) => {
-    const output = input.parentElement.querySelector("output");
-    input.addEventListener("input", () => {
+    if (input.dataset.robinSpreadStart != null) {
       const slotIndex = Number(input.dataset.robinSpreadStart);
       const target = getRobinSpreadSlots()[slotIndex]?.target ?? "vcf-cutoff";
       const nextValue = Number(input.value);
-      output.textContent = formatRobinSpreadValue(target, nextValue);
+      const output = input.parentElement?.querySelector("[data-robin-spread-start-output]");
+      if (output) {
+        output.textContent = formatRobinSpreadValue(target, nextValue);
+      }
       setParamTempLive(`sources.robin.spread.${slotIndex}.start`, nextValue, () => {
         applyRobinSpreadSlotUpdate(slotIndex, "start", nextValue);
       });
-    });
-  });
+      return;
+    }
 
-  document.querySelectorAll("[data-robin-spread-end]").forEach((input) => {
-    const output = input.parentElement.querySelector("output");
-    input.addEventListener("input", () => {
+    if (input.dataset.robinSpreadEnd != null) {
       const slotIndex = Number(input.dataset.robinSpreadEnd);
       const target = getRobinSpreadSlots()[slotIndex]?.target ?? "vcf-cutoff";
       const nextValue = Number(input.value);
-      output.textContent = formatRobinSpreadValue(target, nextValue);
+      const output = input.parentElement?.querySelector("[data-robin-spread-end-output]");
+      if (output) {
+        output.textContent = formatRobinSpreadValue(target, nextValue);
+      }
       setParamTempLive(`sources.robin.spread.${slotIndex}.end`, nextValue, () => {
         applyRobinSpreadSlotUpdate(slotIndex, "end", nextValue);
       });
-    });
-  });
+      return;
+    }
 
-  document.querySelectorAll("[data-robin-spread-seed]").forEach((input) => {
-    const output = input.parentElement.querySelector("output");
-    input.addEventListener("input", () => {
+    if (input.dataset.robinSpreadSeed != null) {
       const slotIndex = Number(input.dataset.robinSpreadSeed);
       const nextValue = Number(input.value);
-      output.textContent = String(Math.round(nextValue));
+      const output = input.parentElement?.querySelector("[data-robin-spread-seed-output]");
+      if (output) {
+        output.textContent = String(Math.round(nextValue));
+      }
       setParamTempLive(`sources.robin.spread.${slotIndex}.seed`, nextValue, () => {
         applyRobinSpreadSlotUpdate(slotIndex, "seed", nextValue);
       });
-    });
+    }
   });
+
+  elements.robinSpreadSlots.dataset.bound = "true";
 }
 
 function renderDecorOutputGrid() {
@@ -3188,6 +3389,7 @@ function applyStateToUi(nextState) {
   renderRobinPerformanceMacros();
   renderOscillators();
   renderRobinSpreadSlots();
+  applyRobinDebugVisibility();
   renderTestSource();
   renderDecorOutputGrid();
   renderFxOutputGrid();
@@ -3719,6 +3921,8 @@ function bindTestOutputControls() {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  bindRobinDebugControls();
+
   document.addEventListener(
     "pointerdown",
     (event) => {

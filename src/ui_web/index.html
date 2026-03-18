@@ -245,6 +245,54 @@
         </p>
       </div>
 
+      <div class="panel panel-intro robin-debug-panel">
+        <div class="panel-header">
+          <div>
+            <p class="section-kicker">Debug</p>
+            <h2>A/B Modules</h2>
+          </div>
+          <span class="status-tag">Local Only</span>
+        </div>
+        <p class="note">
+          Use these temporary toggles to hide Robin UI sections and narrow down where the slowdown lives. They do not
+          touch synth state.
+        </p>
+        <div class="robin-debug-toggle-grid">
+          <label class="toggle-pill">
+            <input id="robinDebugMacros" type="checkbox" checked>
+            <span>Macros</span>
+          </label>
+          <label class="toggle-pill">
+            <input id="robinDebugOsc" type="checkbox" checked>
+            <span>OSC Bank</span>
+          </label>
+          <label class="toggle-pill">
+            <input id="robinDebugEnvVcf" type="checkbox" checked>
+            <span>ENV VCF</span>
+          </label>
+          <label class="toggle-pill">
+            <input id="robinDebugAmp" type="checkbox" checked>
+            <span>AMP</span>
+          </label>
+          <label class="toggle-pill">
+            <input id="robinDebugVcf" type="checkbox" checked>
+            <span>VCF</span>
+          </label>
+          <label class="toggle-pill">
+            <input id="robinDebugLfo" type="checkbox" checked>
+            <span>LFO Panel</span>
+          </label>
+          <label class="toggle-pill">
+            <input id="robinDebugSpread" type="checkbox" checked>
+            <span>Spread</span>
+          </label>
+          <label class="toggle-pill">
+            <input id="robinDebugVoiceEditor" type="checkbox" checked>
+            <span>Voice Editor</span>
+          </label>
+        </div>
+      </div>
+
       <article class="panel panel--wide robin-voice-editor robin-master-editor">
         <div class="panel-header">
           <div>
@@ -313,7 +361,7 @@
             </div>
           </section>
 
-          <section class="robin-voice-module robin-master-layout__macros">
+          <section id="robinMasterMacrosModule" class="robin-voice-module robin-master-layout__macros">
             <div class="robin-voice-module__header">
               <h3>Performance Macros</h3>
               <span>Mapped to spread depth</span>
@@ -325,7 +373,7 @@
             <div id="robinPerformanceMacros" class="robin-performance-macro-grid"></div>
           </section>
 
-          <section class="robin-voice-module robin-master-layout__osc">
+          <section id="robinMasterOscModule" class="robin-voice-module robin-master-layout__osc">
             <div class="robin-voice-module__header">
               <h3>OSC Bank</h3>
               <span>Master oscillators</span>
@@ -333,7 +381,7 @@
             <div id="oscillatorRows" class="robin-voice-osc-grid robin-master-osc-grid"></div>
           </section>
 
-          <section class="robin-voice-module robin-voice-module--env robin-voice-module--env-vcf robin-master-layout__env-vcf">
+          <section id="robinMasterEnvVcfModule" class="robin-voice-module robin-voice-module--env robin-voice-module--env-vcf robin-master-layout__env-vcf">
             <div class="robin-voice-module__header">
               <h3>ENV VCF</h3>
               <span>Filter contour</span>
@@ -372,7 +420,7 @@
             </div>
           </section>
 
-          <section class="robin-voice-module robin-voice-module--env robin-voice-module--amp robin-master-layout__amp">
+          <section id="robinMasterAmpModule" class="robin-voice-module robin-voice-module--env robin-voice-module--amp robin-master-layout__amp">
             <div class="robin-voice-module__header">
               <h3>AMP</h3>
               <span>ENV VCA</span>
@@ -405,7 +453,7 @@
             </div>
           </section>
 
-          <section class="robin-voice-module robin-master-layout__vcf">
+          <section id="robinMasterVcfModule" class="robin-voice-module robin-master-layout__vcf">
             <div class="robin-voice-module__header">
               <h3>VCF</h3>
               <span>Cutoff and resonance</span>
@@ -426,7 +474,7 @@
             </div>
           </section>
 
-          <section class="robin-voice-module robin-voice-module--planned robin-master-layout__lfo">
+          <section id="robinMasterLfoModule" class="robin-voice-module robin-voice-module--planned robin-master-layout__lfo">
             <div class="robin-voice-module__header">
               <h3>LFOs</h3>
               <span>Reserved motion space</span>
@@ -443,7 +491,7 @@
             </div>
           </section>
 
-          <section class="robin-voice-module robin-master-layout__modulation">
+          <section id="robinMasterSpreadModule" class="robin-voice-module robin-master-layout__modulation">
             <div class="robin-voice-module__header">
               <h3>Modulation</h3>
               <span>Linked voice spread</span>
@@ -457,13 +505,14 @@
         </div>
       </article>
 
-      <article class="panel panel--wide robin-model-panel">
-        <div class="panel-header">
+      <details class="panel panel--wide robin-model-panel">
+        <summary class="robin-disclosure__summary">
           <div>
             <p class="section-kicker">Control Model</p>
             <h2>Master, Modulate, Override</h2>
           </div>
-        </div>
+          <span class="status-tag">Reference</span>
+        </summary>
         <div class="robin-section-grid">
           <article class="robin-section-card robin-section-card--live">
             <div class="robin-section-card__header">
@@ -517,7 +566,7 @@
             </div>
           </article>
         </div>
-      </article>
+      </details>
 
       <div class="panel panel-intro">
         <div class="panel-header">

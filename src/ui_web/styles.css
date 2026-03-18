@@ -350,12 +350,23 @@ h3 {
   cursor: grab;
   touch-action: none;
   outline: none;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    radial-gradient(circle at center, var(--text) 0 10px, transparent 10.5px),
+    linear-gradient(180deg, rgba(28, 39, 47, 0.96), rgba(13, 18, 23, 0.96));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -6px 14px rgba(0, 0, 0, 0.22),
+    0 10px 20px rgba(0, 0, 0, 0.2);
 }
 
-.rotary:focus-visible .rotary__dial {
+.rotary:focus-visible {
   box-shadow:
     0 0 0 1px rgba(239, 190, 92, 0.5),
     0 0 0 5px rgba(239, 190, 92, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -6px 14px rgba(0, 0, 0, 0.22),
     0 10px 20px rgba(0, 0, 0, 0.2);
 }
 
@@ -364,25 +375,13 @@ h3 {
   opacity: 0.45;
 }
 
-.rotary__dial {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: linear-gradient(180deg, rgba(28, 39, 47, 0.96), rgba(13, 18, 23, 0.96));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    inset 0 -6px 14px rgba(0, 0, 0, 0.22),
-    0 10px 20px rgba(0, 0, 0, 0.2);
-}
-
-.rotary__ring {
+.rotary::before {
+  content: "";
   position: absolute;
   inset: 6px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.06);
-  background: none;
+  pointer-events: none;
 }
 
 .rotary__indicator {
@@ -404,14 +403,6 @@ h3 {
   border-radius: 999px;
   background: var(--text);
   transform: translateX(-50%);
-}
-
-.rotary__cap {
-  position: absolute;
-  inset: 24px;
-  border-radius: 50%;
-  background: var(--text);
-  z-index: 1;
 }
 
 input[type="range"],

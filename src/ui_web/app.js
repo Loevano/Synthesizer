@@ -837,23 +837,24 @@ function dispatchRotaryInput(input, nextValue, { commit = false } = {}) {
 }
 
 function syncRotaryControl(input) {
-  const wrapper = input.nextElementSibling;
+  const wrapper = input._rotaryWrapper;
   if (!(wrapper instanceof HTMLElement) || !wrapper.classList.contains("rotary")) {
     return;
   }
 
   const ratio = valueToRatio(input);
   const angle = (-135 + (ratio * 270)).toFixed(2);
-  const output = input.parentElement?.querySelector("output");
-  const label = input.parentElement?.querySelector("span");
+  const output = wrapper._rotaryOutput;
+  const label = wrapper._rotaryLabel;
+  const metrics = getRangeMetrics(input);
 
   wrapper.style.setProperty("--rotary-angle", `${angle}deg`);
   wrapper.style.setProperty("--rotary-ratio", ratio.toFixed(4));
   wrapper.classList.toggle("is-disabled", input.disabled);
   wrapper.setAttribute("aria-valuenow", String(input.value));
   wrapper.setAttribute("aria-valuetext", output?.textContent?.trim() ?? String(input.value));
-  wrapper.setAttribute("aria-valuemin", String(getRangeMetrics(input).min));
-  wrapper.setAttribute("aria-valuemax", String(getRangeMetrics(input).max));
+  wrapper.setAttribute("aria-valuemin", String(metrics.min));
+  wrapper.setAttribute("aria-valuemax", String(metrics.max));
   if (label?.textContent) {
     wrapper.setAttribute("aria-label", label.textContent.trim());
   }
@@ -868,13 +869,10 @@ function createRotaryControl(input) {
   wrapper.className = "rotary";
   wrapper.tabIndex = input.disabled ? -1 : 0;
   wrapper.setAttribute("role", "slider");
-  wrapper.innerHTML = `
-    <div class="rotary__dial">
-      <div class="rotary__ring"></div>
-      <div class="rotary__indicator"></div>
-      <div class="rotary__cap"></div>
-    </div>
-  `;
+  wrapper.innerHTML = `<div class="rotary__indicator"></div>`;
+  wrapper._rotaryOutput = input.parentElement?.querySelector("output") ?? null;
+  wrapper._rotaryLabel = input.parentElement?.querySelector("span") ?? null;
+  input._rotaryWrapper = wrapper;
 
   input.insertAdjacentElement("afterend", wrapper);
 
@@ -993,9 +991,11 @@ function ensureRotaryControls(root = document) {
       createRotaryControl(input);
     }
 
-    const wrapper = input.nextElementSibling;
+    const wrapper = input._rotaryWrapper;
     if (wrapper instanceof HTMLElement && wrapper.classList.contains("rotary")) {
       wrapper.tabIndex = input.disabled ? -1 : 0;
+      wrapper._rotaryOutput = input.parentElement?.querySelector("output") ?? null;
+      wrapper._rotaryLabel = input.parentElement?.querySelector("span") ?? null;
     }
     syncRotaryControl(input);
   });

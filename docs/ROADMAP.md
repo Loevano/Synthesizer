@@ -186,3 +186,129 @@ Scope:
 5. Implement `Decor`.
 6. Implement `Pieces`.
 7. Add preset/state persistence once the state shape settles further.
+
+
+Yes, I think we should split the idea in two.
+
+For Robin:
+
+keep spread as a light, coherent variation layer on top of the master
+spread across linked + enabled voices
+use voice order, not output order
+do not replace values, only offset or scale them
+For Decor:
+
+put the heavier “every output/voice is its own decorated variation” logic there
+that is where stronger divergence, decorrelation, and one-voice-per-output behavior belongs
+So my recommendation is:
+
+Robin logic
+
+A spread modulator only affects linked voices.
+Unlinked voices ignore spread completely.
+If linked voices are 1, 2, 5, 8, they become the spread set in that order.
+The spread position is computed over that linked set only.
+Master stays the baseline.
+Effective value is:
+additive params: master + offset
+multiplicative/time params: master * ratio
+That preserves your original intent:
+
+dial in one master sound
+add controlled diversity on top
+still move the whole set with the master
+What is being spread
+For Robin, spread should mean:
+
+a static per-voice distribution function
+not a time LFO yet
+recomputed when:
+master value changes
+spread settings change
+voice link/enabled state changes
+voice count changes
+So first version is cheap CPU-wise.
+
+How to control spread
+I would not start with “any parameter can be modulated by anything”.
+That becomes a matrix too early.
+
+Better:
+
+use a small number of spread slots
+each slot targets one parameter from a curated list
+So:
+
+flexible enough to assign
+not fully open-ended
+easier to understand and implement
+Good first target list
+
+VCF Cutoff
+VCF Resonance
+ENV VCF Amount
+ENV VCF Attack
+ENV VCF Decay
+ENV VCF Release
+AMP Attack
+AMP Decay
+AMP Release
+Osc Level
+Osc Detune
+I would avoid waveform spread for now.
+
+Good first algorithms
+
+Linear
+Random
+Alternating
+maybe Center-Out
+Best parameter model
+Each slot has:
+
+Enabled
+Target
+Algorithm
+Start
+End
+Seed for random only
+Then:
+
+Linear: interpolate from start to end
+Random: stable random value between start and end per linked voice
+Alternating: alternate between start and end
+Center-Out: distribute symmetrically from center
+Important: start and end are not absolute values.
+They are offsets or ratios on top of the master.
+
+Examples:
+
+cutoff: use musical units, not raw Hz
+detune: cents
+envelope times: ratio or percent, not raw milliseconds offset
+resonance: small additive offset
+level: dB or gain ratio
+Robin vs Decor
+I agree with your instinct:
+
+Robin should stay “one coherent instrument with optional variation”
+Decor should become “speaker-decorrelated distributed texture”
+So:
+
+light spread belongs in Robin
+strong per-output individuality belongs in Decor
+My concrete recommendation:
+
+Implement Robin spread as static linked-voice offsets.
+Use 2-4 assignable spread slots.
+Limit targets to a curated list.
+Leave output-index decorrelation for Decor.
+That is the cleanest first version.
+
+If you agree, I’d implement Robin stage 1 like this:
+
+3 spread slots
+targets from a curated list
+algorithms: Linear, Random, Alternating
+applies only to linked enabled voices
+offsets/ratios on top of master, never absolute replacement

@@ -99,6 +99,7 @@ struct MidiSourceRouteState {
     bool pieces = false;
 };
 
+// Main class that controlls all processes.
 class SynthController {
 public:
     explicit SynthController(
@@ -106,7 +107,7 @@ public:
         std::unique_ptr<interfaces::IAudioDriver> driver = {});
     ~SynthController();
 
-    bool initialize();
+    bool initialize(); // 
     bool startAudio();
     void stopAudio();
     bool isRunning() const;

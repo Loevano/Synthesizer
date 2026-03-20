@@ -65,6 +65,34 @@ constexpr const char* kBridgeScript = R"JS(
       return request("savePatch", payload);
     }
   };
+
+  const sendClientError = (kind, payload) => {
+    try {
+      window.webkit.messageHandlers.synth.postMessage({
+        requestId: 0,
+        type: kind,
+        payload,
+      });
+    } catch (error) {
+      // Keep the page alive even if the native bridge is unavailable.
+    }
+  };
+
+  window.addEventListener("error", (event) => {
+    sendClientError("jsError", {
+      message: event.message || "Unknown JS error",
+      source: event.filename || "",
+      line: event.lineno || 0,
+      column: event.colno || 0,
+    });
+  });
+
+  window.addEventListener("unhandledrejection", (event) => {
+    const reason = event.reason instanceof Error
+      ? (event.reason.stack || event.reason.message)
+      : String(event.reason || "Unknown rejection");
+    sendClientError("jsRejection", { message: reason });
+  });
 })();
 )JS";
 
@@ -230,6 +258,32 @@ void applyLaunchArgumentsToEnvironment(int argc, const char* argv[]) {
     }
 }
 
+std::string buildBridgeResponseScript(NSInteger requestId,
+                                      BOOL ok,
+                                      const std::string& payloadJson,
+                                      const std::string& errorMessage) {
+    std::string script;
+    script.reserve(96 + payloadJson.size() + errorMessage.size());
+
+    script += "window.__synthNativeReceive(";
+    script += std::to_string(static_cast<long long>(requestId));
+    script += ", ";
+    script += ok ? "true" : "false";
+    script += ", ";
+    script += ok ? payloadJson : "null";
+    script += ", ";
+    if (ok) {
+        script += "null";
+    } else {
+        script += "\"";
+        script += escapeJavaScriptString(errorMessage);
+        script += "\"";
+    }
+    script += ");";
+
+    return script;
+}
+
 }  // namespace
 
 static void handleUncaughtNsException(NSException* exception) {
@@ -246,8 +300,10 @@ static void handleUncaughtNsException(NSException* exception) {
     NSWindow* window_;
     WKWebView* webView_;
     std::unique_ptr<synth::app::SynthController> controller_;
+    dispatch_queue_t bridgeQueue_;
     BOOL debugBridge_;
     BOOL debugCrash_;
+    BOOL debugUi_;
 }
 
 - (std::filesystem::path)resolvedPatchDirectoryUsingProjectDirectory:(BOOL*)usingProjectDirectory {
@@ -416,32 +472,39 @@ static void handleUncaughtNsException(NSException* exception) {
                   ok:(BOOL)ok
               payload:(const std::string&)payloadJson
                error:(const std::string&)errorMessage {
-    if (webView_ == nil) {
+    const std::string script = buildBridgeResponseScript(requestId, ok, payloadJson, errorMessage);
+    NSString* source = [[NSString alloc] initWithBytes:script.data()
+                                                length:script.size()
+                                              encoding:NSUTF8StringEncoding];
+    if (source == nil) {
+        if (controller_ != nullptr) {
+            controller_->logger().error("Bridge response encoding failed.");
+        }
         return;
     }
 
-    std::string script = "window.__synthNativeReceive(" + std::to_string(static_cast<long long>(requestId)) + ", "
-        + (ok ? "true" : "false") + ", ";
-    script += ok ? payloadJson : "null";
-    script += ", ";
-    script += ok ? "null" : ("\"" + escapeJavaScriptString(errorMessage) + "\"");
-    script += ");";
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (webView_ == nil) {
+            return;
+        }
 
-    NSString* source = [NSString stringWithUTF8String:script.c_str()];
-    [webView_ evaluateJavaScript:source
-               completionHandler:^(id result, NSError* error) {
-                   (void)result;
-                   if (error != nil && controller_ != nullptr) {
-                       controller_->logger().error(
-                           "Bridge evaluateJavaScript failed: " + std::string([[error localizedDescription] UTF8String]));
-                   }
-               }];
+        [webView_ evaluateJavaScript:source
+                   completionHandler:^(id result, NSError* error) {
+                       (void)result;
+                       if (error != nil && controller_ != nullptr) {
+                           controller_->logger().error(
+                               "Bridge evaluateJavaScript failed: " + std::string([[error localizedDescription] UTF8String]));
+                       }
+                   }];
+    });
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification*)notification {
     (void)notification;
     debugBridge_ = envFlagEnabled("SYNTH_DEBUG_BRIDGE") || envFlagEnabled("SYNTH_DEBUG_ROBIN");
     debugCrash_ = envFlagEnabled("SYNTH_DEBUG_CRASH");
+    debugUi_ = envFlagEnabled("SYNTH_DEBUG_UI") || envFlagEnabled("SYNTH_DEBUG_ROBIN");
+    bridgeQueue_ = dispatch_queue_create("com.loevano.synth.bridge", DISPATCH_QUEUE_SERIAL);
 
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 
@@ -479,6 +542,14 @@ static void handleUncaughtNsException(NSException* exception) {
                                injectionTime:WKUserScriptInjectionTimeAtDocumentStart
                             forMainFrameOnly:YES];
     [userContentController addUserScript:bootstrapScript];
+    NSString* flagsSource = [NSString
+        stringWithFormat:@"window.__SYNTH_FLAGS__ = Object.freeze({ debugUi: %@ });",
+                         debugUi_ ? @"true" : @"false"];
+    WKUserScript* flagsScript =
+        [[WKUserScript alloc] initWithSource:flagsSource
+                               injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+                            forMainFrameOnly:YES];
+    [userContentController addUserScript:flagsScript];
 
     WKWebViewConfiguration* config = [[WKWebViewConfiguration alloc] init];
     [config setUserContentController:userContentController];
@@ -534,11 +605,42 @@ static void handleUncaughtNsException(NSException* exception) {
 
     const NSInteger requestId = [requestIdNumber integerValue];
 
-    if ([type isEqualToString:@"getState"]) {
-        if (debugCrash_) {
-            controller_->crashDiagnostics().breadcrumb("Bridge getState request.");
+    if ([type isEqualToString:@"jsError"] || [type isEqualToString:@"jsRejection"]) {
+        NSString* messageText = payload[@"message"];
+        NSString* source = payload[@"source"];
+        NSNumber* line = payload[@"line"];
+        NSNumber* column = payload[@"column"];
+
+        std::string logLine = "Web UI ";
+        logLine += [type isEqualToString:@"jsError"] ? "error: " : "rejection: ";
+        logLine += messageText != nil ? std::string([messageText UTF8String]) : "Unknown";
+
+        if (source != nil && [source length] > 0) {
+            logLine += " source=" + std::string([source UTF8String]);
         }
-        [self sendResponse:requestId ok:YES payload:controller_->stateJson() error:""];
+        if (line != nil) {
+            logLine += " line=" + std::to_string([line longLongValue]);
+        }
+        if (column != nil) {
+            logLine += " column=" + std::to_string([column longLongValue]);
+        }
+
+        controller_->logger().error(logLine);
+        if (debugCrash_) {
+            controller_->crashDiagnostics().breadcrumb(logLine);
+        }
+        return;
+    }
+
+    if ([type isEqualToString:@"getState"]) {
+        dispatch_async(bridgeQueue_, ^{
+            @autoreleasepool {
+                if (debugCrash_) {
+                    controller_->crashDiagnostics().breadcrumb("Bridge getState request.");
+                }
+                [self sendResponse:requestId ok:YES payload:controller_->stateJson() error:""];
+            }
+        });
         return;
     }
 
@@ -630,69 +732,79 @@ static void handleUncaughtNsException(NSException* exception) {
         NSString* path = payload[@"path"];
         id rawValue = payload[@"value"];
         if (path == nil || rawValue == nil) {
-            [self sendResponse:requestId ok:NO payload:"null" error:"Missing path or value."];
+            dispatch_async(bridgeQueue_, ^{
+                @autoreleasepool {
+                    [self sendResponse:requestId ok:NO payload:"null" error:"Missing path or value."];
+                }
+            });
             return;
         }
 
-        const bool wantsState = [type isEqualToString:@"setParam"];
-        std::string errorMessage;
-        bool success = false;
-        const auto paramStart = std::chrono::steady_clock::now();
         const std::string pathString([path UTF8String]);
+        const bool wantsState = [type isEqualToString:@"setParam"];
+        const std::string typeString([type UTF8String]);
 
         if (debugCrash_) {
             controller_->crashDiagnostics().breadcrumb(
-                "Bridge " + std::string([type UTF8String]) + " start path=" + pathString);
+                "Bridge " + typeString + " start path=" + pathString);
         }
 
-        if ([rawValue isKindOfClass:[NSNumber class]]) {
-            success = controller_->setParam(
-                pathString,
-                [(NSNumber*)rawValue doubleValue],
-                &errorMessage);
-        } else if ([rawValue isKindOfClass:[NSString class]]) {
-            success = controller_->setParam(
-                pathString,
-                std::string([(NSString*)rawValue UTF8String]),
-                &errorMessage);
-        } else {
-            errorMessage = "Unsupported JS value type.";
-        }
+        dispatch_async(bridgeQueue_, ^{
+            @autoreleasepool {
+                std::string errorMessage;
+                bool success = false;
+                const auto paramStart = std::chrono::steady_clock::now();
 
-        if (!success) {
-            if (debugCrash_) {
-                controller_->crashDiagnostics().breadcrumb(
-                    "Bridge " + std::string([type UTF8String]) + " failed path=" + pathString + " error=" + errorMessage);
+                if ([rawValue isKindOfClass:[NSNumber class]]) {
+                    success = controller_->setParam(
+                        pathString,
+                        [(NSNumber*)rawValue doubleValue],
+                        &errorMessage);
+                } else if ([rawValue isKindOfClass:[NSString class]]) {
+                    success = controller_->setParam(
+                        pathString,
+                        std::string([(NSString*)rawValue UTF8String]),
+                        &errorMessage);
+                } else {
+                    errorMessage = "Unsupported JS value type.";
+                }
+
+                if (!success) {
+                    if (debugCrash_) {
+                        controller_->crashDiagnostics().breadcrumb(
+                            "Bridge " + typeString + " failed path=" + pathString + " error=" + errorMessage);
+                    }
+                    [self sendResponse:requestId ok:NO payload:"null" error:errorMessage];
+                    return;
+                }
+
+                const auto afterParam = std::chrono::steady_clock::now();
+                std::string payloadJson = "true";
+                if (wantsState) {
+                    payloadJson = controller_->stateJson();
+                }
+                const auto afterPayload = std::chrono::steady_clock::now();
+
+                if (debugBridge_) {
+                    const auto paramMs = std::chrono::duration<double, std::milli>(afterParam - paramStart).count();
+                    const auto payloadMs = std::chrono::duration<double, std::milli>(afterPayload - afterParam).count();
+                    if (controller_ != nullptr) {
+                        controller_->logger().debug(
+                            "Bridge " + typeString
+                            + " " + pathString
+                            + " paramMs=" + std::to_string(paramMs)
+                            + " payloadMs=" + std::to_string(payloadMs));
+                    }
+                }
+
+                if (debugCrash_) {
+                    controller_->crashDiagnostics().breadcrumb(
+                        "Bridge " + typeString + " ok path=" + pathString);
+                }
+
+                [self sendResponse:requestId ok:YES payload:payloadJson error:""];
             }
-            [self sendResponse:requestId ok:NO payload:"null" error:errorMessage];
-            return;
-        }
-
-        const auto afterParam = std::chrono::steady_clock::now();
-        std::string payloadJson = "true";
-        if (wantsState) {
-            payloadJson = controller_->stateJson();
-        }
-        const auto afterPayload = std::chrono::steady_clock::now();
-
-        if (debugBridge_) {
-            const auto paramMs = std::chrono::duration<double, std::milli>(afterParam - paramStart).count();
-            const auto payloadMs = std::chrono::duration<double, std::milli>(afterPayload - afterParam).count();
-            if (controller_ != nullptr) {
-                controller_->logger().debug(
-                    "Bridge " + std::string([type UTF8String])
-                    + " " + std::string([path UTF8String])
-                    + " paramMs=" + std::to_string(paramMs)
-                    + " payloadMs=" + std::to_string(payloadMs));
-            }
-        }
-
-        if (debugCrash_) {
-            controller_->crashDiagnostics().breadcrumb(
-                "Bridge " + std::string([type UTF8String]) + " ok path=" + pathString);
-        }
-
-        [self sendResponse:requestId ok:YES payload:payloadJson error:""];
+        });
     }
 }
 

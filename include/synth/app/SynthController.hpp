@@ -99,6 +99,7 @@ struct MidiSourceRouteState {
     bool pieces = false;
 };
 
+// Main class that controlls all processes.
 class SynthController {
 public:
     explicit SynthController(
@@ -106,7 +107,7 @@ public:
         std::unique_ptr<interfaces::IAudioDriver> driver = {});
     ~SynthController();
 
-    bool initialize();
+    bool initialize(); // 
     bool startAudio();
     void stopAudio();
     bool isRunning() const;
@@ -147,6 +148,7 @@ private:
     void submitRealtimeCommandOrApply(RealtimeCommand command);
     void enqueueRealtimeCommand(RealtimeCommand command);
     void drainRealtimeCommandsLocked();
+    void applySnapshotRealtimeCommandLocked(const RealtimeCommand& command);
     void applyRealtimeCommandLocked(const RealtimeCommand& command);
     std::string buildStateJsonLocked() const;
     void markStateSnapshotDirty() const;
@@ -154,10 +156,13 @@ private:
     void buildDefaultStateLocked();
     void resizeScaffoldStateLocked();
     void syncTestSourceLocked();
+    void syncRenderStateFromSnapshotLocked();
     void syncOutputDeviceSelectionLocked(const std::vector<interfaces::OutputDeviceInfo>& outputDevices);
     void syncMidiRoutesLocked();
     MidiSourceRouteState* findMidiRouteLocked(std::uint32_t sourceIndex);
     const MidiSourceRouteState* findMidiRouteLocked(std::uint32_t sourceIndex) const;
+    MidiSourceRouteState* findRenderMidiRouteLocked(std::uint32_t sourceIndex);
+    const MidiSourceRouteState* findRenderMidiRouteLocked(std::uint32_t sourceIndex) const;
     void syncOutputProcessorNodesLocked();
     void renderAudioLocked(float* output, std::uint32_t frames, std::uint32_t channels);
     bool applyOutputEngineConfig(std::optional<std::string> outputDeviceId,
@@ -186,28 +191,37 @@ private:
     std::unique_ptr<io::MidiInput> midiInput_;
     std::unique_ptr<io::OscServer> oscServer_;
     Robin robin_;
+    TestSynth test_;
+    Robin renderRobin_;
+    TestSynth renderTest_;
     graph::FxRackNode fxRackNode_;
     graph::OutputMixerNode outputMixerNode_;
     graph::LiveGraph liveGraph_;
-    TestSynth test_;
     SourceMixerSlotState robinMixerState_{true, true, false, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState testMixerState_{true, true, true, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState decorMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState piecesMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
+    SourceMixerSlotState renderRobinMixerState_{true, true, false, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
+    SourceMixerSlotState renderTestMixerState_{true, true, true, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
+    SourceMixerSlotState renderDecorMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
+    SourceMixerSlotState renderPiecesMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
     std::vector<OutputMixerChannelState> outputMixerChannels_;
+    std::vector<OutputMixerChannelState> renderOutputMixerChannels_;
     PlaceholderSourceState decorState_{false, true, 0};
     PlaceholderSourceState piecesState_{false, true, 0};
     SaturatorState saturatorState_;
     ChorusState chorusState_;
     SidechainState sidechainState_;
     std::vector<MidiSourceRouteState> midiSourceRoutes_;
+    std::vector<MidiSourceRouteState> renderMidiSourceRoutes_;
     std::string audioBackendName_ = "Unknown";
     std::string outputDeviceName_ = "Unknown";
     std::uint16_t oscPort_ = 9000;
     bool midiEnabled_ = false;
     bool oscEnabled_ = false;
-    int activeMidiNote_ = -1;
     std::vector<HeldMidiNote> heldMidiNotes_;
+    std::atomic<int> activeMidiNote_{-1};
+    mutable std::mutex midiNoteStateMutex_;
     bool debugRobinOscillatorParams_ = false;
     bool debugCrashBreadcrumbs_ = false;
     mutable std::mutex mutex_;

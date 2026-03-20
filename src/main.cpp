@@ -9,20 +9,25 @@
 #include <string_view>
 #include <thread>
 
+// Namespace makes all variable in the scope local.
 namespace {
 
+// Atomic boot that returns if program is running.
 std::atomic<bool> gRunning{true};
 
+// /*signal/ means a stop signal. So when the process gets a stop signal, flip the global running flag off.
 void handleSignal(int /*signal*/) {
     gRunning.store(false);
 }
 
+// Create a struct of type CliConfig that holds a struct of type RuntimeConfig, a bool of showHelp and a string.
 struct CliConfig {
-    synth::app::RuntimeConfig runtime;
+    synth::app::RuntimeConfig runtime; // Init obj runtime from calss RuntimeConfig in namespace synth::app in SynthController and 
     bool showHelp = false;
     std::string errorMessage;
 };
 
+// Wrapper function to show what Cli options there are.
 void printUsage(const char* programName) {
     std::cout
         << "Usage: " << programName << " [options]\n"
@@ -38,9 +43,11 @@ void printUsage(const char* programName) {
         << "  --gain <0..1>          Output gain, default 0.15\n";
 }
 
+// Funciton that returs a CliConfig and outputs the config in the console.
 CliConfig parseArgs(int argc, char** argv) {
-    CliConfig config;
+    CliConfig config; // Create a local CliConfig
 
+    // Stores all characters in a string array and checks the string to output the setting accordingly.
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--help" || arg == "-h") {
@@ -71,6 +78,7 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, handleSignal);
     std::signal(SIGTERM, handleSignal);
 
+    // Create a Cli Config and return a config with the parsed arguments form the Console.
     const CliConfig config = parseArgs(argc, argv);
     if (!config.errorMessage.empty()) {
         std::cerr << config.errorMessage << '\n';

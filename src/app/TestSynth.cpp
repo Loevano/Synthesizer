@@ -274,6 +274,16 @@ std::uint32_t TestSynth::outputCount() const {
     return static_cast<std::uint32_t>(state_.outputs.size());
 }
 
+const TestSourceState& TestSynth::state() const {
+    return state_;
+}
+
+void TestSynth::applyState(const TestSourceState& state) {
+    state_ = state;
+    resizeOutputs(static_cast<std::uint32_t>(state_.outputs.size()));
+    syncNodeState();
+}
+
 void TestSynth::assignDefaultOutputs(std::vector<bool>& outputs) {
     std::fill(outputs.begin(), outputs.end(), false);
     if (!outputs.empty()) {

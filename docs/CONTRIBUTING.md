@@ -113,6 +113,9 @@ If the app crashes or behaves strangely, run:
 ./scripts/run-app.sh --debug-crash
 ```
 
+Use `./scripts/run-app.sh` or `open /path/to/Synthesizer.app` for app launches.
+Do not run `Synthesizer.app/Contents/MacOS/Synthesizer` directly from the terminal.
+
 This enables:
 - bridge timing logs
 - Robin parameter logs

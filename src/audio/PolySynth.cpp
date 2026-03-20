@@ -1,14 +1,14 @@
-#include "synth/audio/Synth.hpp"
+#include "synth/audio/PolySynth.hpp"
 
 #include <algorithm>
 
 namespace synth::audio {
 
-Synth::Synth() {
+PolySynth::PolySynth() {
     configure({});
 }
 
-void Synth::configure(const SynthConfig& config) {
+void PolySynth::configure(const PolySynthConfig& config) {
     const std::uint32_t voiceCount = std::max<std::uint32_t>(1, config.voiceCount);
     const std::uint32_t oscillatorsPerVoice = std::max<std::uint32_t>(1, config.oscillatorsPerVoice);
     oscillatorsPerVoice_ = oscillatorsPerVoice;
@@ -39,7 +39,7 @@ void Synth::configure(const SynthConfig& config) {
     lfo_.setOutputChannelCount(outputChannelCount_);
 }
 
-void Synth::setSampleRate(double sampleRate) {
+void PolySynth::setSampleRate(double sampleRate) {
     if (sampleRate <= 0.0) {
         return;
     }
@@ -51,7 +51,7 @@ void Synth::setSampleRate(double sampleRate) {
     }
 }
 
-void Synth::setFrequency(float frequencyHz) {
+void PolySynth::setFrequency(float frequencyHz) {
     const float clampedFrequency = std::max(1.0f, frequencyHz);
     frequencyHz_.store(clampedFrequency);
     for (auto& voice : voices_) {
@@ -59,18 +59,18 @@ void Synth::setFrequency(float frequencyHz) {
     }
 }
 
-void Synth::setGain(float gain) {
+void PolySynth::setGain(float gain) {
     gain_.store(std::clamp(gain, 0.0f, 1.0f));
 }
 
-void Synth::setWaveform(dsp::Waveform waveform) {
+void PolySynth::setWaveform(dsp::Waveform waveform) {
     waveform_ = waveform;
     for (auto& voice : voices_) {
         voice.setWaveform(waveform_);
     }
 }
 
-void Synth::setVoiceActive(std::uint32_t voiceIndex, bool active) {
+void PolySynth::setVoiceActive(std::uint32_t voiceIndex, bool active) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -78,7 +78,7 @@ void Synth::setVoiceActive(std::uint32_t voiceIndex, bool active) {
     voices_[voiceIndex].setActive(active);
 }
 
-void Synth::setVoiceFrequency(std::uint32_t voiceIndex, float frequencyHz) {
+void PolySynth::setVoiceFrequency(std::uint32_t voiceIndex, float frequencyHz) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -86,7 +86,7 @@ void Synth::setVoiceFrequency(std::uint32_t voiceIndex, float frequencyHz) {
     voices_[voiceIndex].setFrequency(frequencyHz);
 }
 
-void Synth::setVoiceGain(std::uint32_t voiceIndex, float gain) {
+void PolySynth::setVoiceGain(std::uint32_t voiceIndex, float gain) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -94,7 +94,7 @@ void Synth::setVoiceGain(std::uint32_t voiceIndex, float gain) {
     voices_[voiceIndex].setGain(gain);
 }
 
-void Synth::setVoiceEnvelopeAttackSeconds(std::uint32_t voiceIndex, float attackSeconds) {
+void PolySynth::setVoiceEnvelopeAttackSeconds(std::uint32_t voiceIndex, float attackSeconds) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -102,7 +102,7 @@ void Synth::setVoiceEnvelopeAttackSeconds(std::uint32_t voiceIndex, float attack
     voices_[voiceIndex].setEnvelopeAttackSeconds(attackSeconds);
 }
 
-void Synth::setVoiceEnvelopeDecaySeconds(std::uint32_t voiceIndex, float decaySeconds) {
+void PolySynth::setVoiceEnvelopeDecaySeconds(std::uint32_t voiceIndex, float decaySeconds) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -110,7 +110,7 @@ void Synth::setVoiceEnvelopeDecaySeconds(std::uint32_t voiceIndex, float decaySe
     voices_[voiceIndex].setEnvelopeDecaySeconds(decaySeconds);
 }
 
-void Synth::setVoiceEnvelopeSustainLevel(std::uint32_t voiceIndex, float sustainLevel) {
+void PolySynth::setVoiceEnvelopeSustainLevel(std::uint32_t voiceIndex, float sustainLevel) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -118,7 +118,7 @@ void Synth::setVoiceEnvelopeSustainLevel(std::uint32_t voiceIndex, float sustain
     voices_[voiceIndex].setEnvelopeSustainLevel(sustainLevel);
 }
 
-void Synth::setVoiceEnvelopeReleaseSeconds(std::uint32_t voiceIndex, float releaseSeconds) {
+void PolySynth::setVoiceEnvelopeReleaseSeconds(std::uint32_t voiceIndex, float releaseSeconds) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -126,7 +126,7 @@ void Synth::setVoiceEnvelopeReleaseSeconds(std::uint32_t voiceIndex, float relea
     voices_[voiceIndex].setEnvelopeReleaseSeconds(releaseSeconds);
 }
 
-void Synth::setVoiceFilterCutoffHz(std::uint32_t voiceIndex, float cutoffHz) {
+void PolySynth::setVoiceFilterCutoffHz(std::uint32_t voiceIndex, float cutoffHz) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -134,7 +134,7 @@ void Synth::setVoiceFilterCutoffHz(std::uint32_t voiceIndex, float cutoffHz) {
     voices_[voiceIndex].setFilterCutoffHz(cutoffHz);
 }
 
-void Synth::setVoiceFilterResonance(std::uint32_t voiceIndex, float resonance) {
+void PolySynth::setVoiceFilterResonance(std::uint32_t voiceIndex, float resonance) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -142,7 +142,7 @@ void Synth::setVoiceFilterResonance(std::uint32_t voiceIndex, float resonance) {
     voices_[voiceIndex].setFilterResonance(resonance);
 }
 
-void Synth::setVoiceFilterEnvelopeAttackSeconds(std::uint32_t voiceIndex, float attackSeconds) {
+void PolySynth::setVoiceFilterEnvelopeAttackSeconds(std::uint32_t voiceIndex, float attackSeconds) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -150,7 +150,7 @@ void Synth::setVoiceFilterEnvelopeAttackSeconds(std::uint32_t voiceIndex, float 
     voices_[voiceIndex].setFilterEnvelopeAttackSeconds(attackSeconds);
 }
 
-void Synth::setVoiceFilterEnvelopeDecaySeconds(std::uint32_t voiceIndex, float decaySeconds) {
+void PolySynth::setVoiceFilterEnvelopeDecaySeconds(std::uint32_t voiceIndex, float decaySeconds) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -158,7 +158,7 @@ void Synth::setVoiceFilterEnvelopeDecaySeconds(std::uint32_t voiceIndex, float d
     voices_[voiceIndex].setFilterEnvelopeDecaySeconds(decaySeconds);
 }
 
-void Synth::setVoiceFilterEnvelopeSustainLevel(std::uint32_t voiceIndex, float sustainLevel) {
+void PolySynth::setVoiceFilterEnvelopeSustainLevel(std::uint32_t voiceIndex, float sustainLevel) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -166,7 +166,7 @@ void Synth::setVoiceFilterEnvelopeSustainLevel(std::uint32_t voiceIndex, float s
     voices_[voiceIndex].setFilterEnvelopeSustainLevel(sustainLevel);
 }
 
-void Synth::setVoiceFilterEnvelopeReleaseSeconds(std::uint32_t voiceIndex, float releaseSeconds) {
+void PolySynth::setVoiceFilterEnvelopeReleaseSeconds(std::uint32_t voiceIndex, float releaseSeconds) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -174,7 +174,7 @@ void Synth::setVoiceFilterEnvelopeReleaseSeconds(std::uint32_t voiceIndex, float
     voices_[voiceIndex].setFilterEnvelopeReleaseSeconds(releaseSeconds);
 }
 
-void Synth::setVoiceFilterEnvelopeAmount(std::uint32_t voiceIndex, float amount) {
+void PolySynth::setVoiceFilterEnvelopeAmount(std::uint32_t voiceIndex, float amount) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -182,7 +182,7 @@ void Synth::setVoiceFilterEnvelopeAmount(std::uint32_t voiceIndex, float amount)
     voices_[voiceIndex].setFilterEnvelopeAmount(amount);
 }
 
-void Synth::setOutputChannelCount(std::uint32_t outputChannelCount) {
+void PolySynth::setOutputChannelCount(std::uint32_t outputChannelCount) {
     outputChannelCount_ = std::max<std::uint32_t>(1, outputChannelCount);
     lfo_.setOutputChannelCount(outputChannelCount_);
     for (auto& voice : voices_) {
@@ -190,7 +190,7 @@ void Synth::setOutputChannelCount(std::uint32_t outputChannelCount) {
     }
 }
 
-void Synth::setVoiceOutputEnabled(std::uint32_t voiceIndex, std::uint32_t outputChannel, bool enabled) {
+void PolySynth::setVoiceOutputEnabled(std::uint32_t voiceIndex, std::uint32_t outputChannel, bool enabled) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -198,7 +198,7 @@ void Synth::setVoiceOutputEnabled(std::uint32_t voiceIndex, std::uint32_t output
     voices_[voiceIndex].setOutputEnabled(outputChannel, enabled);
 }
 
-void Synth::setOscillatorEnabled(std::uint32_t voiceIndex, std::uint32_t oscillatorIndex, bool enabled) {
+void PolySynth::setOscillatorEnabled(std::uint32_t voiceIndex, std::uint32_t oscillatorIndex, bool enabled) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -206,7 +206,7 @@ void Synth::setOscillatorEnabled(std::uint32_t voiceIndex, std::uint32_t oscilla
     voices_[voiceIndex].setOscillatorEnabled(oscillatorIndex, enabled);
 }
 
-void Synth::setOscillatorGain(std::uint32_t voiceIndex, std::uint32_t oscillatorIndex, float gain) {
+void PolySynth::setOscillatorGain(std::uint32_t voiceIndex, std::uint32_t oscillatorIndex, float gain) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -214,7 +214,7 @@ void Synth::setOscillatorGain(std::uint32_t voiceIndex, std::uint32_t oscillator
     voices_[voiceIndex].setOscillatorGain(oscillatorIndex, gain);
 }
 
-void Synth::setOscillatorFrequency(std::uint32_t voiceIndex, std::uint32_t oscillatorIndex, float frequencyValue) {
+void PolySynth::setOscillatorFrequency(std::uint32_t voiceIndex, std::uint32_t oscillatorIndex, float frequencyValue) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -222,7 +222,7 @@ void Synth::setOscillatorFrequency(std::uint32_t voiceIndex, std::uint32_t oscil
     voices_[voiceIndex].setOscillatorFrequency(oscillatorIndex, frequencyValue);
 }
 
-void Synth::setOscillatorRelativeToVoice(std::uint32_t voiceIndex,
+void PolySynth::setOscillatorRelativeToVoice(std::uint32_t voiceIndex,
                                          std::uint32_t oscillatorIndex,
                                          bool relativeToVoice) {
     if (voiceIndex >= voices_.size()) {
@@ -232,7 +232,7 @@ void Synth::setOscillatorRelativeToVoice(std::uint32_t voiceIndex,
     voices_[voiceIndex].setOscillatorRelativeToVoice(oscillatorIndex, relativeToVoice);
 }
 
-void Synth::setOscillatorWaveform(std::uint32_t voiceIndex,
+void PolySynth::setOscillatorWaveform(std::uint32_t voiceIndex,
                                   std::uint32_t oscillatorIndex,
                                   dsp::Waveform waveform) {
     if (voiceIndex >= voices_.size()) {
@@ -242,117 +242,117 @@ void Synth::setOscillatorWaveform(std::uint32_t voiceIndex,
     voices_[voiceIndex].setOscillatorWaveform(oscillatorIndex, waveform);
 }
 
-void Synth::setEnvelopeAttackSeconds(float attackSeconds) {
+void PolySynth::setEnvelopeAttackSeconds(float attackSeconds) {
     attackSeconds_ = std::max(0.0f, attackSeconds);
     for (auto& voice : voices_) {
         voice.setEnvelopeAttackSeconds(attackSeconds_);
     }
 }
 
-void Synth::setEnvelopeDecaySeconds(float decaySeconds) {
+void PolySynth::setEnvelopeDecaySeconds(float decaySeconds) {
     decaySeconds_ = std::max(0.0f, decaySeconds);
     for (auto& voice : voices_) {
         voice.setEnvelopeDecaySeconds(decaySeconds_);
     }
 }
 
-void Synth::setEnvelopeSustainLevel(float sustainLevel) {
+void PolySynth::setEnvelopeSustainLevel(float sustainLevel) {
     sustainLevel_ = std::clamp(sustainLevel, 0.0f, 1.0f);
     for (auto& voice : voices_) {
         voice.setEnvelopeSustainLevel(sustainLevel_);
     }
 }
 
-void Synth::setEnvelopeReleaseSeconds(float releaseSeconds) {
+void PolySynth::setEnvelopeReleaseSeconds(float releaseSeconds) {
     releaseSeconds_ = std::max(0.0f, releaseSeconds);
     for (auto& voice : voices_) {
         voice.setEnvelopeReleaseSeconds(releaseSeconds_);
     }
 }
 
-void Synth::setFilterCutoffHz(float cutoffHz) {
+void PolySynth::setFilterCutoffHz(float cutoffHz) {
     for (auto& voice : voices_) {
         voice.setFilterCutoffHz(cutoffHz);
     }
 }
 
-void Synth::setFilterResonance(float resonance) {
+void PolySynth::setFilterResonance(float resonance) {
     for (auto& voice : voices_) {
         voice.setFilterResonance(resonance);
     }
 }
 
-void Synth::setFilterEnvelopeAttackSeconds(float attackSeconds) {
+void PolySynth::setFilterEnvelopeAttackSeconds(float attackSeconds) {
     for (auto& voice : voices_) {
         voice.setFilterEnvelopeAttackSeconds(attackSeconds);
     }
 }
 
-void Synth::setFilterEnvelopeDecaySeconds(float decaySeconds) {
+void PolySynth::setFilterEnvelopeDecaySeconds(float decaySeconds) {
     for (auto& voice : voices_) {
         voice.setFilterEnvelopeDecaySeconds(decaySeconds);
     }
 }
 
-void Synth::setFilterEnvelopeSustainLevel(float sustainLevel) {
+void PolySynth::setFilterEnvelopeSustainLevel(float sustainLevel) {
     for (auto& voice : voices_) {
         voice.setFilterEnvelopeSustainLevel(sustainLevel);
     }
 }
 
-void Synth::setFilterEnvelopeReleaseSeconds(float releaseSeconds) {
+void PolySynth::setFilterEnvelopeReleaseSeconds(float releaseSeconds) {
     for (auto& voice : voices_) {
         voice.setFilterEnvelopeReleaseSeconds(releaseSeconds);
     }
 }
 
-void Synth::setFilterEnvelopeAmount(float amount) {
+void PolySynth::setFilterEnvelopeAmount(float amount) {
     for (auto& voice : voices_) {
         voice.setFilterEnvelopeAmount(amount);
     }
 }
 
-void Synth::setLfoEnabled(bool enabled) {
+void PolySynth::setLfoEnabled(bool enabled) {
     lfo_.setEnabled(enabled);
 }
 
-void Synth::setLfoWaveform(dsp::LfoWaveform waveform) {
+void PolySynth::setLfoWaveform(dsp::LfoWaveform waveform) {
     lfo_.setWaveform(waveform);
 }
 
-void Synth::setLfoDepth(float depth) {
+void PolySynth::setLfoDepth(float depth) {
     lfo_.setDepth(depth);
 }
 
-void Synth::setLfoPhaseSpreadDegrees(float phaseSpreadDegrees) {
+void PolySynth::setLfoPhaseSpreadDegrees(float phaseSpreadDegrees) {
     lfo_.setPhaseSpreadDegrees(phaseSpreadDegrees);
 }
 
-void Synth::setLfoPolarityFlip(bool polarityFlip) {
+void PolySynth::setLfoPolarityFlip(bool polarityFlip) {
     lfo_.setPolarityFlip(polarityFlip);
 }
 
-void Synth::setLfoUnlinkedOutputs(bool unlinkedOutputs) {
+void PolySynth::setLfoUnlinkedOutputs(bool unlinkedOutputs) {
     lfo_.setUnlinkedOutputs(unlinkedOutputs);
 }
 
-void Synth::setLfoClockLinked(bool clockLinked) {
+void PolySynth::setLfoClockLinked(bool clockLinked) {
     lfo_.setClockLinked(clockLinked);
 }
 
-void Synth::setLfoTempoBpm(float tempoBpm) {
+void PolySynth::setLfoTempoBpm(float tempoBpm) {
     lfo_.setTempoBpm(tempoBpm);
 }
 
-void Synth::setLfoRateMultiplier(float rateMultiplier) {
+void PolySynth::setLfoRateMultiplier(float rateMultiplier) {
     lfo_.setRateMultiplier(rateMultiplier);
 }
 
-void Synth::setLfoFixedFrequencyHz(float frequencyHz) {
+void PolySynth::setLfoFixedFrequencyHz(float frequencyHz) {
     lfo_.setFixedFrequencyHz(frequencyHz);
 }
 
-void Synth::render(float* output, std::uint32_t frames, std::uint32_t channels) {
+void PolySynth::render(float* output, std::uint32_t frames, std::uint32_t channels) {
     if (output == nullptr || channels == 0) {
         return;
     }
@@ -360,10 +360,10 @@ void Synth::render(float* output, std::uint32_t frames, std::uint32_t channels) 
     const std::size_t sampleCount = static_cast<std::size_t>(frames) * channels;
     std::fill(output, output + sampleCount, 0.0f);
 
-    renderAdd(output, frames, channels);
+    process(output, frames, channels);
 }
 
-void Synth::renderAdd(float* output, std::uint32_t frames, std::uint32_t channels) {
+void PolySynth::process(float* output, std::uint32_t frames, std::uint32_t channels) {
     if (output == nullptr || channels == 0) {
         return;
     }
@@ -378,11 +378,11 @@ void Synth::renderAdd(float* output, std::uint32_t frames, std::uint32_t channel
     }
 
     for (auto& voice : voices_) {
-        voice.renderAdd(output, frames, channels, gain, lfoModulationBuffer_.data());
+        voice.process(output, frames, channels, gain, lfoModulationBuffer_.data());
     }
 }
 
-void Synth::noteOn(std::uint32_t voiceIndex) {
+void PolySynth::noteOn(std::uint32_t voiceIndex) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -390,7 +390,7 @@ void Synth::noteOn(std::uint32_t voiceIndex) {
     voices_[voiceIndex].noteOn();
 }
 
-void Synth::noteOff(std::uint32_t voiceIndex) {
+void PolySynth::noteOff(std::uint32_t voiceIndex) {
     if (voiceIndex >= voices_.size()) {
         return;
     }
@@ -398,7 +398,7 @@ void Synth::noteOff(std::uint32_t voiceIndex) {
     voices_[voiceIndex].noteOff();
 }
 
-void Synth::clearNotes() {
+void PolySynth::clearNotes() {
     for (auto& voice : voices_) {
         voice.clearNote();
     }

@@ -9,18 +9,18 @@
 
 namespace synth::audio {
 
-struct SynthConfig {
+struct PolySynthConfig {
     std::uint32_t voiceCount = 8;
     std::uint32_t oscillatorsPerVoice = 6;
 };
 
-// Synth is the top-level instrument object. It owns a pool of voices, and each
-// voice owns a pool of oscillator slots.
-class Synth {
+// Concrete polyphonic voice engine used by Robin. It owns the voice pool and
+// shared modulation state, but not the product-facing app-layer state.
+class PolySynth {
 public:
-    Synth();
+    PolySynth();
 
-    void configure(const SynthConfig& config);
+    void configure(const PolySynthConfig& config);
     void setSampleRate(double sampleRate);
     void setFrequency(float frequencyHz);
     void setGain(float gain);
@@ -71,7 +71,7 @@ public:
     void setLfoFixedFrequencyHz(float frequencyHz);
 
     void render(float* output, std::uint32_t frames, std::uint32_t channels);
-    void renderAdd(float* output, std::uint32_t frames, std::uint32_t channels);
+    void process(float* output, std::uint32_t frames, std::uint32_t channels);
     void noteOn(std::uint32_t voiceIndex);
     void noteOff(std::uint32_t voiceIndex);
     void clearNotes();

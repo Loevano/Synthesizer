@@ -1,226 +1,156 @@
 # Architecture
 
-This document describes the current live scaffold, not the final target system.
+This document describes the current code structure after the naming cleanup.
 
-## Live render path today
+## Live render path
 
-`Audio Engine -> LiveGraph sources -> dry/fx split -> FX Rack (fx bus only) -> dry + fx sum -> Output Mixer -> hardware outputs`
+`Audio driver -> SynthHost -> LiveGraph sources -> dry/fx split -> FxRackNode -> dry + fx sum -> OutputMixerNode -> hardware outputs`
 
-Current reality:
+Current live pieces:
 
-- CoreAudio is the active backend on macOS
-- `Robin` and `Test` are the current live sources
-- source-level gain is active
-- source route target (`dry` or `fx`) is active
-- chorus is live in the FX rack
-- output mixer level, delay, and EQ are live
-- `Decor` and `Pieces` remain scaffold-only
-- `Saturator` and `Sidechain` remain scaffold-only
+- CoreAudio backend on macOS
+- `Robin` and `TestSynth` as active sources
+- source enable, source level, and dry/fx routing
+- `Chorus` in the FX rack
+- output mixer level, delay, and EQ
 
-## Controller and graph model
+Current scaffold-only pieces:
 
-The controller owns the product-facing state and builds a concrete `LiveGraph`.
+- `Decor`
+- `Pieces`
+- `Saturator`
+- `Sidechain`
 
-Current source nodes:
+## Main layers
 
-- `RobinSourceNode`
-- `TestSourceNode`
-- `Decor` placeholder
-- `Pieces` placeholder
+### App host
 
-Current output processor nodes:
+`SynthHost` is the top-level orchestrator. It owns:
 
-- `FxRackNode` on the FX bus
-- `OutputMixerNode` on the main summed path
+- runtime configuration
+- bridge-facing state serialization
+- MIDI and OSC lifecycle
+- `LiveGraph` construction
+- controller-side source state
+- render-side source state
 
-## Source routing model
+### App-level synths
 
-Each source has two routing decisions in practice:
+The shared app-level base is `synth::app::Synth`.
+
+It is intentionally small. It covers:
+
+- prepare/process lifecycle
+- note on/off
+- realtime command building and application
+- JSON state export
+
+Current implementations:
+
+- `Robin`
+- `TestSynth`
+
+`SourceState.hpp` exists so small controller-facing structs such as `EnvelopeState` and `TestSourceState` can be reused without dragging full synth classes into unrelated headers.
+
+### Render engines
+
+App-level synths do not render samples directly. They delegate to concrete audio engines:
+
+- `audio::PolySynth` for Robin
+- `audio::TestEngine` for TestSynth
+
+That split keeps product-facing behavior such as routing presets and linked/local voice rules out of the raw DSP layer.
+
+### DSP effects
+
+The shared DSP effect base is `synth::dsp::Effects`.
+
+Right now only `Chorus` derives from it, but it gives future output effects one consistent lifecycle:
+
+- `prepare(sampleRate)`
+- `reset()`
+- `processSample(inputSample)`
+
+## State ownership model
+
+The important architectural split is:
+
+- controller-side snapshot state
+- render-side live state
+
+`SynthHost` keeps both on purpose.
+
+The controller-side snapshot exists so:
+
+- the UI can read a coherent state JSON immediately
+- patch save/load works from one predictable source of truth
+- parameter edits do not need to round-trip full engine state for every drag
+
+The render-side state exists so:
+
+- the audio thread owns the data it reads while processing
+- parameter changes can be applied at block boundaries instead of mutating live DSP structures from the UI thread
+
+## Realtime parameter flow
+
+When the UI changes a live parameter, the code follows this sequence:
+
+1. `SynthHost::tryEnqueueRealtime*Param(...)` parses the path and builds a `RealtimeCommand`
+2. `applyStateMirrorCommandLocked(...)` updates the controller-side snapshot immediately
+3. `submitOrApplyRealtimeCommand(...)` decides whether to queue or apply
+4. if audio is running, `queueRealtimeCommand(...)` hands the immutable command to the render side
+5. at the next audio block, `drainQueuedRealtimeCommandsLocked(...)` applies every queued command through `applyRenderStateCommandLocked(...)`
+6. `LiveGraph::render(...)` runs with that updated render copy
+
+This is the core rule:
+
+- snapshot state is updated under the main mutex
+- render state is updated at audio block boundaries
+
+That split is the current answer to the earlier parameter-thread churn. The naming now reflects that intent directly.
+
+## Graph and routing model
+
+Each source has two routing decisions:
 
 - is it enabled?
-- does it render to the dry bus or the FX bus?
+- does it feed `Dry` or `FxBus`?
 
-`LiveGraph` handles this by giving each source a render target:
+`LiveGraph` renders enabled sources into either the main output buffer or the FX bus. The FX bus is processed separately, then summed back into the main output before the output mixer stage.
 
-- `Dry`
-- `FxBus`
+Source-node gain smoothing still lives in the source nodes so live level drags do not click.
 
-The FX bus is processed separately, then summed back into the main output before the output mixer stage.
+## Robin
 
-## Source Mixer responsibilities
-
-The source mixer is a source-level performance layer.
-
-Current active behavior:
-
-- source enable
-- source level
-- dry/fx target selection
-
-Implementation note:
-
-- source-mixer level changes for `Robin` and `Test` are smoothed in the source-node layer to avoid zipper noise and pops while dragging
-
-## Output Mixer responsibilities
-
-The output mixer is a per-output correction stage.
-
-Current active behavior:
-
-- level
-- delay
-- fixed-band EQ
-
-This stage runs after the dry and FX paths are summed.
-
-## Robin architecture today
-
-Robin is the most important concrete source in the current codebase.
+`Robin` is the reference source and the most complex synth in the repo.
 
 Current model:
 
 - configurable voice count
-- configurable oscillator slots per voice
-- all configured voices enabled by default
-- each voice can stay linked to the master voice or become a local override
-- linked voices follow the master oscillator bank, `VCF`, `ENV VCF`, and `AMP`
-- unlinked voices keep their own local state
-- routing presets assign voices across the output array
+- configurable oscillator count per voice
+- linked vs local voice editing
+- master `VCF`, `VCF ENV`, and `VCA ENV`
+- routing presets across outputs
+- note allocator that avoids immediate reuse of voices still in release
 
-Runtime behavior note:
+`Robin` owns the musical/product-facing rules. `audio::PolySynth` owns the actual per-voice DSP.
 
-- Robin source level is smoothed at the source-node layer
-- Robin note allocation now tries to avoid reusing a voice whose release tail is still active
+## TestSynth
 
-## Test architecture today
-
-`Test` is intentionally simpler:
+`TestSynth` stays intentionally small:
 
 - one oscillator
-- one envelope
+- one `VCA ENV`
 - manual output routing
 - optional continuous tone
 - optional MIDI response
 
-It exists as the smallest useful signal source for debugging the engine and routing path.
+It is the simplest useful source for regression tests and routing checks.
 
-## FX architecture today
+## What still needs work
 
-FX are modeled as per-output processors, but their controls are globally linked by design.
-
-Current live processor:
-
-- `Chorus`
-
-Current scaffold processors:
-
-- `Saturator`
-- `Sidechain`
-
-The key routing rule now is:
-
-- the source decides whether it goes to dry or FX in the Source Mixer
-- outputs always receive the dry path plus the processed FX path sum
-
-## Native/UI architecture
-
-The app shell is a macOS bundle with an embedded `WKWebView`.
-
-Current bridge surface:
-
-- `getState()`
-- `setParam(path, value)`
-
-The web UI is bundled from:
-
-- `src/ui_web/index.html`
-- `src/ui_web/styles.css`
-- `src/ui_web/app.js`
-
-The UI uses a temp/live control path for ordinary parameter edits so it does not round-trip the full state JSON for every drag.
-
-## State shape
-
-The controller currently exposes state grouped as:
-
-- `engine`
-- `graph`
-- `sourceMixer`
-- `outputMixer`
-- `sources`
-- `processors`
-
-This structure is intentionally more important than any one page layout. It is the contract the UI, OSC bridge, and future preset logic build on.
-
-## What is still missing
-
-Important missing pieces:
-
-- deeper Robin modulation beyond the current LFO and local overrides
-- `Decor` DSP
-- `Pieces` DSP
-- full saturator implementation
-- real sidechain design
-- broader regression testing around routing and allocator behavior
-
-## Next architecture refactor
-
-The next structural step should be to reduce how much `SynthController` owns directly.
-Right now it still acts as engine host, state serializer, source router, Robin controller,
-and Test source controller all at once. That made the lock-pressure refactor possible, but
-it is also the main reason the file has become hard to read and harder to extend safely.
-
-The recommended direction is shallow inheritance plus composition:
-
-- keep `SynthController` responsible for engine lifecycle, device/output config, and top-level graph orchestration
-- introduce a small shared instrument/source interface for common lifecycle only
-- extract synth-specific logic into dedicated classes instead of growing one giant controller
-
-The shared base should stay small. It should define only the parts that are actually stable
-across instruments:
-
-- note on/off
-- render
-- numeric param apply
-- string param apply
-- state serialization
-- queued command drain, if needed
-
-If a second-level base becomes useful, it should be for genuinely shared polyphonic synth
-structure, not for every possible future feature. A `PolySynthInstrument` style base can
-make sense for:
-
-- voices
-- oscillator bank
-- envelopes
-- filter section
-
-It should not force unrelated details like routing presets, modulation systems, or allocator
-behavior into the base type.
-
-Shared helpers should prefer composition:
-
-- realtime command queue
-- allocator
-- snapshot cache
-- routing helpers
-
-Target extraction order:
-
-1. define the small base interface
-2. extract `Test` first because it is simpler
-3. extract `Robin` once the pattern is proven
-4. simplify `SynthController` so it orchestrates instead of implementing every synth directly
-
-Constraints for that refactor:
-
-- preserve current behavior
-- keep the queued live-param model introduced on `stability-refactor-foundation`
-- do not rewrite the whole host at once
-- move one synth at a time
-- add regression tests as responsibilities move
-
-The guiding principle is:
-
-- yes to inheritance for a clear blueprint
-- no to deep inheritance or a bloated god base class
+- `SynthHost` is still large and should shrink over time
+- `Decor` and `Pieces` are still placeholders
+- saturator and sidechain still need real DSP designs
+- modulation can grow beyond the current Robin LFO/spread system
+- more routing and thread-behavior regression coverage is still worth adding

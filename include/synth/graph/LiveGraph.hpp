@@ -25,7 +25,7 @@ public:
         std::function<bool()> isImplemented;
         std::function<bool()> isEnabled;
         std::function<SourceRenderTarget()> renderTarget;
-        std::function<void(float*, std::uint32_t, std::uint32_t)> renderAdd;
+        std::function<void(float*, std::uint32_t, std::uint32_t)> process;
         std::function<void(int, float)> noteOn;
         std::function<void(int)> noteOff;
     };

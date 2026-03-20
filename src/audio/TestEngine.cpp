@@ -84,15 +84,27 @@ void TestEngine::setEnvelopeReleaseSeconds(float releaseSeconds) {
     envelope_.setReleaseSeconds(releaseSeconds);
 }
 
+void TestEngine::clearNotes() {
+    heldNotes_.clear();
+    if (active_) {
+        velocityGain_ = 1.0f;
+    }
+    syncGate();
+}
+
 void TestEngine::noteOn(int noteNumber, float velocity) {
     if (!midiEnabled_) {
         return;
     }
 
-    heldNotes_.erase(std::remove(heldNotes_.begin(), heldNotes_.end(), noteNumber), heldNotes_.end());
+    const bool retriggeringHeldGate = gateOpen_;
     heldNotes_.push_back(noteNumber);
     setFrequency(midiNoteToFrequency(noteNumber));
     velocityGain_ = std::clamp(velocity, 0.0f, 1.0f);
+    if (retriggeringHeldGate) {
+        envelope_.noteOn();
+        return;
+    }
     syncGate();
 }
 
@@ -101,12 +113,12 @@ void TestEngine::noteOff(int noteNumber) {
         return;
     }
 
-    const auto newEnd = std::remove(heldNotes_.begin(), heldNotes_.end(), noteNumber);
-    if (newEnd == heldNotes_.end()) {
+    const auto heldNote = std::find(heldNotes_.begin(), heldNotes_.end(), noteNumber);
+    if (heldNote == heldNotes_.end()) {
         return;
     }
 
-    heldNotes_.erase(newEnd, heldNotes_.end());
+    heldNotes_.erase(heldNote);
     if (!heldNotes_.empty()) {
         setFrequency(midiNoteToFrequency(heldNotes_.back()));
     } else if (active_) {
@@ -115,7 +127,7 @@ void TestEngine::noteOff(int noteNumber) {
     syncGate();
 }
 
-void TestEngine::renderAdd(float* output, std::uint32_t frames, std::uint32_t channels, float masterGain) {
+void TestEngine::process(float* output, std::uint32_t frames, std::uint32_t channels, float masterGain) {
     if (output == nullptr || channels == 0 || outputEnabled_.empty()) {
         return;
     }

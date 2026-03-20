@@ -65,6 +65,9 @@ Run the macOS app:
 ./scripts/run-app.sh
 ```
 
+This launches the `.app` bundle through LaunchServices. Avoid running
+`Synthesizer.app/Contents/MacOS/Synthesizer` directly from the terminal.
+
 Run the CLI host:
 
 ```bash
@@ -96,7 +99,7 @@ For crash-oriented tracing:
 Useful while tracing Robin and bridge issues:
 
 ```bash
-SYNTH_DEBUG_ROBIN=1 SYNTH_DEBUG_BRIDGE=1 ./scripts/run-app.sh
+./scripts/run-app.sh --debug-bridge --debug-robin
 ```
 
 On macOS app runs, logs are written under:
@@ -140,11 +143,11 @@ Current live signal path:
 ### Main Code Areas
 
 - `src/app/`
-  App orchestration, instrument wrappers, state model, bridge surface
+  `SynthHost`, app-level `Synth` sources, controller-facing state, bridge surface
 - `src/audio/`
-  DSP engines such as `Synth`, `Voice`, and `TestEngine`
+  DSP engines such as `PolySynth`, `Voice`, and `TestEngine`
 - `src/dsp/`
-  Oscillators, envelopes, filter, delay, chorus, LFO, EQ
+  Oscillators, envelopes, filter, delay, chorus, LFO, EQ, and the shared `Effects` base
 - `src/graph/`
   Source nodes, FX rack, output mixer, live render graph
 - `src/interfaces/`
@@ -165,7 +168,7 @@ The project is working, but still clearly in active development.
 - all configured Robin voices start enabled by default
 - Robin supports `Enabled` and `Linked to Master` voice states
 - one expanded local voice editor can be open at a time
-- Robin has per-voice oscillator bank, `VCF`, `ENV VCF`, and `AMP`
+- Robin has per-voice oscillator bank, `VCF`, `VCF ENV`, and `VCA ENV`
 - source mixer supports dry vs FX path routing
 - output mixer supports per-output level, delay, and EQ
 - `Chorus` is live

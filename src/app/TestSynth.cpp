@@ -13,12 +13,16 @@ void TestSynth::prepare(double sampleRate, std::uint32_t outputChannels) {
     syncNodeState();
 }
 
-void TestSynth::renderAdd(float* output,
+void TestSynth::process(float* output,
                           std::uint32_t frames,
                           std::uint32_t channels,
                           bool enabled,
                           float level) {
-    sourceNode_.renderAdd(output, frames, channels, enabled, level);
+    sourceNode_.process(output, frames, channels, enabled, level);
+}
+
+void TestSynth::clearAllNotes() {
+    sourceNode_.clearNotes();
 }
 
 void TestSynth::noteOn(int noteNumber, float velocity) {
@@ -268,6 +272,16 @@ void TestSynth::resizeOutputs(std::uint32_t outputCount) {
 
 std::uint32_t TestSynth::outputCount() const {
     return static_cast<std::uint32_t>(state_.outputs.size());
+}
+
+const TestSourceState& TestSynth::state() const {
+    return state_;
+}
+
+void TestSynth::applyState(const TestSourceState& state) {
+    state_ = state;
+    resizeOutputs(static_cast<std::uint32_t>(state_.outputs.size()));
+    syncNodeState();
 }
 
 void TestSynth::assignDefaultOutputs(std::vector<bool>& outputs) {

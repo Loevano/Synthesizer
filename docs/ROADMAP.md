@@ -1,11 +1,6 @@
 # Roadmap
 
-This file separates:
-
-- platform and architecture work
-- synth-feature work
-
-The goal is to keep infrastructure, DSP, and UI changes from collapsing into one undifferentiated list.
+This file separates platform work from instrument work so infrastructure, DSP, and UI changes do not blur together.
 
 ## Current baseline
 
@@ -13,34 +8,29 @@ Already in place:
 
 - CoreAudio-backed host on macOS
 - native macOS app shell with embedded `WKWebView`
-- JS/native bridge:
-  - `getState()`
-  - `setParam(path, value)`
-- grouped controller state:
-  - `engine`
-  - `graph`
-  - `sourceMixer`
-  - `outputMixer`
-  - `sources`
-  - `processors`
-- reusable concrete graph modules:
+- JS/native bridge with fast and full-state parameter paths
+- `SynthHost` with explicit snapshot-state vs render-state handling
+- reusable graph modules:
   - `LiveGraph`
   - `RobinSourceNode`
   - `TestSourceNode`
   - `FxRackNode`
   - `OutputMixerNode`
-- live sources:
-  - `Robin`
-  - `Test`
+- app-level `Synth` base
+- `audio::PolySynth` as Robin's render engine
+- `Effects` base for output DSP
+- live `Robin`
+- live `TestSynth`
 - source-level dry/fx routing
 - per-output level, delay, and EQ
 - live chorus
 - CoreMIDI input
 - OSC control surface
+- patch save/load flow
 
 Still missing:
 
-- deeper modulation system / modulation matrix
+- deeper modulation system
 - `Decor` DSP
 - `Pieces` DSP
 - full saturator
@@ -49,7 +39,19 @@ Still missing:
 
 ## Platform roadmap
 
-## 1. Stabilize regression coverage
+### 1. Keep the parameter thread model tight
+
+Goal:
+
+- make state ownership and command handoff harder to break
+
+Scope:
+
+- keep snapshot state authoritative for UI and patch I/O
+- keep render changes block-boundary driven
+- add focused tests around queued realtime commands and note bookkeeping
+
+### 2. Expand regression coverage
 
 Goal:
 
@@ -62,35 +64,19 @@ Scope:
 - output mixer processing behavior
 - Robin allocator behavior and release-tail handling
 
-Reason:
-
-- the app is now complex enough that silent regressions are more expensive than the initial setup cost of tests
-
-## 2. Preset and state persistence
+### 3. Improve smoothing policy
 
 Goal:
 
-- make the controller state saveable and reloadable without depending on UI state
+- apply consistent anti-zipper handling where live drags can click
 
 Scope:
 
-- stable serialization format
-- load/save flow
-- decide which controls are persistent versus runtime-only
-
-## 3. Better parameter-smoothing policy
-
-Goal:
-
-- apply consistent anti-zipper handling where live drags can create audible clicks
-
-Scope:
-
-- output-mixer level
 - any remaining abrupt source/process gains
-- future modulation-depth and routing-sensitive controls
+- modulation-depth changes where needed
+- future routing-sensitive controls
 
-## 4. Broaden contributor ergonomics
+### 4. Keep docs and contributor ergonomics current
 
 Goal:
 
@@ -98,39 +84,38 @@ Goal:
 
 Scope:
 
-- keep docs current
+- keep architecture and overview docs current
 - maintain contributor setup instructions
 - keep helper scripts accurate
 
 ## Feature roadmap
 
-## A. Finish Robin as the reference instrument
+### A. Finish Robin as the reference instrument
 
 Goal:
 
-- make Robin solid enough that it can carry the architecture while other sources are scaffolded
+- make Robin solid enough to carry the architecture while other sources remain scaffolded
 
 Scope:
 
-- keep master-first voice design
-- add section-level modulation / spread tools
+- keep the master-first voice design
 - keep local voice override behavior predictable
-- improve remaining edge cases around true voice stealing
+- improve remaining edge cases around voice stealing and release tails
 
-## B. Expand modulation
+### B. Expand modulation carefully
 
 Goal:
 
-- move from one live LFO to a broader modulation system
+- grow beyond the current LFO/spread layer without jumping into a messy matrix too early
 
 Scope:
 
-- section modulators
+- section-level modulators
 - voice spread algorithms
-- routing modulation
-- eventual matrix-like destination model
+- routing-aware modulation
+- clearer destination naming such as `VCF ENV` and `VCA ENV`
 
-## C. Expand FX rack
+### C. Expand the FX rack
 
 Goal:
 
@@ -140,9 +125,9 @@ Scope:
 
 - saturator implementation
 - sidechain design
-- decide how future FX should share common control/state patterns
+- future processors built on the shared `Effects` lifecycle
 
-## D. Implement Decor
+### D. Implement Decor
 
 Goal:
 
@@ -154,18 +139,18 @@ Scope:
 - speaker-locked behavior
 - immersive decorrelated playback design
 
-## E. Implement Pieces
+### E. Implement Pieces
 
 Goal:
 
-- add a granular / algorithmic source after the graph and routing model are more stable
+- add a granular or algorithmic source once the graph and routing model are more stable
 
 Scope:
 
 - playable grain triggering
 - spatial grain or voice distribution
 
-## F. Improve oscillator quality
+### F. Improve oscillator quality
 
 Goal:
 
@@ -179,10 +164,10 @@ Scope:
 
 ## Recommended order
 
-1. Add routing / allocator regression coverage.
-2. Keep Robin stable as the reference live source.
-3. Add section-level modulation on top of Robin’s current model.
-4. Expand the FX rack beyond chorus.
-5. Implement `Decor`.
-6. Implement `Pieces`.
-7. Add preset/state persistence once the state shape settles further.
+1. Keep the parameter thread model explicit and tested.
+2. Expand routing and allocator regression coverage.
+3. Keep Robin stable as the reference live source.
+4. Expand modulation one coherent layer at a time.
+5. Expand the FX rack beyond chorus.
+6. Implement `Decor`.
+7. Implement `Pieces`.

@@ -49,6 +49,10 @@ void TestSourceNode::setOutputEnabled(std::uint32_t outputChannel, bool enabled)
     engine_.setOutputEnabled(outputChannel, enabled);
 }
 
+void TestSourceNode::clearNotes() {
+    engine_.clearNotes();
+}
+
 void TestSourceNode::noteOn(int noteNumber, float velocity) {
     engine_.noteOn(noteNumber, velocity);
 }
@@ -57,7 +61,7 @@ void TestSourceNode::noteOff(int noteNumber) {
     engine_.noteOff(noteNumber);
 }
 
-void TestSourceNode::renderAdd(float* output,
+void TestSourceNode::process(float* output,
                                std::uint32_t frames,
                                std::uint32_t channels,
                                bool enabled,
@@ -80,7 +84,7 @@ void TestSourceNode::renderAdd(float* output,
     const std::size_t sampleCount = static_cast<std::size_t>(frames) * channels;
     renderBuffer_.resize(sampleCount);
     std::fill(renderBuffer_.begin(), renderBuffer_.end(), 0.0f);
-    engine_.renderAdd(renderBuffer_.data(), frames, channels, 1.0f);
+    engine_.process(renderBuffer_.data(), frames, channels, 1.0f);
 
     for (std::uint32_t frame = 0; frame < frames; ++frame) {
         const float frameLevel = frames > 1 ? currentLevel_ + (levelStep * static_cast<float>(frame)) : targetLevel;

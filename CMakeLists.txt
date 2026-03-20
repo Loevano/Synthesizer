@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Synthesizer VERSION 0.1.0 LANGUAGES CXX)
+project(Synthesizer VERSION 1.1.0 LANGUAGES CXX)
 
 if(APPLE)
     enable_language(OBJCXX)
@@ -26,7 +26,7 @@ add_library(synth_core
     src/dsp/Lfo.cpp
     src/audio/Voice.cpp
     src/audio/TestEngine.cpp
-    src/audio/Synth.cpp
+    src/audio/PolySynth.cpp
     src/graph/RobinSourceNode.cpp
     src/graph/TestSourceNode.cpp
     src/graph/FxRackNode.cpp
@@ -34,7 +34,7 @@ add_library(synth_core
     src/graph/LiveGraph.cpp
     src/app/Robin.cpp
     src/app/TestSynth.cpp
-    src/app/SynthController.cpp
+    src/app/SynthHost.cpp
     src/io/MidiInput.cpp
     src/io/OscServer.cpp
     src/interfaces/AudioDriverCoreAudio.cpp
@@ -79,6 +79,7 @@ if(APPLE)
     target_include_directories(Synthesizer PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_libraries(Synthesizer PRIVATE synth_core)
     target_compile_options(Synthesizer PRIVATE "-fobjc-arc")
+    target_compile_definitions(Synthesizer PRIVATE SYNTH_PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
     set_target_properties(Synthesizer PROPERTIES
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.loevano.synthesizer"
         MACOSX_BUNDLE_BUNDLE_NAME "Synthesizer"

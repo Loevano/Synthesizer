@@ -1,4 +1,4 @@
-#include "synth/app/SynthController.hpp"
+#include "synth/app/SynthHost.hpp"
 #include "synth/core/CrashDiagnostics.hpp"
 
 #include <atomic>
@@ -82,17 +82,17 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    synth::app::SynthController controller(config.runtime);
-    if (!controller.startAudio()) {
+    synth::app::SynthHost host(config.runtime);
+    if (!host.startAudio()) {
         return 1;
     }
 
-    controller.crashDiagnostics().breadcrumb("CLI host started.");
-    controller.logger().info("Running. Press Ctrl+C to stop.");
+    host.crashDiagnostics().breadcrumb("CLI host started.");
+    host.logger().info("Running. Press Ctrl+C to stop.");
     while (gRunning.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    controller.stopAudio();
+    host.stopAudio();
     return 0;
 }

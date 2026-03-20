@@ -1,6 +1,11 @@
-#include "synth/app/SynthController.hpp"
+#include "synth/app/SynthHost.hpp"
+#include "synth/app/Robin.hpp"
+#include "synth/audio/Voice.hpp"
+#include "synth/core/Logger.hpp"
+#include "synth/dsp/Chorus.hpp"
 #include "synth/graph/LiveGraph.hpp"
 #include "synth/interfaces/IAudioDriver.hpp"
+#include "synth/io/MidiInput.hpp"
 
 #include <cmath>
 #include <cstdlib>
@@ -17,14 +22,46 @@
 
 namespace synth::app {
 
-struct SynthControllerTestAccess {
-    static void submitRealtimeCommandOrApply(SynthController& controller,
+struct SynthHostTestAccess {
+    static void submitOrApplyRealtimeCommand(SynthHost& controller,
                                              RealtimeCommand command) {
-        controller.submitRealtimeCommandOrApply(std::move(command));
+        controller.submitOrApplyRealtimeCommand(std::move(command));
+    }
+
+    static std::vector<synth::app::MidiSourceConnectionState> mergeMidiSourceConnections(
+        const std::vector<synth::io::MidiSourceInfo>& midiSources,
+        const std::vector<synth::app::MidiSourceConnectionState>& previousConnections) {
+        return SynthHost::mergeMidiSourceConnections(midiSources, previousConnections);
+    }
+
+    static std::vector<synth::app::MidiSourceRouteState> mergeMidiSourceRoutes(
+        const std::vector<synth::io::MidiSourceInfo>& midiSources,
+        const std::vector<synth::app::MidiSourceRouteState>& previousRoutes) {
+        return SynthHost::mergeMidiSourceRoutes(midiSources, previousRoutes);
+    }
+};
+
+struct RobinTestAccess {
+    static std::size_t assignmentCount(const Robin& robin) {
+        return robin.voiceAssignments_.size();
+    }
+
+    static std::size_t heldNoteCount(const Robin& robin) {
+        return robin.heldNotes_.size();
     }
 };
 
 }  // namespace synth::app
+
+namespace synth::io {
+
+struct MidiInputTestAccess {
+    static void setCallback(MidiInput& midiInput, MidiMessageCallback callback) {
+        midiInput.callback_ = std::move(callback);
+    }
+};
+
+}  // namespace synth::io
 
 namespace {
 
@@ -123,12 +160,24 @@ std::unique_ptr<IAudioDriver> makeFakeDriver() {
     return std::make_unique<FakeAudioDriver>(makeTestDevices());
 }
 
+float meanAbsoluteLevel(const std::vector<float>& buffer, std::size_t startFrame, std::size_t endFrame) {
+    expect(startFrame < endFrame, "meanAbsoluteLevel range is valid");
+    expect(endFrame <= buffer.size(), "meanAbsoluteLevel range fits buffer");
+
+    double total = 0.0;
+    for (std::size_t frame = startFrame; frame < endFrame; ++frame) {
+        total += std::abs(buffer[frame]);
+    }
+
+    return static_cast<float>(total / static_cast<double>(endFrame - startFrame));
+}
+
 void testControllerInitializesFromInjectedDriver() {
     synth::app::RuntimeConfig config;
     config.channels = 6;
     config.logDirectory = testLogDirectory();
 
-    synth::app::SynthController controller(config, makeFakeDriver());
+    synth::app::SynthHost controller(config, makeFakeDriver());
     expect(controller.initialize(), "controller initializes");
     expectEqual(controller.config().outputDeviceId, std::string("device-a"), "default selected device");
     expectEqual(controller.config().channels, static_cast<std::uint32_t>(6), "channels preserved on larger device");
@@ -144,7 +193,7 @@ void testControllerOutputDeviceSelectionClampsChannels() {
     config.channels = 6;
     config.logDirectory = testLogDirectory();
 
-    synth::app::SynthController controller(config, makeFakeDriver());
+    synth::app::SynthHost controller(config, makeFakeDriver());
     expect(controller.initialize(), "controller initializes");
 
     std::string errorMessage;
@@ -159,7 +208,7 @@ void testControllerOutputChannelSelectionClampsToDeviceMaximum() {
     config.channels = 2;
     config.logDirectory = testLogDirectory();
 
-    synth::app::SynthController controller(config, makeFakeDriver());
+    synth::app::SynthHost controller(config, makeFakeDriver());
     expect(controller.initialize(), "controller initializes");
 
     std::string errorMessage;
@@ -172,7 +221,7 @@ void testStateJsonRefreshesAfterParamMutation() {
     synth::app::RuntimeConfig config;
     config.logDirectory = testLogDirectory();
 
-    synth::app::SynthController controller(config, makeFakeDriver());
+    synth::app::SynthHost controller(config, makeFakeDriver());
     expect(controller.initialize(), "controller initializes");
 
     const std::string initialStateJson = controller.stateJson();
@@ -194,7 +243,7 @@ void testQueuedRealtimeParamRefreshesStateWhileRunning() {
 
     auto driver = std::make_unique<FakeAudioDriver>(makeTestDevices());
     auto* driverPtr = driver.get();
-    synth::app::SynthController controller(config, std::move(driver));
+    synth::app::SynthHost controller(config, std::move(driver));
     expect(controller.initialize(), "controller initializes");
 
     const std::string initialStateJson = controller.stateJson();
@@ -222,24 +271,178 @@ void testQueuedGlobalNoteRefreshesStateWhileRunning() {
 
     auto driver = std::make_unique<FakeAudioDriver>(makeTestDevices());
     auto* driverPtr = driver.get();
-    synth::app::SynthController controller(config, std::move(driver));
+    synth::app::SynthHost controller(config, std::move(driver));
     expect(controller.initialize(), "controller initializes");
 
     driverPtr->forceRunning(true);
 
-    synth::app::SynthControllerTestAccess::submitRealtimeCommandOrApply(
+    synth::app::SynthHostTestAccess::submitOrApplyRealtimeCommand(
         controller,
         {synth::app::RealtimeCommandType::GlobalNoteOn, 0, 64, 1.0f});
 
     const std::string noteOnStateJson = controller.stateJson();
     expect(noteOnStateJson.find("\"activeMidiNote\":64") != std::string::npos, "queued note-on flushed into state");
 
-    synth::app::SynthControllerTestAccess::submitRealtimeCommandOrApply(
+    synth::app::SynthHostTestAccess::submitOrApplyRealtimeCommand(
         controller,
         {synth::app::RealtimeCommandType::GlobalNoteOff, 0, 64, 0.0f});
 
     const std::string noteOffStateJson = controller.stateJson();
     expect(noteOffStateJson.find("\"activeMidiNote\":-1") != std::string::npos, "queued note-off flushed into state");
+}
+
+void testQueuedRepeatedGlobalNoteRetainsLaterSamePitchInstance() {
+    synth::app::RuntimeConfig config;
+    config.logDirectory = testLogDirectory();
+
+    auto driver = std::make_unique<FakeAudioDriver>(makeTestDevices());
+    auto* driverPtr = driver.get();
+    synth::app::SynthHost controller(config, std::move(driver));
+    expect(controller.initialize(), "controller initializes");
+
+    driverPtr->forceRunning(true);
+
+    synth::app::SynthHostTestAccess::submitOrApplyRealtimeCommand(
+        controller,
+        {synth::app::RealtimeCommandType::GlobalNoteOn, 0, 60, 1.0f});
+    synth::app::SynthHostTestAccess::submitOrApplyRealtimeCommand(
+        controller,
+        {synth::app::RealtimeCommandType::GlobalNoteOn, 0, 60, 1.0f});
+
+    const std::string repeatedNoteOnStateJson = controller.stateJson();
+    expect(
+        repeatedNoteOnStateJson.find("\"activeMidiNote\":60") != std::string::npos,
+        "repeated same-pitch note-on keeps note active");
+
+    synth::app::SynthHostTestAccess::submitOrApplyRealtimeCommand(
+        controller,
+        {synth::app::RealtimeCommandType::GlobalNoteOff, 0, 60, 0.0f});
+
+    const std::string firstNoteOffStateJson = controller.stateJson();
+    expect(
+        firstNoteOffStateJson.find("\"activeMidiNote\":60") != std::string::npos,
+        "first same-pitch note-off preserves later note instance");
+
+    synth::app::SynthHostTestAccess::submitOrApplyRealtimeCommand(
+        controller,
+        {synth::app::RealtimeCommandType::GlobalNoteOff, 0, 60, 0.0f});
+
+    const std::string secondNoteOffStateJson = controller.stateJson();
+    expect(
+        secondNoteOffStateJson.find("\"activeMidiNote\":-1") != std::string::npos,
+        "second same-pitch note-off releases final note instance");
+}
+
+void testRobinRetainsIndependentAssignmentsForRepeatedSamePitchNotes() {
+    synth::app::Robin robin;
+    robin.configureStructure(1, 1, 2);
+
+    robin.noteOn(60, 1.0f);
+    robin.noteOn(60, 1.0f);
+    expectEqual(
+        synth::app::RobinTestAccess::assignmentCount(robin),
+        static_cast<std::size_t>(1),
+        "single-voice robin keeps only one active assignment");
+    expectEqual(
+        synth::app::RobinTestAccess::heldNoteCount(robin),
+        static_cast<std::size_t>(2),
+        "single-voice robin tracks both same-pitch note instances");
+
+    robin.noteOff(60);
+    expectEqual(
+        synth::app::RobinTestAccess::assignmentCount(robin),
+        static_cast<std::size_t>(1),
+        "first same-pitch note-off preserves retriggered voice");
+    expectEqual(
+        synth::app::RobinTestAccess::heldNoteCount(robin),
+        static_cast<std::size_t>(1),
+        "first same-pitch note-off removes only the older held note");
+
+    robin.noteOff(60);
+    expectEqual(
+        synth::app::RobinTestAccess::assignmentCount(robin),
+        static_cast<std::size_t>(0),
+        "robin releases final same-pitch assignment");
+    expectEqual(
+        synth::app::RobinTestAccess::heldNoteCount(robin),
+        static_cast<std::size_t>(0),
+        "robin releases final same-pitch held note");
+}
+
+void testMidiInputParsesMultipleMessagesPerPacketAndTransportStop() {
+    synth::core::Logger logger(testLogDirectory());
+    synth::io::MidiInput midiInput(logger);
+    std::vector<synth::io::MidiMessage> messages;
+    synth::io::MidiInputTestAccess::setCallback(
+        midiInput,
+        [&messages](const synth::io::MidiMessage& message) {
+            messages.push_back(message);
+        });
+
+    const unsigned char repeatedNotePacket[] = {0x90, 60, 100, 0x80, 60, 0, 0x90, 60, 110};
+    midiInput.handlePacketData(3, repeatedNotePacket, sizeof(repeatedNotePacket));
+
+    expectEqual(messages.size(), static_cast<std::size_t>(3), "all MIDI messages in packet dispatched");
+    expect(messages[0].type == synth::io::MidiMessageType::NoteOn, "first packet message is note-on");
+    expectEqual(messages[0].sourceIndex, static_cast<std::uint32_t>(3), "first packet message source index");
+    expectEqual(messages[0].noteNumber, 60, "first packet message note number");
+    expect(messages[1].type == synth::io::MidiMessageType::NoteOff, "second packet message is note-off");
+    expectEqual(messages[1].noteNumber, 60, "second packet message note number");
+    expect(messages[2].type == synth::io::MidiMessageType::NoteOn, "third packet message is note-on");
+    expectEqual(messages[2].noteNumber, 60, "third packet message note number");
+
+    const unsigned char stopPacket[] = {0xFC};
+    midiInput.handlePacketData(3, stopPacket, sizeof(stopPacket));
+    expectEqual(messages.size(), static_cast<std::size_t>(4), "transport stop dispatches all-notes-off");
+    expect(messages[3].type == synth::io::MidiMessageType::AllNotesOff, "stop packet becomes all-notes-off");
+
+    const unsigned char mmcStopPacket[] = {0xF0, 0x7F, 0x7F, 0x06, 0x01, 0xF7};
+    midiInput.handlePacketData(3, mmcStopPacket, sizeof(mmcStopPacket));
+    expectEqual(messages.size(), static_cast<std::size_t>(5), "mmc stop dispatches all-notes-off");
+    expect(messages[4].type == synth::io::MidiMessageType::AllNotesOff, "mmc stop becomes all-notes-off");
+}
+
+void testMidiSourceConnectionsPreserveUserChoicesAcrossStructureRestart() {
+    const std::vector<synth::io::MidiSourceInfo> midiSources{
+        {0, "Controller X", false},
+        {1, "Behringer Swing", false},
+    };
+    const std::vector<synth::app::MidiSourceConnectionState> previousConnections{
+        {7, "Controller X", false},
+    };
+
+    const auto mergedConnections =
+        synth::app::SynthHostTestAccess::mergeMidiSourceConnections(midiSources, previousConnections);
+
+    expectEqual(mergedConnections.size(), static_cast<std::size_t>(2), "merged midi connection count");
+    expectEqual(mergedConnections[0].index, static_cast<std::uint32_t>(0), "connection index 0 preserved");
+    expectEqual(mergedConnections[0].name, std::string("Controller X"), "connection name preserved");
+    expect(!mergedConnections[0].connected, "user-disabled source stays disconnected after restart");
+    expect(mergedConnections[1].connected, "new preferred source still gets default connected state");
+}
+
+void testMidiSourceRoutesPreserveUserChoicesAcrossStructureRestart() {
+    const std::vector<synth::io::MidiSourceInfo> midiSources{
+        {0, "Controller X", false},
+        {1, "Pad Controller", false},
+    };
+    const std::vector<synth::app::MidiSourceRouteState> previousRoutes{
+        {7, "Controller X", false, false, true, true},
+    };
+
+    const auto mergedRoutes =
+        synth::app::SynthHostTestAccess::mergeMidiSourceRoutes(midiSources, previousRoutes);
+
+    expectEqual(mergedRoutes.size(), static_cast<std::size_t>(2), "merged midi route count");
+    expectEqual(mergedRoutes[0].index, static_cast<std::uint32_t>(0), "route index 0 preserved");
+    expect(!mergedRoutes[0].robin, "user-disabled robin route stays disabled after restart");
+    expect(!mergedRoutes[0].test, "user-disabled test route stays disabled after restart");
+    expect(mergedRoutes[0].decor, "user-enabled decor route stays enabled after restart");
+    expect(mergedRoutes[0].pieces, "user-enabled pieces route stays enabled after restart");
+    expect(mergedRoutes[1].robin, "new source keeps default robin route");
+    expect(mergedRoutes[1].test, "new source keeps default test route");
+    expect(!mergedRoutes[1].decor, "new source keeps default decor route");
+    expect(!mergedRoutes[1].pieces, "new source keeps default pieces route");
 }
 
 void testQueuedRobinMasterParamsRefreshStateWhileRunning() {
@@ -248,7 +451,7 @@ void testQueuedRobinMasterParamsRefreshStateWhileRunning() {
 
     auto driver = std::make_unique<FakeAudioDriver>(makeTestDevices());
     auto* driverPtr = driver.get();
-    synth::app::SynthController controller(config, std::move(driver));
+    synth::app::SynthHost controller(config, std::move(driver));
     expect(controller.initialize(), "controller initializes");
 
     driverPtr->forceRunning(true);
@@ -325,7 +528,7 @@ void testQueuedRobinLfoParamsRefreshStateWhileRunning() {
 
     auto driver = std::make_unique<FakeAudioDriver>(makeTestDevices());
     auto* driverPtr = driver.get();
-    synth::app::SynthController controller(config, std::move(driver));
+    synth::app::SynthHost controller(config, std::move(driver));
     expect(controller.initialize(), "controller initializes");
 
     driverPtr->forceRunning(true);
@@ -376,13 +579,69 @@ void testQueuedRobinLfoParamsRefreshStateWhileRunning() {
         "queued robin lfo state flushed");
 }
 
+void testQueuedRobinSpreadParamsRefreshStateWhileRunning() {
+    synth::app::RuntimeConfig config;
+    config.logDirectory = testLogDirectory();
+
+    auto driver = std::make_unique<FakeAudioDriver>(makeTestDevices());
+    auto* driverPtr = driver.get();
+    synth::app::SynthHost controller(config, std::move(driver));
+    expect(controller.initialize(), "controller initializes");
+
+    driverPtr->forceRunning(true);
+
+    std::string errorMessage;
+    expect(
+        controller.setParam("sources.robin.spread.0.enabled", 1.0, &errorMessage),
+        "queued robin spread enabled update succeeds");
+    expect(errorMessage.empty(), "no robin spread enabled error");
+
+    expect(
+        controller.setParam("sources.robin.spread.0.target", "osc-detune", &errorMessage),
+        "queued robin spread target update succeeds");
+    expect(errorMessage.empty(), "no robin spread target error");
+
+    expect(
+        controller.setParam("sources.robin.spread.0.algorithm", "random", &errorMessage),
+        "queued robin spread algorithm update succeeds");
+    expect(errorMessage.empty(), "no robin spread algorithm error");
+
+    expect(
+        controller.setParam("sources.robin.spread.0.depth", 0.8, &errorMessage),
+        "queued robin spread depth update succeeds");
+    expect(errorMessage.empty(), "no robin spread depth error");
+
+    expect(
+        controller.setParam("sources.robin.spread.0.start", -12.0, &errorMessage),
+        "queued robin spread start update succeeds");
+    expect(errorMessage.empty(), "no robin spread start error");
+
+    expect(
+        controller.setParam("sources.robin.spread.0.end", 9.0, &errorMessage),
+        "queued robin spread end update succeeds");
+    expect(errorMessage.empty(), "no robin spread end error");
+
+    expect(
+        controller.setParam("sources.robin.spread.0.seed", 91.0, &errorMessage),
+        "queued robin spread seed update succeeds");
+    expect(errorMessage.empty(), "no robin spread seed error");
+
+    const std::string refreshedStateJson = controller.stateJson();
+    expect(
+        refreshedStateJson.find(
+            "\"spreadSlots\":[{\"index\":0,\"enabled\":true,\"target\":\"osc-detune\","
+            "\"algorithm\":\"random\",\"depth\":0.8,\"start\":-12,\"end\":9,\"seed\":91}")
+            != std::string::npos,
+        "queued robin spread state flushed");
+}
+
 void testQueuedTestAndMixerFxParamsRefreshStateWhileRunning() {
     synth::app::RuntimeConfig config;
     config.logDirectory = testLogDirectory();
 
     auto driver = std::make_unique<FakeAudioDriver>(makeTestDevices());
     auto* driverPtr = driver.get();
-    synth::app::SynthController controller(config, std::move(driver));
+    synth::app::SynthHost controller(config, std::move(driver));
     expect(controller.initialize(), "controller initializes");
 
     driverPtr->forceRunning(true);
@@ -481,7 +740,7 @@ void testQueuedRobinVoiceParamsRefreshStateWhileRunning() {
 
     auto driver = std::make_unique<FakeAudioDriver>(makeTestDevices());
     auto* driverPtr = driver.get();
-    synth::app::SynthController controller(config, std::move(driver));
+    synth::app::SynthHost controller(config, std::move(driver));
     expect(controller.initialize(), "controller initializes");
 
     std::string errorMessage;
@@ -548,6 +807,57 @@ void testQueuedRobinVoiceParamsRefreshStateWhileRunning() {
         refreshedStateJson.find("\"frequencyValue\":777,\"waveform\":\"noise\"") != std::string::npos,
         "queued robin voice oscillator waveform flushed");
     expect(refreshedStateJson.find("\"gain\":0.27") != std::string::npos, "queued robin voice oscillator gain flushed");
+}
+
+void testVoiceFilterEnvelopeStillClosesAtHighCutoff() {
+    synth::audio::Voice voice;
+    voice.configure(1);
+    voice.setSampleRate(48000.0);
+    voice.setWaveform(synth::dsp::Waveform::Square);
+    voice.setFrequency(2000.0f);
+    voice.setGain(1.0f);
+    voice.setEnvelopeAttackSeconds(0.0f);
+    voice.setEnvelopeDecaySeconds(0.0f);
+    voice.setEnvelopeSustainLevel(1.0f);
+    voice.setEnvelopeReleaseSeconds(0.0f);
+    voice.setFilterCutoffHz(18000.0f);
+    voice.setFilterResonance(0.707f);
+    voice.setFilterEnvelopeAttackSeconds(0.0f);
+    voice.setFilterEnvelopeDecaySeconds(0.02f);
+    voice.setFilterEnvelopeSustainLevel(0.0f);
+    voice.setFilterEnvelopeReleaseSeconds(0.0f);
+    voice.setFilterEnvelopeAmount(1.0f);
+    voice.setActive(true);
+    voice.noteOn();
+
+    std::vector<float> output(4096, 0.0f);
+    voice.process(output.data(), static_cast<std::uint32_t>(output.size()), 1, 1.0f, nullptr);
+
+    const float earlyLevel = meanAbsoluteLevel(output, 64, 256);
+    const float lateLevel = meanAbsoluteLevel(output, 2048, 3072);
+
+    expect(earlyLevel > 0.1f, "filter envelope test produces audible early output");
+    expect(lateLevel < earlyLevel * 0.35f, "filter envelope decay closes the cutoff even at high base cutoff");
+}
+
+void testChorusDepthTransitionFadesInWetPath() {
+    synth::dsp::Chorus chorus;
+    chorus.prepare(48000.0);
+    chorus.setDepth(0.0f);
+    chorus.setRateHz(0.25f);
+
+    for (int index = 0; index < 2048; ++index) {
+        (void)chorus.processSample(1.0f);
+    }
+
+    const float drySample = chorus.processSample(1.0f);
+    chorus.setDepth(1.0f);
+    const float firstTransitionSample = chorus.processSample(1.0f);
+
+    expectNear(drySample, 1.0f, 0.0001f, "chorus stays dry at zero depth");
+    expect(
+        std::fabs(firstTransitionSample - drySample) < 0.05f,
+        "chorus depth transition fades in instead of jumping to full wet mix");
 }
 
 void testLiveGraphDryFxRenderOrder() {
@@ -627,10 +937,18 @@ int main() {
         {"state json refreshes after param mutation", testStateJsonRefreshesAfterParamMutation},
         {"queued realtime param refreshes state while running", testQueuedRealtimeParamRefreshesStateWhileRunning},
         {"queued global note refreshes state while running", testQueuedGlobalNoteRefreshesStateWhileRunning},
+        {"repeated same-pitch global notes retain later instance", testQueuedRepeatedGlobalNoteRetainsLaterSamePitchInstance},
+        {"robin keeps independent assignments for repeated same-pitch notes", testRobinRetainsIndependentAssignmentsForRepeatedSamePitchNotes},
+        {"midi input parses multi-message packets and transport stop", testMidiInputParsesMultipleMessagesPerPacketAndTransportStop},
+        {"midi source connections preserve user choices across structure restart", testMidiSourceConnectionsPreserveUserChoicesAcrossStructureRestart},
+        {"midi source routes preserve user choices across structure restart", testMidiSourceRoutesPreserveUserChoicesAcrossStructureRestart},
         {"queued robin master params refresh state while running", testQueuedRobinMasterParamsRefreshStateWhileRunning},
         {"queued robin lfo params refresh state while running", testQueuedRobinLfoParamsRefreshStateWhileRunning},
+        {"queued robin spread params refresh state while running", testQueuedRobinSpreadParamsRefreshStateWhileRunning},
         {"queued test and mixer/fx params refresh state while running", testQueuedTestAndMixerFxParamsRefreshStateWhileRunning},
         {"queued robin voice params refresh state while running", testQueuedRobinVoiceParamsRefreshStateWhileRunning},
+        {"voice filter envelope closes even with high cutoff", testVoiceFilterEnvelopeStillClosesAtHighCutoff},
+        {"chorus depth transition fades in wet path", testChorusDepthTransitionFadesInWetPath},
         {"live graph render order respects dry and fx routing", testLiveGraphDryFxRenderOrder},
     };
 

@@ -15,6 +15,31 @@ namespace synth::io {
 #if defined(SYNTH_PLATFORM_MACOS)
 
 namespace {
+
+std::size_t messageDataLength(unsigned char status) {
+    if (status < 0x80) {
+        return 0;
+    }
+
+    if (status < 0xF0) {
+        const unsigned char messageClass = static_cast<unsigned char>(status & 0xF0);
+        if (messageClass == 0xC0 || messageClass == 0xD0) {
+            return 1;
+        }
+        return 2;
+    }
+
+    switch (status) {
+        case 0xF1:
+        case 0xF3:
+            return 1;
+        case 0xF2:
+            return 2;
+        default:
+            return 0;
+    }
+}
+
 std::string copyCfString(CFStringRef source) {
     if (source == nullptr) {
         return {};
@@ -85,25 +110,93 @@ MidiInput::~MidiInput() {
 }
 
 void MidiInput::handlePacketData(std::uint32_t sourceIndex, const unsigned char* data, std::size_t length) {
-    if (!callback_ || length < 3 || data == nullptr) {
+    if (!callback_ || data == nullptr || length == 0) {
         return;
     }
 
-    const unsigned char status = static_cast<unsigned char>(data[0] & 0xF0);
-    const int noteNumber = static_cast<int>(data[1]);
-    const float velocity = static_cast<float>(data[2]) / 127.0f;
+    auto dispatchChannelMessage = [this, sourceIndex](unsigned char status,
+                                                      unsigned char data1,
+                                                      unsigned char data2) {
+        const unsigned char messageClass = static_cast<unsigned char>(status & 0xF0);
+        if (messageClass == 0x90) {
+            const float velocity = static_cast<float>(data2) / 127.0f;
+            callback_({
+                data2 == 0 ? MidiMessageType::NoteOff : MidiMessageType::NoteOn,
+                sourceIndex,
+                static_cast<int>(data1),
+                data2 == 0 ? 0.0f : velocity,
+            });
+            return;
+        }
 
-    if (status == 0x90) {
-        callback_(sourceIndex, noteNumber, data[2] == 0 ? 0.0f : velocity);
-        return;
-    }
+        if (messageClass == 0x80) {
+            callback_({MidiMessageType::NoteOff, sourceIndex, static_cast<int>(data1), 0.0f});
+            return;
+        }
 
-    if (status == 0x80) {
-        callback_(sourceIndex, noteNumber, 0.0f);
+        if (messageClass == 0xB0 && (data1 == 120 || data1 == 123)) {
+            callback_({MidiMessageType::AllNotesOff, sourceIndex, -1, 0.0f});
+        }
+    };
+
+    std::size_t index = 0;
+    unsigned char runningStatus = 0;
+    while (index < length) {
+        const unsigned char currentByte = data[index];
+
+        if (currentByte >= 0xF8) {
+            if (currentByte == 0xFC || currentByte == 0xFF) {
+                callback_({MidiMessageType::AllNotesOff, sourceIndex, -1, 0.0f});
+            }
+            ++index;
+            continue;
+        }
+
+        unsigned char status = 0;
+        if ((currentByte & 0x80) != 0) {
+            status = currentByte;
+            ++index;
+            runningStatus = status < 0xF0 ? status : 0;
+        } else {
+            if (runningStatus == 0) {
+                ++index;
+                continue;
+            }
+            status = runningStatus;
+        }
+
+        if (status == 0xF0) {
+            const std::size_t sysexStart = index;
+            while (index < length && data[index] != 0xF7) {
+                ++index;
+            }
+            if (index > sysexStart) {
+                const std::size_t sysexLength = index - sysexStart;
+                if (sysexLength >= 4 && data[sysexStart] == 0x7F && data[sysexStart + 2] == 0x06
+                    && data[sysexStart + 3] == 0x01) {
+                    callback_({MidiMessageType::AllNotesOff, sourceIndex, -1, 0.0f});
+                }
+            }
+            if (index < length) {
+                ++index;
+            }
+            runningStatus = 0;
+            continue;
+        }
+
+        const std::size_t dataLength = messageDataLength(status);
+        if (index + dataLength > length) {
+            break;
+        }
+
+        const unsigned char data1 = dataLength >= 1 ? data[index] : 0;
+        const unsigned char data2 = dataLength >= 2 ? data[index + 1] : 0;
+        dispatchChannelMessage(status, data1, data2);
+        index += dataLength;
     }
 }
 
-bool MidiInput::start(MidiNoteCallback callback, bool connectAllSources) {
+bool MidiInput::start(MidiMessageCallback callback, bool connectAllSources) {
     if (running_) {
         return true;
     }

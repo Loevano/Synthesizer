@@ -21,9 +21,10 @@ public:
     void setEnvelopeSustainLevel(float sustainLevel);
     void setEnvelopeReleaseSeconds(float releaseSeconds);
     void setOutputEnabled(std::uint32_t outputChannel, bool enabled);
+    void clearNotes();
     void noteOn(int noteNumber, float velocity);
     void noteOff(int noteNumber);
-    void renderAdd(float* output, std::uint32_t frames, std::uint32_t channels, bool enabled, float level);
+    void process(float* output, std::uint32_t frames, std::uint32_t channels, bool enabled, float level);
 
 private:
     audio::TestEngine engine_;

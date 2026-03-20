@@ -95,8 +95,8 @@ LFO ideas:
 Current Robin section model:
 
 - `VCF`: cutoff, resonance
-- `ENV VCF`: attack, decay, sustain, release, amount
-- `AMP` / `ENV VCA`: attack, decay, sustain, release
+- `VCF ENV`: attack, decay, sustain, release, amount
+- `VCA ENV`: attack, decay, sustain, release
 - oscillator bank per voice
 
 Future direction:

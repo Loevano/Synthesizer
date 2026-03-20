@@ -19,6 +19,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html {
   font-size: 16px;
 }
@@ -215,6 +219,20 @@ h3 {
   margin-bottom: 10px;
 }
 
+.patch-actions {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.patch-panel__path {
+  margin-top: 14px;
+  font-family: "SFMono-Regular", "Menlo", monospace;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
 .status-tag {
   display: inline-flex;
   align-items: center;
@@ -346,12 +364,23 @@ h3 {
   cursor: grab;
   touch-action: none;
   outline: none;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    radial-gradient(circle at center, var(--text) 0 10px, transparent 10.5px),
+    linear-gradient(180deg, rgba(28, 39, 47, 0.96), rgba(13, 18, 23, 0.96));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -6px 14px rgba(0, 0, 0, 0.22),
+    0 10px 20px rgba(0, 0, 0, 0.2);
 }
 
-.rotary:focus-visible .rotary__dial {
+.rotary:focus-visible {
   box-shadow:
     0 0 0 1px rgba(239, 190, 92, 0.5),
     0 0 0 5px rgba(239, 190, 92, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -6px 14px rgba(0, 0, 0, 0.22),
     0 10px 20px rgba(0, 0, 0, 0.2);
 }
 
@@ -360,25 +389,13 @@ h3 {
   opacity: 0.45;
 }
 
-.rotary__dial {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: linear-gradient(180deg, rgba(28, 39, 47, 0.96), rgba(13, 18, 23, 0.96));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    inset 0 -6px 14px rgba(0, 0, 0, 0.22),
-    0 10px 20px rgba(0, 0, 0, 0.2);
-}
-
-.rotary__ring {
+.rotary::before {
+  content: "";
   position: absolute;
   inset: 6px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.06);
-  background: none;
+  pointer-events: none;
 }
 
 .rotary__indicator {
@@ -400,14 +417,6 @@ h3 {
   border-radius: 999px;
   background: var(--text);
   transform: translateX(-50%);
-}
-
-.rotary__cap {
-  position: absolute;
-  inset: 24px;
-  border-radius: 50%;
-  background: var(--text);
-  z-index: 1;
 }
 
 input[type="range"],
@@ -698,6 +707,8 @@ select,
 
 .robin-model-panel {
   margin: 18px 0;
+  content-visibility: auto;
+  contain-intrinsic-size: 420px;
 }
 
 .robin-section-grid {
@@ -715,6 +726,41 @@ select,
 .robin-section-card--planned {
   border-style: dashed;
   border-color: rgba(239, 190, 92, 0.2);
+}
+
+.robin-disclosure__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.robin-disclosure__summary::-webkit-details-marker {
+  display: none;
+}
+
+.robin-model-panel:not([open]) .robin-section-grid {
+  display: none;
+}
+
+.robin-debug-panel,
+.voices-grid,
+#selectedVoiceEditor {
+  content-visibility: auto;
+}
+
+.robin-debug-panel {
+  contain-intrinsic-size: 180px;
+}
+
+.voices-grid {
+  contain-intrinsic-size: 380px;
+}
+
+#selectedVoiceEditor {
+  contain-intrinsic-size: 520px;
 }
 
 .output-column__header span,
@@ -998,6 +1044,114 @@ select,
   grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
 }
 
+.robin-spread-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.robin-spread-slot {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 52%),
+    rgba(13, 19, 24, 0.78);
+}
+
+.robin-spread-slot.is-enabled {
+  border-color: rgba(143, 224, 207, 0.24);
+}
+
+.robin-spread-slot__topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.robin-spread-slot__toggle {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.robin-spread-slot__toggle span {
+  font-size: 0.94rem;
+  font-weight: 600;
+}
+
+.robin-spread-slot__toggle small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.robin-spread-slot__selectors,
+.robin-spread-slot__range-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.robin-spread-slot__field,
+.robin-spread-slot__field--seed {
+  margin-bottom: 0;
+}
+
+.robin-spread-slot__field--seed {
+  grid-column: 1 / -1;
+}
+
+.robin-spread-slot__copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.robin-performance-macro-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 10px;
+}
+
+.robin-performance-macro {
+  margin-bottom: 0;
+  justify-items: center;
+  align-content: start;
+  gap: 6px;
+  padding: 10px 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(14, 20, 25, 0.72);
+}
+
+.robin-performance-macro small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-align: center;
+  min-height: 1.7em;
+}
+
+.robin-debug-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
 .robin-master-layout__layout {
   grid-column: span 5;
 }
@@ -1006,6 +1160,7 @@ select,
   grid-column: span 7;
 }
 
+.robin-master-layout__macros,
 .robin-master-layout__osc,
 .robin-master-layout__modulation {
   grid-column: 1 / -1;
@@ -1211,6 +1366,7 @@ select,
 
   .robin-master-layout__layout,
   .robin-master-layout__pitch,
+  .robin-master-layout__macros,
   .robin-master-layout__osc,
   .robin-master-layout__env-vcf,
   .robin-master-layout__amp,
@@ -1220,6 +1376,7 @@ select,
     grid-column: auto;
   }
 
+  .robin-master-layout__macros,
   .robin-master-layout__osc,
   .robin-master-layout__modulation {
     grid-column: 1 / -1;
@@ -1268,6 +1425,8 @@ select,
 
   .robin-voice-module__grid,
   .robin-voice-module__grid--compact,
+  .robin-spread-slot__selectors,
+  .robin-spread-slot__range-grid,
   .robin-master-layout,
   .robin-master-layout__meta-grid,
   .robin-voice-osc__config,

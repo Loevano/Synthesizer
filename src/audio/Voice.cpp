@@ -14,6 +14,12 @@ constexpr float kMinFilterResonance = 0.1f;
 constexpr float kMaxFilterResonance = 10.0f;
 constexpr float kMaxFilterEnvelopeOctaves = 6.0f;
 
+float computeFilterEnvelopeCutoff(float baseCutoffHz, float envelopeAmount, float envelopeValue) {
+    const float envelopeDepth = std::clamp(1.0f - envelopeValue, 0.0f, 1.0f);
+    const float cutoffRatio = std::pow(2.0f, -envelopeAmount * envelopeDepth * kMaxFilterEnvelopeOctaves);
+    return std::clamp(baseCutoffHz * cutoffRatio, kMinFilterCutoffHz, kMaxFilterCutoffHz);
+}
+
 }
 
 void Voice::configure(std::uint32_t oscillatorCount) {
@@ -256,7 +262,7 @@ void Voice::updateOscillatorFrequency(OscillatorSlot& slot) {
     slot.oscillator.setFrequency(resolvedFrequency);
 }
 
-void Voice::renderAdd(float* output,
+void Voice::process(float* output,
                       std::uint32_t frames,
                       std::uint32_t channels,
                       float masterGain,
@@ -301,11 +307,9 @@ void Voice::renderAdd(float* output,
         }
 
         const float filterEnvelopeValue = filterEnvelope_.nextValue();
+        // Treat the cutoff control as the envelope ceiling so the filter contour still reads at high cutoff settings.
         const float filterCutoffHz =
-            std::clamp(
-                filterCutoffHz_ * std::pow(2.0f, filterEnvelopeAmount_ * filterEnvelopeValue * kMaxFilterEnvelopeOctaves),
-                kMinFilterCutoffHz,
-                kMaxFilterCutoffHz);
+            computeFilterEnvelopeCutoff(filterCutoffHz_, filterEnvelopeAmount_, filterEnvelopeValue);
         filter_.setCutoffHz(filterCutoffHz);
         sample = filter_.processSample(sample);
 

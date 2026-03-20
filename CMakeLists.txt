@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Synthesizer VERSION 0.1.0 LANGUAGES CXX)
+project(Synthesizer VERSION 1.1.0 LANGUAGES CXX)
 
 if(APPLE)
     enable_language(OBJCXX)

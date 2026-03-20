@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.1.0 - 2026-03-20
+- Added patch save/load workflow with:
+  - UI temp patch state
+  - patch picker
+  - save, save-as, load, and default-patch actions
+  - repo-local `./Patches` support in development and Application Support storage in packaged app builds
+- Added Robin spread modulation and macro controls, plus the related UI/debug cleanup from the Robin branch
+- Improved the host/state architecture:
+  - split snapshot state from render state more clearly
+  - renamed the app-level base from `Instrument` to `Synth`
+  - renamed `SynthController` to `SynthHost`
+  - renamed Robin's DSP engine to `PolySynth`
+  - added the shared `Effects` DSP base
+- Improved MIDI behavior:
+  - stop/all-notes-off handling now clears stuck notes
+  - repeated same-pitch notes retrigger correctly
+  - Robin voice-count changes no longer reset MIDI connection and route settings
+- Refined Robin envelope and filter behavior:
+  - UI naming is now `VCF ENV` and `VCA ENV`
+  - `VCF ENV` is back in a clearer spot in the Robin layout
+  - filter envelope decay now reads properly even with high cutoff settings
+- Fixed app launch and runtime ergonomics:
+  - app bundle launches through LaunchServices from `./scripts/run-app.sh`
+  - `Ctrl+C` in `./scripts/run-app.sh` now quits the launched app
+  - native alert/confirm/prompt dialogs now work safely in the embedded webview
+- Smoothed chorus depth transitions so moving from `0` to `> 0` does not click as sharply
+- Refreshed architecture, data-flow, roadmap, overview, and user documentation to match the current codebase
+
 ## 0.1.7 - 2026-03-16
 - Added Robin `VCF`, `VCF ENV`, and low-pass filter support to the live synth path
 - Reworked Robin around the current master/local voice model:

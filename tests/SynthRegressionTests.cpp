@@ -1,5 +1,6 @@
 #include "synth/app/SynthController.hpp"
 #include "synth/app/Robin.hpp"
+#include "synth/audio/Voice.hpp"
 #include "synth/core/Logger.hpp"
 #include "synth/graph/LiveGraph.hpp"
 #include "synth/interfaces/IAudioDriver.hpp"
@@ -24,6 +25,18 @@ struct SynthControllerTestAccess {
     static void submitRealtimeCommandOrApply(SynthController& controller,
                                              RealtimeCommand command) {
         controller.submitRealtimeCommandOrApply(std::move(command));
+    }
+
+    static std::vector<synth::app::MidiSourceConnectionState> mergeMidiSourceConnections(
+        const std::vector<synth::io::MidiSourceInfo>& midiSources,
+        const std::vector<synth::app::MidiSourceConnectionState>& previousConnections) {
+        return SynthController::mergeMidiSourceConnections(midiSources, previousConnections);
+    }
+
+    static std::vector<synth::app::MidiSourceRouteState> mergeMidiSourceRoutes(
+        const std::vector<synth::io::MidiSourceInfo>& midiSources,
+        const std::vector<synth::app::MidiSourceRouteState>& previousRoutes) {
+        return SynthController::mergeMidiSourceRoutes(midiSources, previousRoutes);
     }
 };
 
@@ -144,6 +157,18 @@ std::vector<OutputDeviceInfo> makeTestDevices() {
 
 std::unique_ptr<IAudioDriver> makeFakeDriver() {
     return std::make_unique<FakeAudioDriver>(makeTestDevices());
+}
+
+float meanAbsoluteLevel(const std::vector<float>& buffer, std::size_t startFrame, std::size_t endFrame) {
+    expect(startFrame < endFrame, "meanAbsoluteLevel range is valid");
+    expect(endFrame <= buffer.size(), "meanAbsoluteLevel range fits buffer");
+
+    double total = 0.0;
+    for (std::size_t frame = startFrame; frame < endFrame; ++frame) {
+        total += std::abs(buffer[frame]);
+    }
+
+    return static_cast<float>(total / static_cast<double>(endFrame - startFrame));
 }
 
 void testControllerInitializesFromInjectedDriver() {
@@ -374,6 +399,49 @@ void testMidiInputParsesMultipleMessagesPerPacketAndTransportStop() {
     midiInput.handlePacketData(3, mmcStopPacket, sizeof(mmcStopPacket));
     expectEqual(messages.size(), static_cast<std::size_t>(5), "mmc stop dispatches all-notes-off");
     expect(messages[4].type == synth::io::MidiMessageType::AllNotesOff, "mmc stop becomes all-notes-off");
+}
+
+void testMidiSourceConnectionsPreserveUserChoicesAcrossStructureRestart() {
+    const std::vector<synth::io::MidiSourceInfo> midiSources{
+        {0, "Controller X", false},
+        {1, "Behringer Swing", false},
+    };
+    const std::vector<synth::app::MidiSourceConnectionState> previousConnections{
+        {7, "Controller X", false},
+    };
+
+    const auto mergedConnections =
+        synth::app::SynthControllerTestAccess::mergeMidiSourceConnections(midiSources, previousConnections);
+
+    expectEqual(mergedConnections.size(), static_cast<std::size_t>(2), "merged midi connection count");
+    expectEqual(mergedConnections[0].index, static_cast<std::uint32_t>(0), "connection index 0 preserved");
+    expectEqual(mergedConnections[0].name, std::string("Controller X"), "connection name preserved");
+    expect(!mergedConnections[0].connected, "user-disabled source stays disconnected after restart");
+    expect(mergedConnections[1].connected, "new preferred source still gets default connected state");
+}
+
+void testMidiSourceRoutesPreserveUserChoicesAcrossStructureRestart() {
+    const std::vector<synth::io::MidiSourceInfo> midiSources{
+        {0, "Controller X", false},
+        {1, "Pad Controller", false},
+    };
+    const std::vector<synth::app::MidiSourceRouteState> previousRoutes{
+        {7, "Controller X", false, false, true, true},
+    };
+
+    const auto mergedRoutes =
+        synth::app::SynthControllerTestAccess::mergeMidiSourceRoutes(midiSources, previousRoutes);
+
+    expectEqual(mergedRoutes.size(), static_cast<std::size_t>(2), "merged midi route count");
+    expectEqual(mergedRoutes[0].index, static_cast<std::uint32_t>(0), "route index 0 preserved");
+    expect(!mergedRoutes[0].robin, "user-disabled robin route stays disabled after restart");
+    expect(!mergedRoutes[0].test, "user-disabled test route stays disabled after restart");
+    expect(mergedRoutes[0].decor, "user-enabled decor route stays enabled after restart");
+    expect(mergedRoutes[0].pieces, "user-enabled pieces route stays enabled after restart");
+    expect(mergedRoutes[1].robin, "new source keeps default robin route");
+    expect(mergedRoutes[1].test, "new source keeps default test route");
+    expect(!mergedRoutes[1].decor, "new source keeps default decor route");
+    expect(!mergedRoutes[1].pieces, "new source keeps default pieces route");
 }
 
 void testQueuedRobinMasterParamsRefreshStateWhileRunning() {
@@ -740,6 +808,37 @@ void testQueuedRobinVoiceParamsRefreshStateWhileRunning() {
     expect(refreshedStateJson.find("\"gain\":0.27") != std::string::npos, "queued robin voice oscillator gain flushed");
 }
 
+void testVoiceFilterEnvelopeStillClosesAtHighCutoff() {
+    synth::audio::Voice voice;
+    voice.configure(1);
+    voice.setSampleRate(48000.0);
+    voice.setWaveform(synth::dsp::Waveform::Square);
+    voice.setFrequency(2000.0f);
+    voice.setGain(1.0f);
+    voice.setEnvelopeAttackSeconds(0.0f);
+    voice.setEnvelopeDecaySeconds(0.0f);
+    voice.setEnvelopeSustainLevel(1.0f);
+    voice.setEnvelopeReleaseSeconds(0.0f);
+    voice.setFilterCutoffHz(18000.0f);
+    voice.setFilterResonance(0.707f);
+    voice.setFilterEnvelopeAttackSeconds(0.0f);
+    voice.setFilterEnvelopeDecaySeconds(0.02f);
+    voice.setFilterEnvelopeSustainLevel(0.0f);
+    voice.setFilterEnvelopeReleaseSeconds(0.0f);
+    voice.setFilterEnvelopeAmount(1.0f);
+    voice.setActive(true);
+    voice.noteOn();
+
+    std::vector<float> output(4096, 0.0f);
+    voice.renderAdd(output.data(), static_cast<std::uint32_t>(output.size()), 1, 1.0f, nullptr);
+
+    const float earlyLevel = meanAbsoluteLevel(output, 64, 256);
+    const float lateLevel = meanAbsoluteLevel(output, 2048, 3072);
+
+    expect(earlyLevel > 0.1f, "filter envelope test produces audible early output");
+    expect(lateLevel < earlyLevel * 0.35f, "filter envelope decay closes the cutoff even at high base cutoff");
+}
+
 void testLiveGraphDryFxRenderOrder() {
     synth::graph::LiveGraph graph;
 
@@ -820,11 +919,14 @@ int main() {
         {"repeated same-pitch global notes retain later instance", testQueuedRepeatedGlobalNoteRetainsLaterSamePitchInstance},
         {"robin keeps independent assignments for repeated same-pitch notes", testRobinRetainsIndependentAssignmentsForRepeatedSamePitchNotes},
         {"midi input parses multi-message packets and transport stop", testMidiInputParsesMultipleMessagesPerPacketAndTransportStop},
+        {"midi source connections preserve user choices across structure restart", testMidiSourceConnectionsPreserveUserChoicesAcrossStructureRestart},
+        {"midi source routes preserve user choices across structure restart", testMidiSourceRoutesPreserveUserChoicesAcrossStructureRestart},
         {"queued robin master params refresh state while running", testQueuedRobinMasterParamsRefreshStateWhileRunning},
         {"queued robin lfo params refresh state while running", testQueuedRobinLfoParamsRefreshStateWhileRunning},
         {"queued robin spread params refresh state while running", testQueuedRobinSpreadParamsRefreshStateWhileRunning},
         {"queued test and mixer/fx params refresh state while running", testQueuedTestAndMixerFxParamsRefreshStateWhileRunning},
         {"queued robin voice params refresh state while running", testQueuedRobinVoiceParamsRefreshStateWhileRunning},
+        {"voice filter envelope closes even with high cutoff", testVoiceFilterEnvelopeStillClosesAtHighCutoff},
         {"live graph render order respects dry and fx routing", testLiveGraphDryFxRenderOrder},
     };
 

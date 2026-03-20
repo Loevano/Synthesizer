@@ -34,49 +34,49 @@ const ROBIN_SPREAD_TARGET_CONFIG = {
     format: (value) => `${value > 0 ? "+" : ""}${Number(value).toFixed(2)}`,
   },
   "env-vcf-amount": {
-    label: "ENV VCF Amount",
+    label: "VCF ENV Amount",
     min: -1.5,
     max: 1.5,
     step: 0.01,
     format: (value) => `${value > 0 ? "+" : ""}${Number(value).toFixed(2)}`,
   },
   "env-vcf-attack": {
-    label: "ENV VCF Attack",
+    label: "VCF ENV Attack",
     min: -95,
     max: 500,
     step: 1,
     format: (value) => `${value > 0 ? "+" : ""}${Math.round(value)}%`,
   },
   "env-vcf-decay": {
-    label: "ENV VCF Decay",
+    label: "VCF ENV Decay",
     min: -95,
     max: 500,
     step: 1,
     format: (value) => `${value > 0 ? "+" : ""}${Math.round(value)}%`,
   },
   "env-vcf-release": {
-    label: "ENV VCF Release",
+    label: "VCF ENV Release",
     min: -95,
     max: 500,
     step: 1,
     format: (value) => `${value > 0 ? "+" : ""}${Math.round(value)}%`,
   },
   "amp-attack": {
-    label: "AMP Attack",
+    label: "VCA ENV Attack",
     min: -95,
     max: 500,
     step: 1,
     format: (value) => `${value > 0 ? "+" : ""}${Math.round(value)}%`,
   },
   "amp-decay": {
-    label: "AMP Decay",
+    label: "VCA ENV Decay",
     min: -95,
     max: 500,
     step: 1,
     format: (value) => `${value > 0 ? "+" : ""}${Math.round(value)}%`,
   },
   "amp-release": {
-    label: "AMP Release",
+    label: "VCA ENV Release",
     min: -95,
     max: 500,
     step: 1,
@@ -3398,7 +3398,7 @@ function buildSelectedVoiceEditorMarkup(selectedVoice) {
 
         <section class="robin-voice-module robin-voice-module--env robin-voice-module--env-vcf">
           <div class="robin-voice-module__header">
-            <h3>ENV VCF</h3>
+            <h3>VCF ENV</h3>
             <span>Filter contour</span>
           </div>
 
@@ -3472,8 +3472,8 @@ function buildSelectedVoiceEditorMarkup(selectedVoice) {
 
         <section class="robin-voice-module robin-voice-module--env robin-voice-module--amp">
           <div class="robin-voice-module__header">
-            <h3>AMP</h3>
-            <span>ENV VCA</span>
+            <h3>VCA ENV</h3>
+            <span>Amplitude contour</span>
           </div>
 
           <div class="robin-voice-module__grid">

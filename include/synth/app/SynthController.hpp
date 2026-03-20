@@ -27,6 +27,7 @@
 namespace synth::io {
 class MidiInput;
 class OscServer;
+struct MidiSourceInfo;
 }
 
 namespace synth::app {
@@ -93,10 +94,17 @@ struct SidechainState {
 
 struct MidiSourceRouteState {
     std::uint32_t index = 0;
+    std::string name;
     bool robin = true;
     bool test = true;
     bool decor = false;
     bool pieces = false;
+};
+
+struct MidiSourceConnectionState {
+    std::uint32_t index = 0;
+    std::string name;
+    bool connected = false;
 };
 
 // Main class that controlls all processes.
@@ -158,7 +166,15 @@ private:
     void syncTestSourceLocked();
     void syncRenderStateFromSnapshotLocked();
     void syncOutputDeviceSelectionLocked(const std::vector<interfaces::OutputDeviceInfo>& outputDevices);
+    void captureMidiSourceConnectionsLocked();
+    void syncMidiSourceConnectionsLocked();
     void syncMidiRoutesLocked();
+    static std::vector<MidiSourceConnectionState> mergeMidiSourceConnections(
+        const std::vector<io::MidiSourceInfo>& midiSources,
+        const std::vector<MidiSourceConnectionState>& previousConnections);
+    static std::vector<MidiSourceRouteState> mergeMidiSourceRoutes(
+        const std::vector<io::MidiSourceInfo>& midiSources,
+        const std::vector<MidiSourceRouteState>& previousRoutes);
     MidiSourceRouteState* findMidiRouteLocked(std::uint32_t sourceIndex);
     const MidiSourceRouteState* findMidiRouteLocked(std::uint32_t sourceIndex) const;
     MidiSourceRouteState* findRenderMidiRouteLocked(std::uint32_t sourceIndex);
@@ -212,6 +228,7 @@ private:
     SaturatorState saturatorState_;
     ChorusState chorusState_;
     SidechainState sidechainState_;
+    std::vector<MidiSourceConnectionState> midiSourceConnections_;
     std::vector<MidiSourceRouteState> midiSourceRoutes_;
     std::vector<MidiSourceRouteState> renderMidiSourceRoutes_;
     std::string audioBackendName_ = "Unknown";

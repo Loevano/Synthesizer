@@ -299,16 +299,14 @@ bool SynthController::startAudio() {
         }, false);
         if (midiEnabled_) {
             std::lock_guard<std::mutex> lock(mutex_);
-            const auto midiSources = midiInput_->sources();
-            for (const auto& source : midiSources) {
-                (void)midiInput_->setSourceConnected(source.index, isPreferredMidiSource(source.name));
-            }
+            syncMidiSourceConnectionsLocked();
             syncMidiRoutesLocked();
             renderMidiSourceRoutes_ = midiSourceRoutes_;
         }
     } else {
         midiEnabled_ = true;
         std::lock_guard<std::mutex> lock(mutex_);
+        syncMidiSourceConnectionsLocked();
         syncMidiRoutesLocked();
         renderMidiSourceRoutes_ = midiSourceRoutes_;
     }
@@ -372,6 +370,12 @@ void SynthController::stopAudio() {
 
     if (oscServer_ != nullptr && oscServer_->isRunning()) {
         oscServer_->stop();
+    }
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (midiInput_ != nullptr && midiInput_->isRunning()) {
+            captureMidiSourceConnectionsLocked();
+        }
     }
     if (midiInput_ != nullptr && midiInput_->isRunning()) {
         midiInput_->stop();
@@ -735,6 +739,7 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
                 }
                 return false;
             }
+            captureMidiSourceConnectionsLocked();
             markStateSnapshotDirty();
             if (value < 0.5) {
                 handleMidiAllNotesOffLocked(sourceIndex);
@@ -1784,23 +1789,109 @@ void SynthController::syncRenderStateFromSnapshotLocked() {
     liveGraph_.prepare(config_.sampleRate, config_.channels);
 }
 
-void SynthController::syncMidiRoutesLocked() {
-    midiSourceRoutes_.clear();
+void SynthController::captureMidiSourceConnectionsLocked() {
+    midiSourceConnections_.clear();
 
     if (midiInput_ == nullptr) {
         return;
     }
 
     const auto midiSources = midiInput_->sources();
-    midiSourceRoutes_.reserve(midiSources.size());
+    midiSourceConnections_.reserve(midiSources.size());
+    for (const auto& source : midiSources) {
+        midiSourceConnections_.push_back({source.index, source.name, source.connected});
+    }
+}
+
+std::vector<MidiSourceConnectionState> SynthController::mergeMidiSourceConnections(
+    const std::vector<io::MidiSourceInfo>& midiSources,
+    const std::vector<MidiSourceConnectionState>& previousConnections) {
+    std::vector<MidiSourceConnectionState> mergedConnections;
+    mergedConnections.reserve(midiSources.size());
 
     for (const auto& source : midiSources) {
-        MidiSourceRouteState routeState;
-        routeState.index = source.index;
-        routeState.robin = true;
-        routeState.test = true;
-        midiSourceRoutes_.push_back(routeState);
+        const auto matchingIndex = std::find_if(
+            previousConnections.begin(),
+            previousConnections.end(),
+            [&source](const MidiSourceConnectionState& previousConnection) {
+                return previousConnection.index == source.index
+                    && (previousConnection.name.empty() || previousConnection.name == source.name);
+            });
+        const auto matchingName = std::find_if(
+            previousConnections.begin(),
+            previousConnections.end(),
+            [&source](const MidiSourceConnectionState& previousConnection) {
+                return !previousConnection.name.empty() && previousConnection.name == source.name;
+            });
+
+        bool connected = isPreferredMidiSource(source.name);
+        if (matchingIndex != previousConnections.end()) {
+            connected = matchingIndex->connected;
+        } else if (matchingName != previousConnections.end()) {
+            connected = matchingName->connected;
+        }
+
+        mergedConnections.push_back({source.index, source.name, connected});
     }
+
+    return mergedConnections;
+}
+
+void SynthController::syncMidiSourceConnectionsLocked() {
+    if (midiInput_ == nullptr) {
+        return;
+    }
+
+    const auto mergedConnections = mergeMidiSourceConnections(midiInput_->sources(), midiSourceConnections_);
+    for (const auto& connectionState : mergedConnections) {
+        (void)midiInput_->setSourceConnected(connectionState.index, connectionState.connected);
+    }
+
+    captureMidiSourceConnectionsLocked();
+}
+
+std::vector<MidiSourceRouteState> SynthController::mergeMidiSourceRoutes(
+    const std::vector<io::MidiSourceInfo>& midiSources,
+    const std::vector<MidiSourceRouteState>& previousRoutes) {
+    std::vector<MidiSourceRouteState> mergedRoutes;
+    mergedRoutes.reserve(midiSources.size());
+
+    for (const auto& source : midiSources) {
+        const auto matchingIndex = std::find_if(
+            previousRoutes.begin(),
+            previousRoutes.end(),
+            [&source](const MidiSourceRouteState& previousRoute) {
+                return previousRoute.index == source.index
+                    && (previousRoute.name.empty() || previousRoute.name == source.name);
+            });
+        const auto matchingName = std::find_if(
+            previousRoutes.begin(),
+            previousRoutes.end(),
+            [&source](const MidiSourceRouteState& previousRoute) {
+                return !previousRoute.name.empty() && previousRoute.name == source.name;
+            });
+
+        MidiSourceRouteState mergedRoute;
+        if (matchingIndex != previousRoutes.end()) {
+            mergedRoute = *matchingIndex;
+        } else if (matchingName != previousRoutes.end()) {
+            mergedRoute = *matchingName;
+        }
+
+        mergedRoute.index = source.index;
+        mergedRoute.name = source.name;
+        mergedRoutes.push_back(std::move(mergedRoute));
+    }
+
+    return mergedRoutes;
+}
+
+void SynthController::syncMidiRoutesLocked() {
+    if (midiInput_ == nullptr) {
+        return;
+    }
+
+    midiSourceRoutes_ = mergeMidiSourceRoutes(midiInput_->sources(), midiSourceRoutes_);
 }
 
 MidiSourceRouteState* SynthController::findMidiRouteLocked(std::uint32_t sourceIndex) {

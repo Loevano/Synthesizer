@@ -9,8 +9,8 @@
 #include <string_view>
 #include <vector>
 
-#include "synth/app/Instrument.hpp"
-#include "synth/app/InstrumentState.hpp"
+#include "synth/app/Synth.hpp"
+#include "synth/app/SourceState.hpp"
 #include "synth/graph/RobinSourceNode.hpp"
 
 namespace synth::core {
@@ -144,7 +144,7 @@ struct RobinStateSnapshot {
     std::uint32_t outputChannelCount = 2;
 };
 
-class Robin final : public Instrument {
+class Robin final : public Synth {
 public:
     Robin() = default;
 
@@ -160,7 +160,7 @@ public:
     std::uint32_t oscillatorsPerVoice() const;
 
     void prepare(double sampleRate, std::uint32_t outputChannels) override;
-    void renderAdd(float* output,
+    void process(float* output,
                    std::uint32_t frames,
                    std::uint32_t channels,
                    bool enabled,
@@ -191,8 +191,8 @@ public:
     RobinStateSnapshot stateSnapshot() const;
     void applyStateSnapshot(const RobinStateSnapshot& state);
 
-    audio::Synth& synth();
-    const audio::Synth& synth() const;
+    audio::PolySynth& engine();
+    const audio::PolySynth& engine() const;
 
 private:
     friend struct RobinTestAccess;

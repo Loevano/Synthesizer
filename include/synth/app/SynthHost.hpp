@@ -13,8 +13,8 @@
 #include <string_view>
 #include <vector>
 
-#include "synth/app/ControllerCommands.hpp"
-#include "synth/app/InstrumentState.hpp"
+#include "synth/app/RealtimeCommands.hpp"
+#include "synth/app/SourceState.hpp"
 #include "synth/app/Robin.hpp"
 #include "synth/app/TestSynth.hpp"
 #include "synth/core/Logger.hpp"
@@ -107,15 +107,15 @@ struct MidiSourceConnectionState {
     bool connected = false;
 };
 
-// Main class that controlls all processes.
-class SynthController {
+// Host/orchestrator for the app runtime, bridge API, and render graph.
+class SynthHost {
 public:
-    explicit SynthController(
+    explicit SynthHost(
         RuntimeConfig config = {},
         std::unique_ptr<interfaces::IAudioDriver> driver = {});
-    ~SynthController();
+    ~SynthHost();
 
-    bool initialize(); // 
+    bool initialize();
     bool startAudio();
     void stopAudio();
     bool isRunning() const;
@@ -123,13 +123,13 @@ public:
     bool setParam(std::string_view path, double value, std::string* errorMessage);
     bool setParam(std::string_view path, std::string_view value, std::string* errorMessage);
 
-    audio::Synth& synth();
+    audio::PolySynth& robinEngine();
     core::Logger& logger();
     core::CrashDiagnostics& crashDiagnostics();
     const RuntimeConfig& config() const;
 
 private:
-    friend struct SynthControllerTestAccess;
+    friend struct SynthHostTestAccess;
 
     struct HeldMidiNote {
         bool fromMidiSource = false;
@@ -153,11 +153,11 @@ private:
     static float midiNoteToFrequency(int noteNumber);
     RealtimeParamResult tryEnqueueRealtimeNumericParam(std::string_view path, double value, std::string* errorMessage);
     RealtimeParamResult tryEnqueueRealtimeStringParam(std::string_view path, std::string_view value, std::string* errorMessage);
-    void submitRealtimeCommandOrApply(RealtimeCommand command);
-    void enqueueRealtimeCommand(RealtimeCommand command);
-    void drainRealtimeCommandsLocked();
-    void applySnapshotRealtimeCommandLocked(const RealtimeCommand& command);
-    void applyRealtimeCommandLocked(const RealtimeCommand& command);
+    void submitOrApplyRealtimeCommand(RealtimeCommand command);
+    void queueRealtimeCommand(RealtimeCommand command);
+    void drainQueuedRealtimeCommandsLocked();
+    void applyStateMirrorCommandLocked(const RealtimeCommand& command);
+    void applyRenderStateCommandLocked(const RealtimeCommand& command);
     std::string buildStateJsonLocked() const;
     void markStateSnapshotDirty() const;
     void buildLiveGraphLocked();
@@ -180,7 +180,7 @@ private:
     MidiSourceRouteState* findRenderMidiRouteLocked(std::uint32_t sourceIndex);
     const MidiSourceRouteState* findRenderMidiRouteLocked(std::uint32_t sourceIndex) const;
     void syncOutputProcessorNodesLocked();
-    void renderAudioLocked(float* output, std::uint32_t frames, std::uint32_t channels);
+    void processAudioBlockLocked(float* output, std::uint32_t frames, std::uint32_t channels);
     bool applyOutputEngineConfig(std::optional<std::string> outputDeviceId,
                                  std::optional<std::uint32_t> outputChannels,
                                  std::string* errorMessage);
@@ -243,7 +243,7 @@ private:
     bool debugCrashBreadcrumbs_ = false;
     mutable std::mutex mutex_;
     mutable std::mutex realtimeCommandMutex_;
-    std::deque<RealtimeCommand> pendingRealtimeCommands_;
+    std::deque<RealtimeCommand> queuedRealtimeCommands_;
     mutable std::mutex stateSnapshotMutex_;
     mutable std::string stateJsonCache_;
     mutable std::atomic<bool> stateSnapshotDirty_{true};

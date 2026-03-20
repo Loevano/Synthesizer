@@ -93,13 +93,14 @@ float Chorus::processSample(float inputSample) {
     const float delayMs = kBaseDelayMs + (currentDepth_ * kMaxDepthMs * modulation);
     const float delaySamples = static_cast<float>((sampleRate_ * delayMs) / 1000.0);
     const float delayedSample = readDelayedSample(delaySamples);
+    const float wetBlend = std::clamp(currentDepth_ / kWetFadeDepth, 0.0f, 1.0f);
 
     writeIndex_ = (writeIndex_ + 1) % buffer_.size();
 
     const float phaseIncrement = (kTwoPi * currentRateHz_) / static_cast<float>(sampleRate_);
     phaseAccumulator_ = wrapPhase(phaseAccumulator_ + phaseIncrement);
 
-    return inputSample + (delayedSample * kWetMix);
+    return inputSample + (delayedSample * kWetMix * wetBlend);
 }
 
 void Chorus::smoothParameters() {

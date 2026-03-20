@@ -6,7 +6,7 @@ This file is the practical implementation order for the current multichannel fra
 
 - Keep one repo.
 - Keep one app with clear internal modules.
-- Keep the controller state shape intentional.
+- Keep the controller-side snapshot state and render-side state separate.
 - Do not hide unfinished areas; scaffold them clearly.
 - Prefer concrete graph modules until abstraction pressure is real.
 
@@ -16,20 +16,24 @@ Already in place:
 
 - CoreAudio-backed host
 - embedded webview app shell
-- grouped controller state
+- grouped snapshot state
 - `LiveGraph`
 - `RobinSourceNode`
 - `TestSourceNode`
 - `FxRackNode`
 - `OutputMixerNode`
+- app-level `Synth` base
+- `audio::PolySynth` as Robin's concrete engine
+- `Effects` base for output DSP
 - live `Robin`
-- live `Test`
+- live `TestSynth`
 - source dry/fx routing
 - live output mixer level/delay/EQ
 - live chorus
 - scaffolded `Decor`
 - scaffolded `Pieces`
 - scaffolded saturator and sidechain
+- patch save/load flow
 
 ## Repository shape to keep
 
@@ -47,7 +51,20 @@ It does not need a major folder rewrite right now.
 
 ## Implementation order
 
-## Step 1. Lock down routing and allocator behavior
+## Step 1. Keep the host/render boundary explicit
+
+Goal:
+
+- make parameter and transport threading easy to reason about
+
+Deliverables:
+
+- keep snapshot state authoritative for UI and patch I/O
+- keep render-side state block-boundary driven
+- keep naming and comments explicit where host code fans work out to render code
+- add regression checks around command queue and note bookkeeping behavior
+
+## Step 2. Lock down routing and allocator behavior
 
 Goal:
 
@@ -62,7 +79,7 @@ Deliverables:
   - Robin voice allocation
   - Robin release-tail reuse behavior
 
-## Step 2. Keep Robin stable as the reference source
+## Step 3. Keep Robin stable as the reference source
 
 Goal:
 
@@ -73,9 +90,9 @@ Deliverables:
 - preserve the master-first control model
 - keep linked/local voice behavior predictable
 - refine overlap / steal behavior where needed
-- keep the web UI and controller state aligned
+- keep the web UI and snapshot state aligned
 
-## Step 3. Add section-level modulation to Robin
+## Step 4. Add section-level modulation to Robin
 
 Goal:
 
@@ -87,11 +104,11 @@ Deliverables:
 - offset-based modulators
 - routing-aware voice variation
 
-Do not do yet:
+Rule:
 
-- do not jump into a huge general matrix if section-level behavior is still unclear
+- do not jump into a full matrix before the section model is stable
 
-## Step 4. Broaden the FX rack
+## Step 5. Broaden the FX rack
 
 Goal:
 
@@ -102,13 +119,14 @@ Deliverables:
 - keep chorus stable
 - implement saturator
 - design sidechain properly before coding it
+- keep future DSP effects aligned with the `Effects` base lifecycle
 
 Rules:
 
 - controls stay globally linked
 - the Source Mixer chooses whether a source feeds dry or FX
 
-## Step 5. Implement Decor
+## Step 6. Implement Decor
 
 Goal:
 
@@ -120,7 +138,7 @@ Deliverables:
 - speaker-locked routing
 - decorrelated spatial behavior
 
-## Step 6. Implement Pieces
+## Step 7. Implement Pieces
 
 Goal:
 
@@ -131,7 +149,7 @@ Deliverables:
 - granular playback
 - algorithmic routing across outputs
 
-## Step 7. Improve oscillator scalability
+## Step 8. Improve oscillator scalability
 
 Goal:
 
@@ -143,11 +161,11 @@ Deliverables:
 - reduce aliasing on non-sine waveforms
 - keep the current voice/oscillator model intact while upgrading internals
 
-## Step 8. Add preset/state persistence
+## Step 9. Keep preset/state persistence clean
 
 Goal:
 
-- save and restore controller-driven state cleanly
+- save and restore snapshot-driven state cleanly
 
 Deliverables:
 
@@ -155,7 +173,7 @@ Deliverables:
 - preset load/save flow
 - clear distinction between persistent state and runtime-only state
 
-## Step 9. Keep docs and contributor setup current
+## Step 10. Keep docs and contributor setup current
 
 Goal:
 
@@ -164,5 +182,5 @@ Goal:
 Deliverables:
 
 - keep README current
-- keep architecture/overview docs current
+- keep architecture and overview docs current
 - keep contributor instructions current

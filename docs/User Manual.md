@@ -198,8 +198,8 @@ Current master sections include:
 - pitch offsets
 - oscillator bank
 - VCF
-- ENV VCF
-- AMP / ENV VCA
+- VCF ENV
+- VCA ENV
 
 ### Voices Overview
 
@@ -232,8 +232,8 @@ The local editor can include:
 - local gain
 - local oscillator bank
 - local VCF
-- local ENV VCF
-- local AMP envelope
+- local VCF ENV
+- local VCA ENV
 
 ## How To Program Robin
 
@@ -291,9 +291,9 @@ Current controls:
 Use it to:
 - darken or open the sound
 - emphasize the cutoff region
-- shape motion together with `ENV VCF`
+- shape motion together with `VCF ENV`
 
-## ENV VCF
+## VCF ENV
 
 The filter envelope shapes the movement of the filter over time.
 
@@ -310,7 +310,7 @@ Use it for:
 - percussive filter hits
 - evolving filter motion
 
-## AMP
+## VCA ENV
 
 The amplitude envelope shapes the loudness contour of the voice.
 

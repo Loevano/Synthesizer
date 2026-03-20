@@ -1,7 +1,7 @@
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
 
-#include "synth/app/SynthController.hpp"
+#include "synth/app/SynthHost.hpp"
 #include "synth/core/CrashDiagnostics.hpp"
 
 #include <algorithm>
@@ -299,7 +299,7 @@ static void handleUncaughtNsException(NSException* exception) {
 @implementation SynthAppDelegate {
     NSWindow* window_;
     WKWebView* webView_;
-    std::unique_ptr<synth::app::SynthController> controller_;
+    std::unique_ptr<synth::app::SynthHost> controller_;
     dispatch_queue_t bridgeQueue_;
     BOOL debugBridge_;
     BOOL debugCrash_;
@@ -508,7 +508,7 @@ static void handleUncaughtNsException(NSException* exception) {
 
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 
-    controller_ = std::make_unique<synth::app::SynthController>();
+    controller_ = std::make_unique<synth::app::SynthHost>();
     if (!controller_->startAudio()) {
         NSLog(@"Failed to start synth audio.");
         [NSApp terminate:nil];

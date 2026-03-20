@@ -47,7 +47,7 @@ public:
     void noteOff();
     void clearNote();
 
-    void renderAdd(float* output,
+    void process(float* output,
                    std::uint32_t frames,
                    std::uint32_t channels,
                    float masterGain,

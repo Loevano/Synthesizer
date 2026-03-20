@@ -4,22 +4,22 @@
 
 namespace synth::graph {
 
-void RobinSourceNode::configure(const audio::SynthConfig& config) {
-    synth_.configure(config);
-    synth_.setGain(1.0f);
+void RobinSourceNode::configure(const audio::PolySynthConfig& config) {
+    engine_.configure(config);
+    engine_.setGain(1.0f);
 }
 
 void RobinSourceNode::prepare(double sampleRate, std::uint32_t outputChannels) {
-    synth_.setSampleRate(sampleRate);
-    synth_.setOutputChannelCount(outputChannels);
-    synth_.setGain(1.0f);
+    engine_.setSampleRate(sampleRate);
+    engine_.setOutputChannelCount(outputChannels);
+    engine_.setGain(1.0f);
 }
 
 void RobinSourceNode::setLevel(bool enabled, float level) {
     targetGain_.store(enabled ? std::clamp(level, 0.0f, 1.0f) : 0.0f);
 }
 
-void RobinSourceNode::renderAdd(float* output, std::uint32_t frames, std::uint32_t channels) {
+void RobinSourceNode::process(float* output, std::uint32_t frames, std::uint32_t channels) {
     if (output == nullptr || channels == 0) {
         return;
     }
@@ -27,7 +27,7 @@ void RobinSourceNode::renderAdd(float* output, std::uint32_t frames, std::uint32
     const std::size_t sampleCount = static_cast<std::size_t>(frames) * channels;
     renderBuffer_.resize(sampleCount);
     std::fill(renderBuffer_.begin(), renderBuffer_.end(), 0.0f);
-    synth_.renderAdd(renderBuffer_.data(), frames, channels);
+    engine_.process(renderBuffer_.data(), frames, channels);
 
     const float targetGain = targetGain_.load();
     const float gainStep = frames > 1
@@ -45,12 +45,12 @@ void RobinSourceNode::renderAdd(float* output, std::uint32_t frames, std::uint32
     currentGain_ = targetGain;
 }
 
-audio::Synth& RobinSourceNode::synth() {
-    return synth_;
+audio::PolySynth& RobinSourceNode::engine() {
+    return engine_;
 }
 
-const audio::Synth& RobinSourceNode::synth() const {
-    return synth_;
+const audio::PolySynth& RobinSourceNode::engine() const {
+    return engine_;
 }
 
 }  // namespace synth::graph

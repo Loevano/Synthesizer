@@ -59,7 +59,7 @@ void Robin::configureStructure(std::uint32_t voiceCount,
     const auto previousVoices = voices_;
     const auto previousMasterOscillators = masterOscillators_;
 
-    sourceNode_.synth().clearNotes();
+    sourceNode_.engine().clearNotes();
     heldNotes_.clear();
     voiceAssignments_.clear();
     voiceReleaseUntil_.clear();
@@ -71,7 +71,7 @@ void Robin::configureStructure(std::uint32_t voiceCount,
     outputChannelCount_ = std::max<std::uint32_t>(1, outputChannels);
     oscillatorsPerVoice_ = std::max<std::uint32_t>(1, oscillatorsPerVoice);
 
-    audio::SynthConfig synthConfig;
+    audio::PolySynthConfig synthConfig;
     synthConfig.voiceCount = std::max<std::uint32_t>(1, voiceCount);
     synthConfig.oscillatorsPerVoice = oscillatorsPerVoice_;
     sourceNode_.configure(synthConfig);
@@ -142,7 +142,7 @@ void Robin::configureStructure(std::uint32_t voiceCount,
 }
 
 void Robin::clearAllNotes() {
-    sourceNode_.synth().clearNotes();
+    sourceNode_.engine().clearNotes();
     heldNotes_.clear();
     voiceAssignments_.clear();
     nextHeldNoteId_ = 1;
@@ -172,13 +172,13 @@ void Robin::prepare(double sampleRate, std::uint32_t outputChannels) {
     sourceNode_.prepare(sampleRate, outputChannels);
 }
 
-void Robin::renderAdd(float* output,
+void Robin::process(float* output,
                       std::uint32_t frames,
                       std::uint32_t channels,
                       bool enabled,
                       float level) {
     sourceNode_.setLevel(enabled, level);
-    sourceNode_.renderAdd(output, frames, channels);
+    sourceNode_.process(output, frames, channels);
 }
 
 void Robin::noteOn(int noteNumber, float /*velocity*/) {
@@ -201,7 +201,7 @@ void Robin::noteOn(int noteNumber, float /*velocity*/) {
         routeVoiceToOutput(voiceIndex, computeNextTriggerOutput());
     }
 
-    sourceNode_.synth().noteOn(voiceIndex);
+    sourceNode_.engine().noteOn(voiceIndex);
 }
 
 void Robin::noteOff(int noteNumber) {
@@ -221,7 +221,7 @@ void Robin::noteOff(int noteNumber) {
     heldNotes_.erase(heldNote);
 
     if (voiceIndex.has_value()) {
-        sourceNode_.synth().noteOff(*voiceIndex);
+        sourceNode_.engine().noteOff(*voiceIndex);
         if (*voiceIndex < voiceReleaseUntil_.size()) {
             const auto& voice = voices_[*voiceIndex];
             const float releaseMs = voice.linkedToMaster ? envelopeState_.releaseMs : voice.envelope.releaseMs;
@@ -242,7 +242,7 @@ void Robin::noteOff(int noteNumber) {
 
     if (autoActivatedVoice0_ && voiceAssignments_.empty() && !voices_.empty()) {
         voices_[0].active = false;
-        sourceNode_.synth().setVoiceActive(0, false);
+        sourceNode_.engine().setVoiceActive(0, false);
         autoActivatedVoice0_ = false;
         nextVoiceCursor_ = 0;
     }
@@ -316,7 +316,7 @@ RealtimeParamResult Robin::applyNumericParam(const std::vector<std::string_view>
         voices_[voiceIndex].outputs[outputIndex] = value >= 0.5;
         routingPreset_ = RoutingPreset::Custom;
         resetRoutingState();
-        sourceNode_.synth().setVoiceOutputEnabled(voiceIndex, outputIndex, voices_[voiceIndex].outputs[outputIndex]);
+        sourceNode_.engine().setVoiceOutputEnabled(voiceIndex, outputIndex, voices_[voiceIndex].outputs[outputIndex]);
         return RealtimeParamResult::Applied;
     }
 
@@ -898,43 +898,43 @@ void Robin::applyRealtimeCommand(const RealtimeCommand& command) {
     switch (command.type) {
         case RealtimeCommandType::RobinLfoEnabled:
             lfoState_.enabled = command.value >= 0.5f;
-            sourceNode_.synth().setLfoEnabled(lfoState_.enabled);
+            sourceNode_.engine().setLfoEnabled(lfoState_.enabled);
             break;
         case RealtimeCommandType::RobinLfoDepth:
             lfoState_.depth = std::clamp(command.value, 0.0f, 1.0f);
-            sourceNode_.synth().setLfoDepth(lfoState_.depth);
+            sourceNode_.engine().setLfoDepth(lfoState_.depth);
             break;
         case RealtimeCommandType::RobinLfoPhaseSpreadDegrees:
             lfoState_.phaseSpreadDegrees = std::clamp(command.value, 0.0f, 360.0f);
-            sourceNode_.synth().setLfoPhaseSpreadDegrees(lfoState_.phaseSpreadDegrees);
+            sourceNode_.engine().setLfoPhaseSpreadDegrees(lfoState_.phaseSpreadDegrees);
             break;
         case RealtimeCommandType::RobinLfoPolarityFlip:
             lfoState_.polarityFlip = command.value >= 0.5f;
-            sourceNode_.synth().setLfoPolarityFlip(lfoState_.polarityFlip);
+            sourceNode_.engine().setLfoPolarityFlip(lfoState_.polarityFlip);
             break;
         case RealtimeCommandType::RobinLfoUnlinkedOutputs:
             lfoState_.unlinkedOutputs = command.value >= 0.5f;
-            sourceNode_.synth().setLfoUnlinkedOutputs(lfoState_.unlinkedOutputs);
+            sourceNode_.engine().setLfoUnlinkedOutputs(lfoState_.unlinkedOutputs);
             break;
         case RealtimeCommandType::RobinLfoClockLinked:
             lfoState_.clockLinked = command.value >= 0.5f;
-            sourceNode_.synth().setLfoClockLinked(lfoState_.clockLinked);
+            sourceNode_.engine().setLfoClockLinked(lfoState_.clockLinked);
             break;
         case RealtimeCommandType::RobinLfoTempoBpm:
             lfoState_.tempoBpm = std::clamp(command.value, 20.0f, 300.0f);
-            sourceNode_.synth().setLfoTempoBpm(lfoState_.tempoBpm);
+            sourceNode_.engine().setLfoTempoBpm(lfoState_.tempoBpm);
             break;
         case RealtimeCommandType::RobinLfoRateMultiplier:
             lfoState_.rateMultiplier = std::clamp(command.value, 0.125f, 8.0f);
-            sourceNode_.synth().setLfoRateMultiplier(lfoState_.rateMultiplier);
+            sourceNode_.engine().setLfoRateMultiplier(lfoState_.rateMultiplier);
             break;
         case RealtimeCommandType::RobinLfoFixedFrequencyHz:
             lfoState_.fixedFrequencyHz = std::clamp(command.value, 0.01f, 40.0f);
-            sourceNode_.synth().setLfoFixedFrequencyHz(lfoState_.fixedFrequencyHz);
+            sourceNode_.engine().setLfoFixedFrequencyHz(lfoState_.fixedFrequencyHz);
             break;
         case RealtimeCommandType::RobinLfoWaveform:
             lfoState_.waveform = static_cast<dsp::LfoWaveform>(command.code);
-            sourceNode_.synth().setLfoWaveform(lfoState_.waveform);
+            sourceNode_.engine().setLfoWaveform(lfoState_.waveform);
             break;
         case RealtimeCommandType::RobinMasterGain:
             masterVoiceGain_ = std::clamp(command.value, 0.0f, 1.0f);
@@ -1087,7 +1087,7 @@ void Robin::applyRealtimeCommand(const RealtimeCommand& command) {
             voices_[command.index].outputs[command.subIndex] = command.value >= 0.5f;
             routingPreset_ = RoutingPreset::Custom;
             resetRoutingState();
-            sourceNode_.synth().setVoiceOutputEnabled(
+            sourceNode_.engine().setVoiceOutputEnabled(
                 command.index,
                 command.subIndex,
                 voices_[command.index].outputs[command.subIndex]);
@@ -1104,84 +1104,84 @@ void Robin::applyRealtimeCommand(const RealtimeCommand& command) {
                 return;
             }
             voices_[command.index].gain = std::clamp(command.value, 0.0f, 1.0f);
-            sourceNode_.synth().setVoiceGain(command.index, voices_[command.index].gain);
+            sourceNode_.engine().setVoiceGain(command.index, voices_[command.index].gain);
             break;
         case RealtimeCommandType::RobinVoiceVcfCutoffHz:
             if (command.index >= voices_.size() || voices_[command.index].linkedToMaster) {
                 return;
             }
             voices_[command.index].vcf.cutoffHz = std::clamp(command.value, 20.0f, 20000.0f);
-            sourceNode_.synth().setVoiceFilterCutoffHz(command.index, voices_[command.index].vcf.cutoffHz);
+            sourceNode_.engine().setVoiceFilterCutoffHz(command.index, voices_[command.index].vcf.cutoffHz);
             break;
         case RealtimeCommandType::RobinVoiceVcfResonance:
             if (command.index >= voices_.size() || voices_[command.index].linkedToMaster) {
                 return;
             }
             voices_[command.index].vcf.resonance = std::clamp(command.value, 0.1f, 10.0f);
-            sourceNode_.synth().setVoiceFilterResonance(command.index, voices_[command.index].vcf.resonance);
+            sourceNode_.engine().setVoiceFilterResonance(command.index, voices_[command.index].vcf.resonance);
             break;
         case RealtimeCommandType::RobinVoiceEnvVcfAttackMs:
             if (command.index >= voices_.size() || voices_[command.index].linkedToMaster) {
                 return;
             }
             voices_[command.index].envVcf.attackMs = std::clamp(command.value, 0.0f, 5000.0f);
-            sourceNode_.synth().setVoiceFilterEnvelopeAttackSeconds(command.index, voices_[command.index].envVcf.attackMs / 1000.0f);
+            sourceNode_.engine().setVoiceFilterEnvelopeAttackSeconds(command.index, voices_[command.index].envVcf.attackMs / 1000.0f);
             break;
         case RealtimeCommandType::RobinVoiceEnvVcfDecayMs:
             if (command.index >= voices_.size() || voices_[command.index].linkedToMaster) {
                 return;
             }
             voices_[command.index].envVcf.decayMs = std::clamp(command.value, 0.0f, 5000.0f);
-            sourceNode_.synth().setVoiceFilterEnvelopeDecaySeconds(command.index, voices_[command.index].envVcf.decayMs / 1000.0f);
+            sourceNode_.engine().setVoiceFilterEnvelopeDecaySeconds(command.index, voices_[command.index].envVcf.decayMs / 1000.0f);
             break;
         case RealtimeCommandType::RobinVoiceEnvVcfSustain:
             if (command.index >= voices_.size() || voices_[command.index].linkedToMaster) {
                 return;
             }
             voices_[command.index].envVcf.sustain = std::clamp(command.value, 0.0f, 1.0f);
-            sourceNode_.synth().setVoiceFilterEnvelopeSustainLevel(command.index, voices_[command.index].envVcf.sustain);
+            sourceNode_.engine().setVoiceFilterEnvelopeSustainLevel(command.index, voices_[command.index].envVcf.sustain);
             break;
         case RealtimeCommandType::RobinVoiceEnvVcfReleaseMs:
             if (command.index >= voices_.size() || voices_[command.index].linkedToMaster) {
                 return;
             }
             voices_[command.index].envVcf.releaseMs = std::clamp(command.value, 0.0f, 5000.0f);
-            sourceNode_.synth().setVoiceFilterEnvelopeReleaseSeconds(command.index, voices_[command.index].envVcf.releaseMs / 1000.0f);
+            sourceNode_.engine().setVoiceFilterEnvelopeReleaseSeconds(command.index, voices_[command.index].envVcf.releaseMs / 1000.0f);
             break;
         case RealtimeCommandType::RobinVoiceEnvVcfAmount:
             if (command.index >= voices_.size() || voices_[command.index].linkedToMaster) {
                 return;
             }
             voices_[command.index].envVcf.amount = std::clamp(command.value, 0.0f, 1.0f);
-            sourceNode_.synth().setVoiceFilterEnvelopeAmount(command.index, voices_[command.index].envVcf.amount);
+            sourceNode_.engine().setVoiceFilterEnvelopeAmount(command.index, voices_[command.index].envVcf.amount);
             break;
         case RealtimeCommandType::RobinVoiceEnvelopeAttackMs:
             if (command.index >= voices_.size() || voices_[command.index].linkedToMaster) {
                 return;
             }
             voices_[command.index].envelope.attackMs = std::clamp(command.value, 0.0f, 5000.0f);
-            sourceNode_.synth().setVoiceEnvelopeAttackSeconds(command.index, voices_[command.index].envelope.attackMs / 1000.0f);
+            sourceNode_.engine().setVoiceEnvelopeAttackSeconds(command.index, voices_[command.index].envelope.attackMs / 1000.0f);
             break;
         case RealtimeCommandType::RobinVoiceEnvelopeDecayMs:
             if (command.index >= voices_.size() || voices_[command.index].linkedToMaster) {
                 return;
             }
             voices_[command.index].envelope.decayMs = std::clamp(command.value, 0.0f, 5000.0f);
-            sourceNode_.synth().setVoiceEnvelopeDecaySeconds(command.index, voices_[command.index].envelope.decayMs / 1000.0f);
+            sourceNode_.engine().setVoiceEnvelopeDecaySeconds(command.index, voices_[command.index].envelope.decayMs / 1000.0f);
             break;
         case RealtimeCommandType::RobinVoiceEnvelopeSustain:
             if (command.index >= voices_.size() || voices_[command.index].linkedToMaster) {
                 return;
             }
             voices_[command.index].envelope.sustain = std::clamp(command.value, 0.0f, 1.0f);
-            sourceNode_.synth().setVoiceEnvelopeSustainLevel(command.index, voices_[command.index].envelope.sustain);
+            sourceNode_.engine().setVoiceEnvelopeSustainLevel(command.index, voices_[command.index].envelope.sustain);
             break;
         case RealtimeCommandType::RobinVoiceEnvelopeReleaseMs:
             if (command.index >= voices_.size() || voices_[command.index].linkedToMaster) {
                 return;
             }
             voices_[command.index].envelope.releaseMs = std::clamp(command.value, 0.0f, 5000.0f);
-            sourceNode_.synth().setVoiceEnvelopeReleaseSeconds(command.index, voices_[command.index].envelope.releaseMs / 1000.0f);
+            sourceNode_.engine().setVoiceEnvelopeReleaseSeconds(command.index, voices_[command.index].envelope.releaseMs / 1000.0f);
             break;
         case RealtimeCommandType::RobinMasterOscillatorEnabled:
         case RealtimeCommandType::RobinMasterOscillatorGain:
@@ -1246,10 +1246,10 @@ void Robin::applyRealtimeCommand(const RealtimeCommand& command) {
             auto& oscillator = voices_[command.index].oscillators[command.subIndex];
             if (command.type == RealtimeCommandType::RobinVoiceOscillatorEnabled) {
                 oscillator.enabled = command.value >= 0.5f;
-                sourceNode_.synth().setOscillatorEnabled(command.index, command.subIndex, oscillator.enabled);
+                sourceNode_.engine().setOscillatorEnabled(command.index, command.subIndex, oscillator.enabled);
             } else if (command.type == RealtimeCommandType::RobinVoiceOscillatorGain) {
                 oscillator.gain = std::clamp(command.value, 0.0f, 1.0f);
-                sourceNode_.synth().setOscillatorGain(command.index, command.subIndex, oscillator.gain);
+                sourceNode_.engine().setOscillatorGain(command.index, command.subIndex, oscillator.gain);
             } else if (command.type == RealtimeCommandType::RobinVoiceOscillatorRelative) {
                 const bool nextRelative = command.value >= 0.5f;
                 if (oscillator.relativeToVoice != nextRelative) {
@@ -1266,13 +1266,13 @@ void Robin::applyRealtimeCommand(const RealtimeCommand& command) {
                     }
                 }
                 oscillator.relativeToVoice = nextRelative;
-                sourceNode_.synth().setOscillatorRelativeToVoice(command.index, command.subIndex, oscillator.relativeToVoice);
-                sourceNode_.synth().setOscillatorFrequency(command.index, command.subIndex, oscillator.frequencyValue);
+                sourceNode_.engine().setOscillatorRelativeToVoice(command.index, command.subIndex, oscillator.relativeToVoice);
+                sourceNode_.engine().setOscillatorFrequency(command.index, command.subIndex, oscillator.frequencyValue);
             } else if (command.type == RealtimeCommandType::RobinVoiceOscillatorFrequency) {
                 oscillator.frequencyValue = oscillator.relativeToVoice
                     ? std::clamp(command.value, 0.01f, 8.0f)
                     : std::clamp(command.value, 1.0f, 20000.0f);
-                sourceNode_.synth().setOscillatorFrequency(command.index, command.subIndex, oscillator.frequencyValue);
+                sourceNode_.engine().setOscillatorFrequency(command.index, command.subIndex, oscillator.frequencyValue);
             }
             break;
         }
@@ -1284,7 +1284,7 @@ void Robin::applyRealtimeCommand(const RealtimeCommand& command) {
                 return;
             }
             voices_[command.index].oscillators[command.subIndex].waveform = static_cast<dsp::Waveform>(command.code);
-            sourceNode_.synth().setOscillatorWaveform(
+            sourceNode_.engine().setOscillatorWaveform(
                 command.index,
                 command.subIndex,
                 voices_[command.index].oscillators[command.subIndex].waveform);
@@ -1499,7 +1499,7 @@ void Robin::applyStateSnapshot(const RobinStateSnapshot& state) {
         voice.oscillators.resize(oscillatorCount);
     }
 
-    sourceNode_.synth().clearNotes();
+    sourceNode_.engine().clearNotes();
     voiceAssignments_.clear();
     voiceReleaseUntil_.assign(voices_.size(), std::chrono::steady_clock::time_point::min());
     nextVoiceCursor_ = 0;
@@ -1509,12 +1509,12 @@ void Robin::applyStateSnapshot(const RobinStateSnapshot& state) {
     syncAllVoices();
 }
 
-audio::Synth& Robin::synth() {
-    return sourceNode_.synth();
+audio::PolySynth& Robin::engine() {
+    return sourceNode_.engine();
 }
 
-const audio::Synth& Robin::synth() const {
-    return sourceNode_.synth();
+const audio::PolySynth& Robin::engine() const {
+    return sourceNode_.engine();
 }
 
 const char* Robin::waveformToString(dsp::Waveform waveform) {
@@ -1895,7 +1895,7 @@ void Robin::syncVoiceFrequency(std::uint32_t voiceIndex) {
         baseFrequency = midiNoteToFrequency(assignment->noteNumber);
     }
 
-    sourceNode_.synth().setVoiceFrequency(voiceIndex, tunedFrequency(baseFrequency));
+    sourceNode_.engine().setVoiceFrequency(voiceIndex, tunedFrequency(baseFrequency));
 }
 
 void Robin::syncAssignedVoiceFrequencies() {
@@ -2067,43 +2067,43 @@ void Robin::syncVoiceState(std::uint32_t voiceIndex,
     }
 
     if (syncMaskIncludes(syncMask, kSyncActive)) {
-        sourceNode_.synth().setVoiceActive(voiceIndex, voice.active);
+        sourceNode_.engine().setVoiceActive(voiceIndex, voice.active);
     }
     if (syncFrequency && syncMaskIncludes(syncMask, kSyncFrequency)) {
         syncVoiceFrequency(voiceIndex);
     }
     if (syncMaskIncludes(syncMask, kSyncGain)) {
-        sourceNode_.synth().setVoiceGain(voiceIndex, voiceGain);
+        sourceNode_.engine().setVoiceGain(voiceIndex, voiceGain);
     }
     if (syncMaskIncludes(syncMask, kSyncEnvelope)) {
-        sourceNode_.synth().setVoiceEnvelopeAttackSeconds(voiceIndex, envelope.attackMs / 1000.0f);
-        sourceNode_.synth().setVoiceEnvelopeDecaySeconds(voiceIndex, envelope.decayMs / 1000.0f);
-        sourceNode_.synth().setVoiceEnvelopeSustainLevel(voiceIndex, envelope.sustain);
-        sourceNode_.synth().setVoiceEnvelopeReleaseSeconds(voiceIndex, envelope.releaseMs / 1000.0f);
+        sourceNode_.engine().setVoiceEnvelopeAttackSeconds(voiceIndex, envelope.attackMs / 1000.0f);
+        sourceNode_.engine().setVoiceEnvelopeDecaySeconds(voiceIndex, envelope.decayMs / 1000.0f);
+        sourceNode_.engine().setVoiceEnvelopeSustainLevel(voiceIndex, envelope.sustain);
+        sourceNode_.engine().setVoiceEnvelopeReleaseSeconds(voiceIndex, envelope.releaseMs / 1000.0f);
     }
     if (syncMaskIncludes(syncMask, kSyncVcf)) {
-        sourceNode_.synth().setVoiceFilterCutoffHz(voiceIndex, vcf.cutoffHz);
-        sourceNode_.synth().setVoiceFilterResonance(voiceIndex, vcf.resonance);
+        sourceNode_.engine().setVoiceFilterCutoffHz(voiceIndex, vcf.cutoffHz);
+        sourceNode_.engine().setVoiceFilterResonance(voiceIndex, vcf.resonance);
     }
     if (syncMaskIncludes(syncMask, kSyncEnvVcf)) {
-        sourceNode_.synth().setVoiceFilterEnvelopeAttackSeconds(voiceIndex, envVcf.attackMs / 1000.0f);
-        sourceNode_.synth().setVoiceFilterEnvelopeDecaySeconds(voiceIndex, envVcf.decayMs / 1000.0f);
-        sourceNode_.synth().setVoiceFilterEnvelopeSustainLevel(voiceIndex, envVcf.sustain);
-        sourceNode_.synth().setVoiceFilterEnvelopeReleaseSeconds(voiceIndex, envVcf.releaseMs / 1000.0f);
-        sourceNode_.synth().setVoiceFilterEnvelopeAmount(voiceIndex, envVcf.amount);
+        sourceNode_.engine().setVoiceFilterEnvelopeAttackSeconds(voiceIndex, envVcf.attackMs / 1000.0f);
+        sourceNode_.engine().setVoiceFilterEnvelopeDecaySeconds(voiceIndex, envVcf.decayMs / 1000.0f);
+        sourceNode_.engine().setVoiceFilterEnvelopeSustainLevel(voiceIndex, envVcf.sustain);
+        sourceNode_.engine().setVoiceFilterEnvelopeReleaseSeconds(voiceIndex, envVcf.releaseMs / 1000.0f);
+        sourceNode_.engine().setVoiceFilterEnvelopeAmount(voiceIndex, envVcf.amount);
     }
     if (syncMaskIncludes(syncMask, kSyncOutputs)) {
         for (std::uint32_t outputIndex = 0; outputIndex < voice.outputs.size(); ++outputIndex) {
-            sourceNode_.synth().setVoiceOutputEnabled(voiceIndex, outputIndex, voice.outputs[outputIndex]);
+            sourceNode_.engine().setVoiceOutputEnabled(voiceIndex, outputIndex, voice.outputs[outputIndex]);
         }
     }
     if (syncMaskIncludes(syncMask, kSyncOscillators)) {
         for (std::uint32_t oscillatorIndex = 0; oscillatorIndex < oscillators.size(); ++oscillatorIndex) {
-            sourceNode_.synth().setOscillatorEnabled(voiceIndex, oscillatorIndex, oscillators[oscillatorIndex].enabled);
-            sourceNode_.synth().setOscillatorGain(voiceIndex, oscillatorIndex, oscillators[oscillatorIndex].gain);
-            sourceNode_.synth().setOscillatorRelativeToVoice(voiceIndex, oscillatorIndex, oscillators[oscillatorIndex].relativeToVoice);
-            sourceNode_.synth().setOscillatorFrequency(voiceIndex, oscillatorIndex, oscillators[oscillatorIndex].frequencyValue);
-            sourceNode_.synth().setOscillatorWaveform(voiceIndex, oscillatorIndex, oscillators[oscillatorIndex].waveform);
+            sourceNode_.engine().setOscillatorEnabled(voiceIndex, oscillatorIndex, oscillators[oscillatorIndex].enabled);
+            sourceNode_.engine().setOscillatorGain(voiceIndex, oscillatorIndex, oscillators[oscillatorIndex].gain);
+            sourceNode_.engine().setOscillatorRelativeToVoice(voiceIndex, oscillatorIndex, oscillators[oscillatorIndex].relativeToVoice);
+            sourceNode_.engine().setOscillatorFrequency(voiceIndex, oscillatorIndex, oscillators[oscillatorIndex].frequencyValue);
+            sourceNode_.engine().setOscillatorWaveform(voiceIndex, oscillatorIndex, oscillators[oscillatorIndex].waveform);
         }
     }
 }
@@ -2119,16 +2119,16 @@ void Robin::syncAllVoices() {
 }
 
 void Robin::syncLfo() {
-    sourceNode_.synth().setLfoEnabled(lfoState_.enabled);
-    sourceNode_.synth().setLfoWaveform(lfoState_.waveform);
-    sourceNode_.synth().setLfoDepth(lfoState_.depth);
-    sourceNode_.synth().setLfoPhaseSpreadDegrees(lfoState_.phaseSpreadDegrees);
-    sourceNode_.synth().setLfoPolarityFlip(lfoState_.polarityFlip);
-    sourceNode_.synth().setLfoUnlinkedOutputs(lfoState_.unlinkedOutputs);
-    sourceNode_.synth().setLfoClockLinked(lfoState_.clockLinked);
-    sourceNode_.synth().setLfoTempoBpm(lfoState_.tempoBpm);
-    sourceNode_.synth().setLfoRateMultiplier(lfoState_.rateMultiplier);
-    sourceNode_.synth().setLfoFixedFrequencyHz(lfoState_.fixedFrequencyHz);
+    sourceNode_.engine().setLfoEnabled(lfoState_.enabled);
+    sourceNode_.engine().setLfoWaveform(lfoState_.waveform);
+    sourceNode_.engine().setLfoDepth(lfoState_.depth);
+    sourceNode_.engine().setLfoPhaseSpreadDegrees(lfoState_.phaseSpreadDegrees);
+    sourceNode_.engine().setLfoPolarityFlip(lfoState_.polarityFlip);
+    sourceNode_.engine().setLfoUnlinkedOutputs(lfoState_.unlinkedOutputs);
+    sourceNode_.engine().setLfoClockLinked(lfoState_.clockLinked);
+    sourceNode_.engine().setLfoTempoBpm(lfoState_.tempoBpm);
+    sourceNode_.engine().setLfoRateMultiplier(lfoState_.rateMultiplier);
+    sourceNode_.engine().setLfoFixedFrequencyHz(lfoState_.fixedFrequencyHz);
 }
 
 void Robin::resetRoutingState() {
@@ -2184,7 +2184,7 @@ void Robin::routeVoiceToOutput(std::uint32_t voiceIndex, std::uint32_t outputInd
     }
 
     for (std::uint32_t channelIndex = 0; channelIndex < outputs.size(); ++channelIndex) {
-        sourceNode_.synth().setVoiceOutputEnabled(voiceIndex, channelIndex, outputs[channelIndex]);
+        sourceNode_.engine().setVoiceOutputEnabled(voiceIndex, channelIndex, outputs[channelIndex]);
     }
 }
 
@@ -2196,7 +2196,7 @@ void Robin::routeVoiceToAllOutputs(std::uint32_t voiceIndex) {
     auto& outputs = voices_[voiceIndex].outputs;
     std::fill(outputs.begin(), outputs.end(), true);
     for (std::uint32_t channelIndex = 0; channelIndex < outputs.size(); ++channelIndex) {
-        sourceNode_.synth().setVoiceOutputEnabled(voiceIndex, channelIndex, true);
+        sourceNode_.engine().setVoiceOutputEnabled(voiceIndex, channelIndex, true);
     }
 }
 
@@ -2215,7 +2215,7 @@ std::uint32_t Robin::allocateVoice() {
 
     if (activeVoiceIndices.empty()) {
         voices_[0].active = true;
-        sourceNode_.synth().setVoiceActive(0, true);
+        sourceNode_.engine().setVoiceActive(0, true);
         autoActivatedVoice0_ = true;
         activeVoiceIndices.push_back(0);
     }
@@ -2263,7 +2263,7 @@ std::uint32_t Robin::allocateVoice() {
             return assignment.voiceIndex == selectedVoice;
         });
     if (voiceAssignment != voiceAssignments_.end()) {
-        sourceNode_.synth().noteOff(voiceAssignment->voiceIndex);
+        sourceNode_.engine().noteOff(voiceAssignment->voiceIndex);
         if (selectedVoice < voiceReleaseUntil_.size()) {
             const auto& voice = voices_[selectedVoice];
             const float releaseMs = voice.linkedToMaster ? envelopeState_.releaseMs : voice.envelope.releaseMs;

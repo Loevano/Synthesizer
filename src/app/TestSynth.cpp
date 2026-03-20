@@ -13,12 +13,12 @@ void TestSynth::prepare(double sampleRate, std::uint32_t outputChannels) {
     syncNodeState();
 }
 
-void TestSynth::renderAdd(float* output,
+void TestSynth::process(float* output,
                           std::uint32_t frames,
                           std::uint32_t channels,
                           bool enabled,
                           float level) {
-    sourceNode_.renderAdd(output, frames, channels, enabled, level);
+    sourceNode_.process(output, frames, channels, enabled, level);
 }
 
 void TestSynth::clearAllNotes() {

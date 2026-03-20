@@ -6,7 +6,7 @@ This document answers one question:
 
 ## What the project is
 
-This project is a **multichannel instrument framework**, not a normal stereo synth.
+This project is a multichannel instrument framework, not a normal stereo synth.
 
 The important idea is that output count changes the instrument design:
 
@@ -19,21 +19,21 @@ The current reference source is `Robin`, a multivoice spatial synth built around
 
 ## Main concept
 
-There are two useful ways to describe the app:
+Two views of the app are useful:
 
 Product model:
 
-`Audio Engine -> Source Mixer -> Output Mixer -> Sources -> FX -> outputs`
+`Audio Engine -> Source Mixer -> FX -> Output Mixer -> outputs`
 
 Current live render path:
 
-`Audio Engine -> LiveGraph sources -> dry/fx split -> FX Rack -> dry + fx sum -> Output Mixer -> hardware outputs`
+`Audio driver -> SynthHost -> LiveGraph sources -> dry/fx split -> FxRackNode -> dry + fx sum -> OutputMixerNode -> hardware outputs`
 
 ## Top-level parts
 
-## 1. Audio Engine
+## 1. App Host
 
-The audio engine is the system layer that talks to CoreAudio and drives rendering.
+`SynthHost` is the system layer that talks to CoreAudio and drives rendering.
 
 Its job is to:
 
@@ -45,6 +45,7 @@ Its job is to:
 - ask the graph to fill the output buffer
 - host MIDI and OSC input
 - expose state to the UI
+- mirror snapshot state and render state
 
 ## 2. Source Mixer
 
@@ -81,9 +82,9 @@ This layer is for speaker correction and alignment, not source design.
 
 ## 4. Sound Sources
 
-## Test
+## TestSynth
 
-`Test` is the simplest playable source.
+`TestSynth` is the simplest playable source.
 
 It exists to:
 
@@ -92,7 +93,7 @@ It exists to:
 - verify output mixer behavior
 - debug the host without Robin complexity
 
-It is intentionally small: one oscillator, one envelope, manual output routing.
+It is intentionally small: one oscillator, one `VCA ENV`, manual output routing.
 
 ## Robin
 
@@ -117,8 +118,8 @@ Current Robin model:
 - master and local sections currently include:
   - oscillator bank
   - `VCF`
-  - `ENV VCF`
-  - `AMP`
+  - `VCF ENV`
+  - `VCA ENV`
 
 Routing presets currently include:
 
@@ -128,14 +129,6 @@ Routing presets currently include:
 - `Round Robin`
 - `All Outputs`
 - `Custom`
-
-Robin is meant to produce:
-
-- wide pads
-- distributed chord clouds
-- detuned ensembles
-- moving timbres across the speaker field
-- rhythmic spatial accents from selected local voices
 
 ## Decor
 
@@ -177,7 +170,7 @@ Current processor status:
 - `Saturator`: scaffolded
 - `Sidechain`: scaffolded
 
-FX controls are globally linked by design.
+At the DSP layer, output effects now share a small `Effects` base so future processors follow one lifecycle.
 
 ## 6. External control
 
@@ -189,7 +182,7 @@ Current control surfaces:
 
 ## Current implementation shape
 
-The backend currently exposes state grouped as:
+The backend exposes state grouped as:
 
 - `engine`
 - `graph`
@@ -200,13 +193,20 @@ The backend currently exposes state grouped as:
 
 That structure is intentional. It matches the product model more closely than the older flat synth state.
 
+The code split is also clearer now:
+
+- `synth::app::Synth` is the shared app-level source base
+- `audio::PolySynth` is the concrete polyphonic engine under Robin
+- `SourceState.hpp` holds small reusable controller-side structs
+- `RealtimeCommands.hpp` is the shared command contract between UI-facing state and render-side state
+
 ## Why this matters
 
-The project is not just “a synth with more channels”. The multichannel model changes:
+The project is not just "a synth with more channels". The multichannel model changes:
 
 - what a voice means
 - where routing belongs
 - how modulation should spread
 - where FX live in the signal path
 
-That is why the scaffolding, controller state, and graph shape are treated as first-class design work.
+That is why the scaffolding, state shape, and graph model are treated as first-class design work.

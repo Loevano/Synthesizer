@@ -48,12 +48,12 @@ void LiveGraph::render(float* output, std::uint32_t frames, std::uint32_t channe
         if (node.isEnabled && !node.isEnabled()) {
             continue;
         }
-        if (node.renderAdd) {
+        if (node.process) {
             float* targetBuffer = output;
             if (node.renderTarget && node.renderTarget() == SourceRenderTarget::FxBus) {
                 targetBuffer = fxBusBuffer_.data();
             }
-            node.renderAdd(targetBuffer, frames, channels);
+            node.process(targetBuffer, frames, channels);
         }
     }
 

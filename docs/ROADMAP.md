@@ -1,11 +1,6 @@
 # Roadmap
 
-This file separates:
-
-- platform and architecture work
-- synth-feature work
-
-The goal is to keep infrastructure, DSP, and UI changes from collapsing into one undifferentiated list.
+This file separates platform work from instrument work so infrastructure, DSP, and UI changes do not blur together.
 
 ## Current baseline
 
@@ -13,34 +8,29 @@ Already in place:
 
 - CoreAudio-backed host on macOS
 - native macOS app shell with embedded `WKWebView`
-- JS/native bridge:
-  - `getState()`
-  - `setParam(path, value)`
-- grouped controller state:
-  - `engine`
-  - `graph`
-  - `sourceMixer`
-  - `outputMixer`
-  - `sources`
-  - `processors`
-- reusable concrete graph modules:
+- JS/native bridge with fast and full-state parameter paths
+- `SynthHost` with explicit snapshot-state vs render-state handling
+- reusable graph modules:
   - `LiveGraph`
   - `RobinSourceNode`
   - `TestSourceNode`
   - `FxRackNode`
   - `OutputMixerNode`
-- live sources:
-  - `Robin`
-  - `Test`
+- app-level `Synth` base
+- `audio::PolySynth` as Robin's render engine
+- `Effects` base for output DSP
+- live `Robin`
+- live `TestSynth`
 - source-level dry/fx routing
 - per-output level, delay, and EQ
 - live chorus
 - CoreMIDI input
 - OSC control surface
+- patch save/load flow
 
 Still missing:
 
-- deeper modulation system / modulation matrix
+- deeper modulation system
 - `Decor` DSP
 - `Pieces` DSP
 - full saturator
@@ -49,7 +39,19 @@ Still missing:
 
 ## Platform roadmap
 
-## 1. Stabilize regression coverage
+### 1. Keep the parameter thread model tight
+
+Goal:
+
+- make state ownership and command handoff harder to break
+
+Scope:
+
+- keep snapshot state authoritative for UI and patch I/O
+- keep render changes block-boundary driven
+- add focused tests around queued realtime commands and note bookkeeping
+
+### 2. Expand regression coverage
 
 Goal:
 
@@ -62,35 +64,19 @@ Scope:
 - output mixer processing behavior
 - Robin allocator behavior and release-tail handling
 
-Reason:
-
-- the app is now complex enough that silent regressions are more expensive than the initial setup cost of tests
-
-## 2. Preset and state persistence
+### 3. Improve smoothing policy
 
 Goal:
 
-- make the controller state saveable and reloadable without depending on UI state
+- apply consistent anti-zipper handling where live drags can click
 
 Scope:
 
-- stable serialization format
-- load/save flow
-- decide which controls are persistent versus runtime-only
-
-## 3. Better parameter-smoothing policy
-
-Goal:
-
-- apply consistent anti-zipper handling where live drags can create audible clicks
-
-Scope:
-
-- output-mixer level
 - any remaining abrupt source/process gains
-- future modulation-depth and routing-sensitive controls
+- modulation-depth changes where needed
+- future routing-sensitive controls
 
-## 4. Broaden contributor ergonomics
+### 4. Keep docs and contributor ergonomics current
 
 Goal:
 
@@ -98,39 +84,38 @@ Goal:
 
 Scope:
 
-- keep docs current
+- keep architecture and overview docs current
 - maintain contributor setup instructions
 - keep helper scripts accurate
 
 ## Feature roadmap
 
-## A. Finish Robin as the reference instrument
+### A. Finish Robin as the reference instrument
 
 Goal:
 
-- make Robin solid enough that it can carry the architecture while other sources are scaffolded
+- make Robin solid enough to carry the architecture while other sources remain scaffolded
 
 Scope:
 
-- keep master-first voice design
-- add section-level modulation / spread tools
+- keep the master-first voice design
 - keep local voice override behavior predictable
-- improve remaining edge cases around true voice stealing
+- improve remaining edge cases around voice stealing and release tails
 
-## B. Expand modulation
+### B. Expand modulation carefully
 
 Goal:
 
-- move from one live LFO to a broader modulation system
+- grow beyond the current LFO/spread layer without jumping into a messy matrix too early
 
 Scope:
 
-- section modulators
+- section-level modulators
 - voice spread algorithms
-- routing modulation
-- eventual matrix-like destination model
+- routing-aware modulation
+- clearer destination naming such as `VCF ENV` and `VCA ENV`
 
-## C. Expand FX rack
+### C. Expand the FX rack
 
 Goal:
 
@@ -140,9 +125,9 @@ Scope:
 
 - saturator implementation
 - sidechain design
-- decide how future FX should share common control/state patterns
+- future processors built on the shared `Effects` lifecycle
 
-## D. Implement Decor
+### D. Implement Decor
 
 Goal:
 
@@ -154,18 +139,18 @@ Scope:
 - speaker-locked behavior
 - immersive decorrelated playback design
 
-## E. Implement Pieces
+### E. Implement Pieces
 
 Goal:
 
-- add a granular / algorithmic source after the graph and routing model are more stable
+- add a granular or algorithmic source once the graph and routing model are more stable
 
 Scope:
 
 - playable grain triggering
 - spatial grain or voice distribution
 
-## F. Improve oscillator quality
+### F. Improve oscillator quality
 
 Goal:
 
@@ -179,136 +164,10 @@ Scope:
 
 ## Recommended order
 
-1. Add routing / allocator regression coverage.
-2. Keep Robin stable as the reference live source.
-3. Add section-level modulation on top of Robin’s current model.
-4. Expand the FX rack beyond chorus.
-5. Implement `Decor`.
-6. Implement `Pieces`.
-7. Add preset/state persistence once the state shape settles further.
-
-
-Yes, I think we should split the idea in two.
-
-For Robin:
-
-keep spread as a light, coherent variation layer on top of the master
-spread across linked + enabled voices
-use voice order, not output order
-do not replace values, only offset or scale them
-For Decor:
-
-put the heavier “every output/voice is its own decorated variation” logic there
-that is where stronger divergence, decorrelation, and one-voice-per-output behavior belongs
-So my recommendation is:
-
-Robin logic
-
-A spread modulator only affects linked voices.
-Unlinked voices ignore spread completely.
-If linked voices are 1, 2, 5, 8, they become the spread set in that order.
-The spread position is computed over that linked set only.
-Master stays the baseline.
-Effective value is:
-additive params: master + offset
-multiplicative/time params: master * ratio
-That preserves your original intent:
-
-dial in one master sound
-add controlled diversity on top
-still move the whole set with the master
-What is being spread
-For Robin, spread should mean:
-
-a static per-voice distribution function
-not a time LFO yet
-recomputed when:
-master value changes
-spread settings change
-voice link/enabled state changes
-voice count changes
-So first version is cheap CPU-wise.
-
-How to control spread
-I would not start with “any parameter can be modulated by anything”.
-That becomes a matrix too early.
-
-Better:
-
-use a small number of spread slots
-each slot targets one parameter from a curated list
-So:
-
-flexible enough to assign
-not fully open-ended
-easier to understand and implement
-Good first target list
-
-VCF Cutoff
-VCF Resonance
-ENV VCF Amount
-ENV VCF Attack
-ENV VCF Decay
-ENV VCF Release
-AMP Attack
-AMP Decay
-AMP Release
-Osc Level
-Osc Detune
-I would avoid waveform spread for now.
-
-Good first algorithms
-
-Linear
-Random
-Alternating
-maybe Center-Out
-Best parameter model
-Each slot has:
-
-Enabled
-Target
-Algorithm
-Start
-End
-Seed for random only
-Then:
-
-Linear: interpolate from start to end
-Random: stable random value between start and end per linked voice
-Alternating: alternate between start and end
-Center-Out: distribute symmetrically from center
-Important: start and end are not absolute values.
-They are offsets or ratios on top of the master.
-
-Examples:
-
-cutoff: use musical units, not raw Hz
-detune: cents
-envelope times: ratio or percent, not raw milliseconds offset
-resonance: small additive offset
-level: dB or gain ratio
-Robin vs Decor
-I agree with your instinct:
-
-Robin should stay “one coherent instrument with optional variation”
-Decor should become “speaker-decorrelated distributed texture”
-So:
-
-light spread belongs in Robin
-strong per-output individuality belongs in Decor
-My concrete recommendation:
-
-Implement Robin spread as static linked-voice offsets.
-Use 2-4 assignable spread slots.
-Limit targets to a curated list.
-Leave output-index decorrelation for Decor.
-That is the cleanest first version.
-
-If you agree, I’d implement Robin stage 1 like this:
-
-3 spread slots
-targets from a curated list
-algorithms: Linear, Random, Alternating
-applies only to linked enabled voices
-offsets/ratios on top of master, never absolute replacement
+1. Keep the parameter thread model explicit and tested.
+2. Expand routing and allocator regression coverage.
+3. Keep Robin stable as the reference live source.
+4. Expand modulation one coherent layer at a time.
+5. Expand the FX rack beyond chorus.
+6. Implement `Decor`.
+7. Implement `Pieces`.

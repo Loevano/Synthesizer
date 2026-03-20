@@ -127,7 +127,7 @@ void TestEngine::noteOff(int noteNumber) {
     syncGate();
 }
 
-void TestEngine::renderAdd(float* output, std::uint32_t frames, std::uint32_t channels, float masterGain) {
+void TestEngine::process(float* output, std::uint32_t frames, std::uint32_t channels, float masterGain) {
     if (output == nullptr || channels == 0 || outputEnabled_.empty()) {
         return;
     }

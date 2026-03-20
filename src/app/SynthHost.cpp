@@ -1,4 +1,4 @@
-#include "synth/app/SynthController.hpp"
+#include "synth/app/SynthHost.hpp"
 
 #include "synth/io/MidiInput.hpp"
 #include "synth/io/OscServer.hpp"
@@ -167,7 +167,7 @@ std::string queryDefaultOutputDeviceName() {
 
 }  // namespace
 
-SynthController::SynthController(
+SynthHost::SynthHost(
     RuntimeConfig config,
     std::unique_ptr<interfaces::IAudioDriver> driver)
     : config_(resolveRuntimeConfig(std::move(config))),
@@ -182,11 +182,11 @@ SynthController::SynthController(
     renderRobin_.setDebugOscillatorParams(debugRobinOscillatorParams_);
 }
 
-SynthController::~SynthController() {
+SynthHost::~SynthHost() {
     stopAudio();
 }
 
-bool SynthController::initialize() {
+bool SynthHost::initialize() {
     if (initialized_) {
         return true;
     }
@@ -233,7 +233,7 @@ bool SynthController::initialize() {
     return true;
 }
 
-bool SynthController::startAudio() {
+bool SynthHost::startAudio() {
     if (!initialize()) {
         return false;
     }
@@ -263,7 +263,7 @@ bool SynthController::startAudio() {
     logger_.info("Starting audio...");
     const bool started = driver_->start(
         audioConfig, [&](float* output, std::uint32_t frames, std::uint32_t channels) {
-            renderAudioLocked(output, frames, channels);
+            processAudioBlockLocked(output, frames, channels);
         });
 
     if (!started) {
@@ -295,7 +295,7 @@ bool SynthController::startAudio() {
                     command.type = RealtimeCommandType::MidiAllNotesOff;
                     break;
             }
-            submitRealtimeCommandOrApply(command);
+            submitOrApplyRealtimeCommand(command);
         }, false);
         if (midiEnabled_) {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -329,7 +329,7 @@ bool SynthController::startAudio() {
             }
         };
         callbacks.onNoteOn = [this](int noteNumber, float velocity) {
-            submitRealtimeCommandOrApply({
+            submitOrApplyRealtimeCommand({
                 RealtimeCommandType::GlobalNoteOn,
                 0,
                 noteNumber,
@@ -337,7 +337,7 @@ bool SynthController::startAudio() {
             });
         };
         callbacks.onNoteOff = [this](int noteNumber) {
-            submitRealtimeCommandOrApply({
+            submitOrApplyRealtimeCommand({
                 RealtimeCommandType::GlobalNoteOff,
                 0,
                 noteNumber,
@@ -353,7 +353,7 @@ bool SynthController::startAudio() {
     return true;
 }
 
-void SynthController::stopAudio() {
+void SynthHost::stopAudio() {
     crashDiagnostics_.breadcrumb("stopAudio requested.");
 
     {
@@ -391,11 +391,11 @@ void SynthController::stopAudio() {
     markStateSnapshotDirty();
 }
 
-bool SynthController::isRunning() const {
+bool SynthHost::isRunning() const {
     return driver_ != nullptr && driver_->isRunning();
 }
 
-std::string SynthController::stateJson() const {
+std::string SynthHost::stateJson() const {
     if (!stateSnapshotDirty_.load(std::memory_order_acquire)) {
         std::lock_guard<std::mutex> cacheLock(stateSnapshotMutex_);
         return stateJsonCache_;
@@ -417,11 +417,11 @@ std::string SynthController::stateJson() const {
     return nextSnapshot;
 }
 
-void SynthController::markStateSnapshotDirty() const {
+void SynthHost::markStateSnapshotDirty() const {
     stateSnapshotDirty_.store(true, std::memory_order_release);
 }
 
-std::string SynthController::buildStateJsonLocked() const {
+std::string SynthHost::buildStateJsonLocked() const {
     std::ostringstream json;
     const auto outputDevices = driver_ != nullptr ? driver_->availableOutputDevices() : std::vector<interfaces::OutputDeviceInfo>{};
     const interfaces::OutputDeviceInfo* selectedOutputDevice = findOutputDevice(outputDevices, config_.outputDeviceId);
@@ -650,7 +650,7 @@ std::string SynthController::buildStateJsonLocked() const {
     return json.str();
 }
 
-bool SynthController::setParam(std::string_view path, double value, std::string* errorMessage) {
+bool SynthHost::setParam(std::string_view path, double value, std::string* errorMessage) {
     if (debugCrashBreadcrumbs_) {
         std::ostringstream breadcrumb;
         breadcrumb << "setParam number path=" << path << " value=" << value;
@@ -815,7 +815,7 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
     }
 
     if (renderCommand.has_value()) {
-        submitRealtimeCommandOrApply(*renderCommand);
+        submitOrApplyRealtimeCommand(*renderCommand);
     }
 
     if (shouldRestartAudio) {
@@ -834,7 +834,7 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
     return true;
 }
 
-bool SynthController::setParam(std::string_view path, std::string_view value, std::string* errorMessage) {
+bool SynthHost::setParam(std::string_view path, std::string_view value, std::string* errorMessage) {
     if (debugCrashBreadcrumbs_) {
         crashDiagnostics_.breadcrumb(
             "setParam string path=" + std::string(path) + " value=" + std::string(value));
@@ -855,23 +855,23 @@ bool SynthController::setParam(std::string_view path, std::string_view value, st
     return false;
 }
 
-audio::Synth& SynthController::synth() {
-    return renderRobin_.synth();
+audio::PolySynth& SynthHost::robinEngine() {
+    return renderRobin_.engine();
 }
 
-core::Logger& SynthController::logger() {
+core::Logger& SynthHost::logger() {
     return logger_;
 }
 
-core::CrashDiagnostics& SynthController::crashDiagnostics() {
+core::CrashDiagnostics& SynthHost::crashDiagnostics() {
     return crashDiagnostics_;
 }
 
-const RuntimeConfig& SynthController::config() const {
+const RuntimeConfig& SynthHost::config() const {
     return config_;
 }
 
-const char* SynthController::waveformToString(dsp::Waveform waveform) {
+const char* SynthHost::waveformToString(dsp::Waveform waveform) {
     switch (waveform) {
         case dsp::Waveform::Square:
             return "square";
@@ -887,7 +887,7 @@ const char* SynthController::waveformToString(dsp::Waveform waveform) {
     }
 }
 
-bool SynthController::tryParseWaveform(std::string_view value, dsp::Waveform& waveform) {
+bool SynthHost::tryParseWaveform(std::string_view value, dsp::Waveform& waveform) {
     if (value == "sine") {
         waveform = dsp::Waveform::Sine;
         return true;
@@ -911,7 +911,7 @@ bool SynthController::tryParseWaveform(std::string_view value, dsp::Waveform& wa
     return false;
 }
 
-const char* SynthController::lfoWaveformToString(dsp::LfoWaveform waveform) {
+const char* SynthHost::lfoWaveformToString(dsp::LfoWaveform waveform) {
     switch (waveform) {
         case dsp::LfoWaveform::Triangle:
             return "triangle";
@@ -927,7 +927,7 @@ const char* SynthController::lfoWaveformToString(dsp::LfoWaveform waveform) {
     }
 }
 
-bool SynthController::tryParseLfoWaveform(std::string_view value, dsp::LfoWaveform& waveform) {
+bool SynthHost::tryParseLfoWaveform(std::string_view value, dsp::LfoWaveform& waveform) {
     if (value == "sine") {
         waveform = dsp::LfoWaveform::Sine;
         return true;
@@ -951,7 +951,7 @@ bool SynthController::tryParseLfoWaveform(std::string_view value, dsp::LfoWavefo
     return false;
 }
 
-const char* SynthController::sourceRouteTargetToString(SourceMixerSlotState::RouteTarget routeTarget) {
+const char* SynthHost::sourceRouteTargetToString(SourceMixerSlotState::RouteTarget routeTarget) {
     switch (routeTarget) {
         case SourceMixerSlotState::RouteTarget::Fx:
             return "fx";
@@ -961,7 +961,7 @@ const char* SynthController::sourceRouteTargetToString(SourceMixerSlotState::Rou
     }
 }
 
-bool SynthController::tryParseSourceRouteTarget(std::string_view value, SourceMixerSlotState::RouteTarget& routeTarget) {
+bool SynthHost::tryParseSourceRouteTarget(std::string_view value, SourceMixerSlotState::RouteTarget& routeTarget) {
     if (value == "dry") {
         routeTarget = SourceMixerSlotState::RouteTarget::Dry;
         return true;
@@ -973,7 +973,7 @@ bool SynthController::tryParseSourceRouteTarget(std::string_view value, SourceMi
     return false;
 }
 
-const char* SynthController::routingPresetToString(RoutingPreset preset) {
+const char* SynthHost::routingPresetToString(RoutingPreset preset) {
     switch (preset) {
         case RoutingPreset::Forward:
             return "forward";
@@ -991,7 +991,7 @@ const char* SynthController::routingPresetToString(RoutingPreset preset) {
     }
 }
 
-bool SynthController::tryParseRoutingPreset(std::string_view value, RoutingPreset& preset) {
+bool SynthHost::tryParseRoutingPreset(std::string_view value, RoutingPreset& preset) {
     if (value == "forward") {
         preset = RoutingPreset::Forward;
         return true;
@@ -1019,7 +1019,7 @@ bool SynthController::tryParseRoutingPreset(std::string_view value, RoutingPrese
     return false;
 }
 
-const interfaces::OutputDeviceInfo* SynthController::findOutputDevice(
+const interfaces::OutputDeviceInfo* SynthHost::findOutputDevice(
     const std::vector<interfaces::OutputDeviceInfo>& outputDevices,
     std::string_view outputDeviceId) {
     for (const auto& outputDevice : outputDevices) {
@@ -1031,7 +1031,7 @@ const interfaces::OutputDeviceInfo* SynthController::findOutputDevice(
     return nullptr;
 }
 
-std::string SynthController::escapeJson(std::string_view value) {
+std::string SynthHost::escapeJson(std::string_view value) {
     std::string escaped;
     escaped.reserve(value.size());
 
@@ -1061,18 +1061,18 @@ std::string SynthController::escapeJson(std::string_view value) {
     return escaped;
 }
 
-bool SynthController::tryParseIndex(std::string_view value, std::uint32_t& index) {
+bool SynthHost::tryParseIndex(std::string_view value, std::uint32_t& index) {
     const char* begin = value.data();
     const char* end = value.data() + value.size();
     auto result = std::from_chars(begin, end, index);
     return result.ec == std::errc{} && result.ptr == end;
 }
 
-float SynthController::midiNoteToFrequency(int noteNumber) {
+float SynthHost::midiNoteToFrequency(int noteNumber) {
     return 440.0f * std::pow(2.0f, static_cast<float>(noteNumber - 69) / 12.0f);
 }
 
-RealtimeParamResult SynthController::tryEnqueueRealtimeNumericParam(std::string_view path,
+RealtimeParamResult SynthHost::tryEnqueueRealtimeNumericParam(std::string_view path,
                                                                     double value,
                                                                     std::string* errorMessage) {
     RealtimeCommand command;
@@ -1208,15 +1208,17 @@ RealtimeParamResult SynthController::tryEnqueueRealtimeNumericParam(std::string_
         if (!handled) {
             return RealtimeParamResult::NotHandled;
         }
-        applySnapshotRealtimeCommandLocked(command);
+
+        // Keep the controller-side snapshot current before the audio thread sees the command.
+        applyStateMirrorCommandLocked(command);
         markStateSnapshotDirty();
     }
 
-    submitRealtimeCommandOrApply(command);
+    submitOrApplyRealtimeCommand(command);
     return RealtimeParamResult::Applied;
 }
 
-RealtimeParamResult SynthController::tryEnqueueRealtimeStringParam(std::string_view path,
+RealtimeParamResult SynthHost::tryEnqueueRealtimeStringParam(std::string_view path,
                                                                    std::string_view value,
                                                                    std::string* errorMessage) {
     RealtimeCommand command;
@@ -1263,16 +1265,19 @@ RealtimeParamResult SynthController::tryEnqueueRealtimeStringParam(std::string_v
             return RealtimeParamResult::NotHandled;
         }
 
-        applySnapshotRealtimeCommandLocked(command);
+        // Keep the controller-side snapshot current before the audio thread sees the command.
+        applyStateMirrorCommandLocked(command);
         markStateSnapshotDirty();
     }
 
-    submitRealtimeCommandOrApply(command);
+    submitOrApplyRealtimeCommand(command);
     return RealtimeParamResult::Applied;
 }
 
-void SynthController::submitRealtimeCommandOrApply(RealtimeCommand command) {
+void SynthHost::submitOrApplyRealtimeCommand(RealtimeCommand command) {
     markStateSnapshotDirty();
+
+    // Note bookkeeping is mirrored immediately so transport state stays coherent even before render drains the queue.
     switch (command.type) {
         case RealtimeCommandType::GlobalNoteOn: {
             std::lock_guard<std::mutex> noteLock(midiNoteStateMutex_);
@@ -1299,35 +1304,38 @@ void SynthController::submitRealtimeCommandOrApply(RealtimeCommand command) {
     }
 
     if (driver_ != nullptr && driver_->isRunning()) {
-        enqueueRealtimeCommand(std::move(command));
+        // Running audio owns the render copy, so queue the immutable command for the next block boundary.
+        queueRealtimeCommand(std::move(command));
         return;
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
-    applyRealtimeCommandLocked(command);
+    // Offline or stopped path: apply directly because no audio thread is draining queued commands.
+    applyRenderStateCommandLocked(command);
 }
 
-void SynthController::enqueueRealtimeCommand(RealtimeCommand command) {
+void SynthHost::queueRealtimeCommand(RealtimeCommand command) {
     std::lock_guard<std::mutex> lock(realtimeCommandMutex_);
-    pendingRealtimeCommands_.push_back(command);
+    queuedRealtimeCommands_.push_back(command);
 }
 
-void SynthController::drainRealtimeCommandsLocked() {
+void SynthHost::drainQueuedRealtimeCommandsLocked() {
     std::deque<RealtimeCommand> commands;
     {
         std::lock_guard<std::mutex> lock(realtimeCommandMutex_);
-        if (pendingRealtimeCommands_.empty()) {
+        if (queuedRealtimeCommands_.empty()) {
             return;
         }
-        commands.swap(pendingRealtimeCommands_);
+        commands.swap(queuedRealtimeCommands_);
     }
 
+    // Apply every queued command before rendering so the block sees one consistent render-state snapshot.
     for (const auto& command : commands) {
-        applyRealtimeCommandLocked(command);
+        applyRenderStateCommandLocked(command);
     }
 }
 
-void SynthController::applySnapshotRealtimeCommandLocked(const RealtimeCommand& command) {
+void SynthHost::applyStateMirrorCommandLocked(const RealtimeCommand& command) {
     const auto sourceMixerStateForCode = [this](std::uint32_t code) -> SourceMixerSlotState* {
         switch (code) {
             case 0:
@@ -1458,7 +1466,7 @@ void SynthController::applySnapshotRealtimeCommandLocked(const RealtimeCommand& 
     }
 }
 
-void SynthController::applyRealtimeCommandLocked(const RealtimeCommand& command) {
+void SynthHost::applyRenderStateCommandLocked(const RealtimeCommand& command) {
     const auto sourceMixerStateForCode = [this](std::uint32_t code) -> SourceMixerSlotState* {
         switch (code) {
             case 0:
@@ -1619,7 +1627,7 @@ void SynthController::applyRealtimeCommandLocked(const RealtimeCommand& command)
     }
 }
 
-void SynthController::buildLiveGraphLocked() {
+void SynthHost::buildLiveGraphLocked() {
     liveGraph_.clear();
 
     liveGraph_.addSourceNode({
@@ -1635,7 +1643,7 @@ void SynthController::buildLiveGraphLocked() {
                 : graph::LiveGraph::SourceRenderTarget::Dry;
         },
         [this](float* output, std::uint32_t frames, std::uint32_t channels) {
-            renderRobin_.renderAdd(output,
+            renderRobin_.process(output,
                                    frames,
                                    channels,
                                    renderRobinMixerState_.enabled,
@@ -1658,7 +1666,7 @@ void SynthController::buildLiveGraphLocked() {
                 : graph::LiveGraph::SourceRenderTarget::Dry;
         },
         [this](float* output, std::uint32_t frames, std::uint32_t channels) {
-            renderTest_.renderAdd(output,
+            renderTest_.process(output,
                                   frames,
                                   channels,
                                   renderTestMixerState_.enabled,
@@ -1723,7 +1731,7 @@ void SynthController::buildLiveGraphLocked() {
     });
 }
 
-void SynthController::syncOutputDeviceSelectionLocked(
+void SynthHost::syncOutputDeviceSelectionLocked(
     const std::vector<interfaces::OutputDeviceInfo>& outputDevices) {
     if (outputDevices.empty()) {
         config_.outputDeviceId.clear();
@@ -1750,13 +1758,13 @@ void SynthController::syncOutputDeviceSelectionLocked(
     config_.channels = std::clamp(config_.channels, 1u, std::max<std::uint32_t>(1, selectedDevice->outputChannels));
 }
 
-void SynthController::buildDefaultStateLocked() {
+void SynthHost::buildDefaultStateLocked() {
     robin_.configureStructure(config_.voiceCount, config_.oscillatorsPerVoice, config_.channels);
     robin_.setBaseFrequency(config_.frequency);
     test_.resizeOutputs(std::max<std::uint32_t>(1, config_.channels));
 }
 
-void SynthController::resizeScaffoldStateLocked() {
+void SynthHost::resizeScaffoldStateLocked() {
     robinMixerState_.available = true;
     robinMixerState_.implemented = robin_.implemented();
     testMixerState_.available = true;
@@ -1772,11 +1780,11 @@ void SynthController::resizeScaffoldStateLocked() {
     piecesState_.voiceCount = std::max<std::uint32_t>(1, config_.voiceCount);
 }
 
-void SynthController::syncTestSourceLocked() {
+void SynthHost::syncTestSourceLocked() {
     test_.prepare(config_.sampleRate, config_.channels);
 }
 
-void SynthController::syncRenderStateFromSnapshotLocked() {
+void SynthHost::syncRenderStateFromSnapshotLocked() {
     renderRobin_.applyStateSnapshot(robin_.stateSnapshot());
     renderTest_.applyState(test_.state());
     renderRobinMixerState_ = robinMixerState_;
@@ -1789,7 +1797,7 @@ void SynthController::syncRenderStateFromSnapshotLocked() {
     liveGraph_.prepare(config_.sampleRate, config_.channels);
 }
 
-void SynthController::captureMidiSourceConnectionsLocked() {
+void SynthHost::captureMidiSourceConnectionsLocked() {
     midiSourceConnections_.clear();
 
     if (midiInput_ == nullptr) {
@@ -1803,7 +1811,7 @@ void SynthController::captureMidiSourceConnectionsLocked() {
     }
 }
 
-std::vector<MidiSourceConnectionState> SynthController::mergeMidiSourceConnections(
+std::vector<MidiSourceConnectionState> SynthHost::mergeMidiSourceConnections(
     const std::vector<io::MidiSourceInfo>& midiSources,
     const std::vector<MidiSourceConnectionState>& previousConnections) {
     std::vector<MidiSourceConnectionState> mergedConnections;
@@ -1837,7 +1845,7 @@ std::vector<MidiSourceConnectionState> SynthController::mergeMidiSourceConnectio
     return mergedConnections;
 }
 
-void SynthController::syncMidiSourceConnectionsLocked() {
+void SynthHost::syncMidiSourceConnectionsLocked() {
     if (midiInput_ == nullptr) {
         return;
     }
@@ -1850,7 +1858,7 @@ void SynthController::syncMidiSourceConnectionsLocked() {
     captureMidiSourceConnectionsLocked();
 }
 
-std::vector<MidiSourceRouteState> SynthController::mergeMidiSourceRoutes(
+std::vector<MidiSourceRouteState> SynthHost::mergeMidiSourceRoutes(
     const std::vector<io::MidiSourceInfo>& midiSources,
     const std::vector<MidiSourceRouteState>& previousRoutes) {
     std::vector<MidiSourceRouteState> mergedRoutes;
@@ -1886,7 +1894,7 @@ std::vector<MidiSourceRouteState> SynthController::mergeMidiSourceRoutes(
     return mergedRoutes;
 }
 
-void SynthController::syncMidiRoutesLocked() {
+void SynthHost::syncMidiRoutesLocked() {
     if (midiInput_ == nullptr) {
         return;
     }
@@ -1894,7 +1902,7 @@ void SynthController::syncMidiRoutesLocked() {
     midiSourceRoutes_ = mergeMidiSourceRoutes(midiInput_->sources(), midiSourceRoutes_);
 }
 
-MidiSourceRouteState* SynthController::findMidiRouteLocked(std::uint32_t sourceIndex) {
+MidiSourceRouteState* SynthHost::findMidiRouteLocked(std::uint32_t sourceIndex) {
     for (auto& routeState : midiSourceRoutes_) {
         if (routeState.index == sourceIndex) {
             return &routeState;
@@ -1904,7 +1912,7 @@ MidiSourceRouteState* SynthController::findMidiRouteLocked(std::uint32_t sourceI
     return nullptr;
 }
 
-const MidiSourceRouteState* SynthController::findMidiRouteLocked(std::uint32_t sourceIndex) const {
+const MidiSourceRouteState* SynthHost::findMidiRouteLocked(std::uint32_t sourceIndex) const {
     for (const auto& routeState : midiSourceRoutes_) {
         if (routeState.index == sourceIndex) {
             return &routeState;
@@ -1914,7 +1922,7 @@ const MidiSourceRouteState* SynthController::findMidiRouteLocked(std::uint32_t s
     return nullptr;
 }
 
-MidiSourceRouteState* SynthController::findRenderMidiRouteLocked(std::uint32_t sourceIndex) {
+MidiSourceRouteState* SynthHost::findRenderMidiRouteLocked(std::uint32_t sourceIndex) {
     for (auto& routeState : renderMidiSourceRoutes_) {
         if (routeState.index == sourceIndex) {
             return &routeState;
@@ -1924,7 +1932,7 @@ MidiSourceRouteState* SynthController::findRenderMidiRouteLocked(std::uint32_t s
     return nullptr;
 }
 
-const MidiSourceRouteState* SynthController::findRenderMidiRouteLocked(std::uint32_t sourceIndex) const {
+const MidiSourceRouteState* SynthHost::findRenderMidiRouteLocked(std::uint32_t sourceIndex) const {
     for (const auto& routeState : renderMidiSourceRoutes_) {
         if (routeState.index == sourceIndex) {
             return &routeState;
@@ -1934,7 +1942,7 @@ const MidiSourceRouteState* SynthController::findRenderMidiRouteLocked(std::uint
     return nullptr;
 }
 
-void SynthController::syncOutputProcessorNodesLocked() {
+void SynthHost::syncOutputProcessorNodesLocked() {
     fxRackNode_.resize(static_cast<std::uint32_t>(renderOutputMixerChannels_.size()));
     fxRackNode_.prepare(config_.sampleRate);
     fxRackNode_.setChorusEnabled(chorusState_.enabled);
@@ -1954,7 +1962,7 @@ void SynthController::syncOutputProcessorNodesLocked() {
     }
 }
 
-bool SynthController::applyOutputEngineConfig(std::optional<std::string> outputDeviceId,
+bool SynthHost::applyOutputEngineConfig(std::optional<std::string> outputDeviceId,
                                               std::optional<std::uint32_t> outputChannels,
                                               std::string* errorMessage) {
     RuntimeConfig previousConfig;
@@ -2068,24 +2076,25 @@ bool SynthController::applyOutputEngineConfig(std::optional<std::string> outputD
     return false;
 }
 
-void SynthController::renderAudioLocked(float* output, std::uint32_t frames, std::uint32_t channels) {
+void SynthHost::processAudioBlockLocked(float* output, std::uint32_t frames, std::uint32_t channels) {
     if (output == nullptr || channels == 0) {
         return;
     }
 
-    drainRealtimeCommandsLocked();
+    // Block-start queue drain matches the controller-side state mirror with the render copy before any DSP runs.
+    drainQueuedRealtimeCommandsLocked();
     liveGraph_.render(output, frames, channels);
 }
 
-void SynthController::applyRobinLevelLocked(float level) {
+void SynthHost::applyRobinLevelLocked(float level) {
     renderRobinMixerState_.level = std::clamp(level, 0.0f, 1.0f);
 }
 
-void SynthController::applyTestLevelLocked(float level) {
+void SynthHost::applyTestLevelLocked(float level) {
     renderTestMixerState_.level = std::clamp(level, 0.0f, 1.0f);
 }
 
-void SynthController::reconfigureStructureLocked(std::uint32_t voiceCount, std::uint32_t oscillatorsPerVoice) {
+void SynthHost::reconfigureStructureLocked(std::uint32_t voiceCount, std::uint32_t oscillatorsPerVoice) {
     config_.voiceCount = std::max<std::uint32_t>(1, voiceCount);
     config_.oscillatorsPerVoice = std::max<std::uint32_t>(1, oscillatorsPerVoice);
     robin_.configureStructure(config_.voiceCount, config_.oscillatorsPerVoice, config_.channels);
@@ -2095,12 +2104,12 @@ void SynthController::reconfigureStructureLocked(std::uint32_t voiceCount, std::
     config_.gain = robinMixerState_.level;
 }
 
-void SynthController::trackHeldMidiNoteLocked(int noteNumber, bool fromMidiSource, std::uint32_t sourceIndex) {
+void SynthHost::trackHeldMidiNoteLocked(int noteNumber, bool fromMidiSource, std::uint32_t sourceIndex) {
     heldMidiNotes_.push_back({fromMidiSource, sourceIndex, noteNumber});
     syncActiveMidiNoteLocked();
 }
 
-bool SynthController::releaseHeldMidiNoteLocked(int noteNumber, bool fromMidiSource, std::uint32_t sourceIndex) {
+bool SynthHost::releaseHeldMidiNoteLocked(int noteNumber, bool fromMidiSource, std::uint32_t sourceIndex) {
     const auto heldNote = std::find_if(
         heldMidiNotes_.begin(),
         heldMidiNotes_.end(),
@@ -2118,7 +2127,7 @@ bool SynthController::releaseHeldMidiNoteLocked(int noteNumber, bool fromMidiSou
     return true;
 }
 
-std::vector<int> SynthController::releaseHeldMidiSourceNotesLocked(std::uint32_t sourceIndex) {
+std::vector<int> SynthHost::releaseHeldMidiSourceNotesLocked(std::uint32_t sourceIndex) {
     std::vector<int> releasedNotes;
 
     auto nextHeldNote = std::find_if(
@@ -2143,30 +2152,30 @@ std::vector<int> SynthController::releaseHeldMidiSourceNotesLocked(std::uint32_t
     return releasedNotes;
 }
 
-std::vector<SynthController::HeldMidiNote> SynthController::releaseAllHeldMidiNotesLocked() {
+std::vector<SynthHost::HeldMidiNote> SynthHost::releaseAllHeldMidiNotesLocked() {
     std::vector<HeldMidiNote> releasedNotes = heldMidiNotes_;
     heldMidiNotes_.clear();
     syncActiveMidiNoteLocked();
     return releasedNotes;
 }
 
-void SynthController::syncActiveMidiNoteLocked() {
+void SynthHost::syncActiveMidiNoteLocked() {
     activeMidiNote_.store(
         heldMidiNotes_.empty() ? -1 : heldMidiNotes_.back().noteNumber,
         std::memory_order_release);
 }
 
-void SynthController::handleNoteOnLocked(int noteNumber, float velocity) {
+void SynthHost::handleNoteOnLocked(int noteNumber, float velocity) {
     liveGraph_.noteOn(noteNumber, velocity);
     markStateSnapshotDirty();
 }
 
-void SynthController::handleNoteOffLocked(int noteNumber) {
+void SynthHost::handleNoteOffLocked(int noteNumber) {
     liveGraph_.noteOff(noteNumber);
     markStateSnapshotDirty();
 }
 
-void SynthController::handleMidiNoteOnLocked(std::uint32_t sourceIndex, int noteNumber, float velocity) {
+void SynthHost::handleMidiNoteOnLocked(std::uint32_t sourceIndex, int noteNumber, float velocity) {
     markStateSnapshotDirty();
 
     const MidiSourceRouteState* routeState = findRenderMidiRouteLocked(sourceIndex);
@@ -2182,7 +2191,7 @@ void SynthController::handleMidiNoteOnLocked(std::uint32_t sourceIndex, int note
     }
 }
 
-void SynthController::handleMidiNoteOffLocked(std::uint32_t sourceIndex, int noteNumber) {
+void SynthHost::handleMidiNoteOffLocked(std::uint32_t sourceIndex, int noteNumber) {
     markStateSnapshotDirty();
 
     const MidiSourceRouteState* routeState = findRenderMidiRouteLocked(sourceIndex);
@@ -2198,7 +2207,7 @@ void SynthController::handleMidiNoteOffLocked(std::uint32_t sourceIndex, int not
     }
 }
 
-void SynthController::handleMidiAllNotesOffLocked(std::uint32_t sourceIndex) {
+void SynthHost::handleMidiAllNotesOffLocked(std::uint32_t sourceIndex) {
     std::vector<int> releasedNotes;
     {
         std::lock_guard<std::mutex> noteLock(midiNoteStateMutex_);
@@ -2225,11 +2234,11 @@ void SynthController::handleMidiAllNotesOffLocked(std::uint32_t sourceIndex) {
     }
 }
 
-void SynthController::handleTestNoteOnLocked(int noteNumber, float velocity) {
+void SynthHost::handleTestNoteOnLocked(int noteNumber, float velocity) {
     renderTest_.noteOn(noteNumber, velocity);
 }
 
-void SynthController::handleTestNoteOffLocked(int noteNumber) {
+void SynthHost::handleTestNoteOffLocked(int noteNumber) {
     renderTest_.noteOff(noteNumber);
 }
 

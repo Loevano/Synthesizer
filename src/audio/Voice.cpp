@@ -262,7 +262,7 @@ void Voice::updateOscillatorFrequency(OscillatorSlot& slot) {
     slot.oscillator.setFrequency(resolvedFrequency);
 }
 
-void Voice::renderAdd(float* output,
+void Voice::process(float* output,
                       std::uint32_t frames,
                       std::uint32_t channels,
                       float masterGain,

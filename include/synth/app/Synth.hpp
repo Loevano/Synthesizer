@@ -6,20 +6,22 @@
 #include <string_view>
 #include <vector>
 
-#include "synth/app/ControllerCommands.hpp"
+#include "synth/app/RealtimeCommands.hpp"
 
 namespace synth::app {
 
-class Instrument {
+// Shared app-layer synth/source interface. Concrete synths own their own state
+// and realtime command logic; the host only depends on this lifecycle surface.
+class Synth {
 public:
-    virtual ~Instrument() = default;
+    virtual ~Synth() = default;
 
     virtual void prepare(double sampleRate, std::uint32_t outputChannels) = 0;
-    virtual void renderAdd(float* output,
-                           std::uint32_t frames,
-                           std::uint32_t channels,
-                           bool enabled,
-                           float level) = 0;
+    virtual void process(float* output,
+                         std::uint32_t frames,
+                         std::uint32_t channels,
+                         bool enabled,
+                         float level) = 0;
     virtual void noteOn(int noteNumber, float velocity) = 0;
     virtual void noteOff(int noteNumber) = 0;
 

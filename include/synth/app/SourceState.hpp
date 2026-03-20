@@ -6,6 +6,7 @@
 
 namespace synth::app {
 
+// Shared controller-side source structs that are reused across multiple synths.
 struct EnvelopeState {
     float attackMs = 10.0f;
     float decayMs = 80.0f;

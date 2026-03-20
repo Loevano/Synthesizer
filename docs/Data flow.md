@@ -1,17 +1,15 @@
 # Data Flow
 
-This document describes how data currently moves through the app, from UI input to DSP output, and where the main improvement opportunities are.
-
-It reflects the code as it exists now, not an ideal future design.
+This document describes how control data and audio data move through the app after the host/snapshot rename cleanup.
 
 ## High-level view
 
 There are two main flows:
 
 1. Control flow
-   `Web UI -> native bridge -> SynthController -> graph/synth state`
+   `Web UI -> WKWebView bridge -> SynthHost -> snapshot state / realtime commands`
 2. Audio flow
-   `CoreAudio callback -> SynthController -> LiveGraph -> sources -> FX/output processing -> hardware outputs`
+   `Audio callback -> SynthHost -> queued command drain -> LiveGraph -> source nodes -> FX/output processing -> hardware outputs`
 
 ## 1. App shell and bridge
 
@@ -21,30 +19,20 @@ The macOS app shell lives in:
 
 At launch it:
 
-- creates the `SynthController`
+- constructs `SynthHost`
 - starts audio
 - creates a `WKWebView`
-- injects the JS bridge helpers
+- injects the JS bridge
 - loads the bundled UI from `src/ui_web/`
 
-The bridge currently exposes:
+The bridge surface currently exposes:
 
 - `getState()`
 - `setParam(path, value)`
 - `setParamFast(path, value)`
+- patch list/load/save helpers
 
-Current bridge shape:
-
-- the web UI sends a request through `window.webkit.messageHandlers.synth`
-- `AppMain.mm` receives it in `userContentController:didReceiveScriptMessage:`
-- it calls `controller_->stateJson()` or `controller_->setParam(...)`
-- it returns the result back into JS through `window.__synthNativeReceive(...)`
-
-Important current behavior:
-
-- bridge work is still handled synchronously in the native app shell
-- `setParam` returns full state JSON
-- `setParamFast` returns only success/failure
+Bridge requests arrive in `AppMain.mm`, call into `SynthHost`, and return through `window.__synthNativeReceive(...)`.
 
 ## 2. Web UI flow
 
@@ -54,366 +42,155 @@ The web UI lives in:
 - `src/ui_web/styles.css`
 - `src/ui_web/app.js`
 
-The UI has two parameter-update paths.
+The UI uses two control paths.
 
 ### Full-state path
 
-Used for structural or slower updates.
+Used for structural changes or actions where the UI wants a fresh authoritative state:
 
-Path:
-
-`UI event -> dispatchParam() -> window.synth.setParam() -> native setParam -> full state JSON back -> renderState()`
-
-This path is used when the UI wants the controller to be the source of truth immediately.
+`UI event -> dispatchParam() -> window.synth.setParam() -> SynthHost -> full state JSON -> renderState()`
 
 ### Temp/live path
 
-Used for most live control drags.
+Used for most slider drags and patch-edit gestures:
 
-Path:
+`UI event -> temp UI state mutation -> window.synth.setParamFast() -> SynthHost -> optimistic UI stays in place`
 
-`UI event -> setParamTemp()/setParamTempLive() -> dispatchParamFast() -> native setParam -> local optimistic UI mutation`
+This avoids a full JSON round-trip on every live gesture.
 
-This is the path that avoids a full JSON round-trip on every drag.
+## 3. Snapshot state vs render state
 
-That logic is important because many earlier UI crashes were caused by full state sync happening in the middle of live edits.
+This is the most important data-flow rule in the current codebase.
 
-## 3. SynthController role
+`SynthHost` keeps two copies of mutable synth/process state:
 
-The controller lives in:
+- controller-side snapshot state
+- render-side live state
 
-- `include/synth/app/SynthController.hpp`
-- `src/app/SynthController.cpp`
+The snapshot copy exists for:
 
-It is currently the central orchestrator for almost everything:
+- state JSON generation
+- UI reads
+- patch save/load
+- deterministic bridge behavior
 
-- runtime config
-- grouped app state
-- JSON serialization
-- bridge-facing parameter mutation
-- graph construction
-- source routing
-- Robin voice allocation
-- MIDI input hookup
-- OSC input hookup
-- audio start/stop
+The render copy exists for:
 
-This is the current state contract exposed to the UI:
+- audio-thread ownership
+- block-boundary parameter updates
+- avoiding UI-thread mutation of live DSP objects
 
-- `engine`
-- `graph`
-- `sourceMixer`
-- `outputMixer`
-- `sources`
-- `processors`
+## 4. Realtime parameter flow
 
-That grouping is strong and should be preserved even if the controller gets split later.
+The live parameter path is:
 
-## 4. Audio startup flow
+1. `SynthHost::tryEnqueueRealtimeNumericParam(...)` or `tryEnqueueRealtimeStringParam(...)`
+2. build a `RealtimeCommand`
+3. `applyStateMirrorCommandLocked(...)` updates the snapshot copy
+4. `submitOrApplyRealtimeCommand(...)` decides whether the command must be queued or can be applied immediately
+5. if audio is running, `queueRealtimeCommand(...)` stores it for the render thread
+6. at block start, `drainQueuedRealtimeCommandsLocked(...)` moves every queued command into the render copy through `applyRenderStateCommandLocked(...)`
+7. `LiveGraph::render(...)` runs with that updated render state
+
+The important consequence is:
+
+- the UI-visible state updates immediately
+- the audio-visible state updates at the next block boundary
+
+That is the current threading contract.
+
+## 4a. Industry reference point
+
+This split is close to what common plugin frameworks do:
+
+- JUCE exposes realtime-readable parameter values and warns that parameter callbacks may happen synchronously and must stay thread-safe and non-blocking
+- VST3 passes parameter changes into the processing call as block-scoped queues
+
+That is why this codebase now prefers:
+
+- snapshot updates on the control side
+- immutable command handoff to the render side
+- queue drain at the start of each audio block
+- local DSP smoothing where abrupt value jumps would click
+
+## 5. Audio startup flow
 
 Startup currently looks like this:
 
-1. `AppMain.mm` constructs `SynthController`
-2. `SynthController::startAudio()` calls `initialize()` if needed
+1. `AppMain.mm` constructs `SynthHost`
+2. `SynthHost::startAudio()` calls `initialize()` if needed
 3. `initialize()`:
    - sets up logging and crash diagnostics
    - creates the audio driver
-   - builds the live graph
-   - configures Robin/Test/default state
-4. `startAudio()` asks the driver to start with the current config
-5. CoreMIDI and OSC are started after audio starts successfully
+   - builds the `LiveGraph`
+   - builds default source and processor state
+   - syncs the render copy from the snapshot copy
+4. `startAudio()` starts the driver with the current runtime config
+5. MIDI and OSC are started after audio comes up successfully
 
-Relevant files:
+## 6. Audio render flow
 
-- `src/platform/macos/AppMain.mm`
-- `src/app/SynthController.cpp`
-- `src/interfaces/AudioDriverCoreAudio.cpp`
+The realtime render path is:
 
-## 5. Live audio render flow
+`Audio driver -> SynthHost::processAudioBlockLocked(...) -> drain queued commands -> LiveGraph::render(...) -> hardware outputs`
 
-The real-time render path is:
-
-`CoreAudio -> SynthController::renderAudioLocked -> LiveGraph::render -> source nodes -> FX bus -> dry/fx sum -> OutputMixerNode -> hardware outputs`
-
-### CoreAudio
-
-The CoreAudio backend lives in:
-
-- `src/interfaces/AudioDriverCoreAudio.cpp`
-
-It owns the HAL output unit and calls back into the app for each audio block.
-
-### Controller render entry
-
-The driver callback calls:
-
-- `SynthController::renderAudioLocked(...)`
-
-That function hands off directly to:
-
-- `LiveGraph::render(...)`
-
-### LiveGraph
-
-The graph lives in:
-
-- `include/synth/graph/LiveGraph.hpp`
-- `src/graph/LiveGraph.cpp`
-
-Current graph model:
-
-- a list of source nodes
-- a list of output processor nodes
-- one explicit FX bus buffer
-
-Current render order:
+`LiveGraph` itself runs in this order:
 
 1. clear main output buffer
 2. clear FX bus buffer
-3. render each enabled source into:
-   - main output, or
-   - FX bus
-4. run FX-bus processors on the FX bus
-5. sum FX bus back into the main output
-6. run main output processors on the main output
+3. render each enabled source into either the main output or the FX bus
+4. process the FX bus with `FxRackNode`
+5. sum the FX bus back into the main output
+6. process the main output with `OutputMixerNode`
 
-This is one of the cleanest parts of the architecture.
-
-## 6. Source node flow
+## 7. Source-node flow
 
 Current live sources:
 
 - `RobinSourceNode`
 - `TestSourceNode`
 
-Files:
+`RobinSourceNode` owns the `audio::PolySynth` engine used by Robin. `TestSourceNode` owns `audio::TestEngine`.
 
-- `src/graph/RobinSourceNode.cpp`
-- `src/graph/TestSourceNode.cpp`
+Both source nodes apply source-level gain smoothing before adding audio into the graph buffer so mixer drags do not click.
 
-### RobinSourceNode
+## 8. Robin flow
 
-Responsibilities:
+`Robin` owns the product-facing rules:
 
-- own the `audio::Synth` used by Robin
-- apply source-level smoothing
-- render Robin into the graph target buffer
-
-Current behavior:
-
-- Robin renders into an internal temp buffer first
-- source-mixer gain is ramped across the block
-- the smoothed result is added into the target graph buffer
-
-### TestSourceNode
-
-Responsibilities:
-
-- own the simplified test synth
-- apply source-level smoothing
-- render into the graph target buffer
-
-It follows the same broad pattern as Robin, but with a simpler synth underneath.
-
-## 7. Robin internal flow
-
-Robin's DSP path lives mainly in:
-
-- `src/audio/Synth.cpp`
-- `src/audio/Voice.cpp`
-
-### Controller side
-
-The controller owns Robin's product-facing state:
-
-- master oscillator bank
-- per-voice linked/local state
-- routing preset
+- linked/local voice state
+- routing presets
 - note-to-voice assignments
-- release-tail reuse timing
+- release-tail reuse protection
 
 On note-on:
 
-1. the controller allocates a Robin voice
-2. it syncs the tuned frequency for that voice
-3. it assigns the output routing
-4. it calls `robinSource_.synth().noteOn(voiceIndex)`
+1. Robin allocates a voice
+2. it syncs pitch and routing for that voice
+3. it calls `sourceNode_.engine().noteOn(voiceIndex)`
 
 On note-off:
 
-1. the controller calls `noteOff(voiceIndex)`
-2. it stamps a release-until time for reuse protection
-3. it removes the live note assignment
+1. Robin calls `sourceNode_.engine().noteOff(voiceIndex)`
+2. it tracks the release window for voice reuse
+3. it removes the active assignment
 
-### Synth side
+`audio::PolySynth` then fans those decisions out to `Voice` instances during `process(...)`.
 
-`audio::Synth` is mostly a per-voice dispatcher.
+## 9. MIDI and OSC flow
 
-It owns:
+Incoming MIDI and OSC messages are normalized into host actions, then either:
 
-- `voices_`
-- one LFO
-- output modulation buffer
-- shared setters that fan out to voices
+- update held-note bookkeeping directly, or
+- become `RealtimeCommand` objects
 
-Current render flow in `Synth::renderAdd(...)`:
+The same queue/drain rule still applies when those events must affect render-side DSP state.
 
-1. resize/fill the LFO modulation buffer
-2. render one frame of LFO modulation per output
-3. ask every voice to render into the final output buffer
+## 10. Patch flow
 
-### Voice side
+Patch save/load is intentionally snapshot-driven.
 
-Each `Voice` owns:
-
-- oscillator slots
-- AMP envelope
-- filter envelope
-- low-pass filter
-- output enable map
-
-Current `Voice::renderAdd(...)` flow:
-
-1. skip if inactive
-2. sum enabled oscillators
-3. compute filter envelope and cutoff
-4. filter the sample
-5. apply AMP envelope
-6. write only to enabled outputs
-7. multiply by per-output modulation if present
-
-This is a straightforward model and matches the current Robin UI well.
-
-## 8. MIDI and OSC flow
-
-Both are wired through the controller.
-
-### MIDI
-
-After audio starts, the controller starts `MidiInput`.
-
-Incoming MIDI callbacks go to:
-
-- `handleMidiNoteOnLocked(...)`
-- `handleMidiNoteOffLocked(...)`
-
-The controller then routes MIDI per connected source according to its MIDI-source routing state.
-
-### OSC
-
-After audio starts, the controller starts `OscServer`.
-
-Incoming OSC messages are turned into:
-
-- numeric `setParam(...)`
-- string `setParam(...)`
-- note on/off events
-
-This means the controller is already the shared mutation surface for:
-
-- web UI
-- OSC
-- MIDI-triggered synth behavior
-
-## 9. Current architectural strengths
-
-These parts are already solid:
-
-- The state grouping is intentional and useful.
-- The dry/fx split is clear.
-- The graph order is easy to reason about.
-- Robin's master-linked/local-override model maps cleanly into the DSP structure.
-- The temp/live UI path is the right direction for performance-sensitive controls.
-
-## 10. Current architectural weaknesses
-
-These are the main areas worth improving.
-
-### A. The controller does too much
-
-`SynthController` currently owns too many responsibilities.
-
-It would be healthier to split it eventually into smaller units such as:
-
-- engine/session control
-- state serialization
-- Robin-specific logic
-- external input routing
-
-This is the biggest maintainability issue in the current codebase.
-
-### B. One mutex sits on too much traffic
-
-The same controller mutex is used across:
-
-- audio callback path
-- MIDI callbacks
-- OSC callbacks
-- many UI param updates
-
-That means control traffic and render traffic are more tightly coupled than they should be.
-
-Longer term, the better direction is:
-
-- audio-thread-safe render snapshot
-- queued control updates
-- less direct shared locking on the real-time path
-
-### C. Per-block buffer allocation is still happening
-
-Current examples:
-
-- `fxBusBuffer_.assign(...)` in `LiveGraph`
-- `renderBuffer_.assign(...)` in `RobinSourceNode`
-- `renderBuffer_.assign(...)` in `TestSourceNode`
-- `lfoModulationBuffer_.assign(...)` in `Synth`
-
-These buffers should ideally be reused and only grown when needed.
-
-This is one of the clearest DSP-side scalability improvements available now.
-
-### D. Manual JSON assembly is fragile
-
-`stateJson()` is still hand-built with string streams.
-
-That works, but it is easy to make shape mistakes when the state evolves.
-
-This is not the first thing to optimize for performance, but it is a good correctness and maintainability target.
-
-### E. Structural engine changes are not isolated enough
-
-Output-device and other engine-structural changes still live close to ordinary param mutation behavior.
-
-Conceptually, these should probably be treated as a separate command class:
-
-- not ordinary synth params
-- not live-drag params
-- explicitly restart-sensitive operations
-
-## 11. Best next internal improvements
-
-If the goal is to improve the architecture without a huge rewrite, the most logical order is:
-
-1. Remove per-block buffer churn in render paths.
-2. Reduce audio-thread coupling to the controller mutex.
-3. Split `SynthController` responsibilities gradually.
-4. Make structural engine commands more explicit.
-5. Replace or wrap manual JSON assembly with a safer serialization layer.
-
-## 12. Summary
-
-The current architecture is already coherent:
-
-- UI talks to one controller
-- controller owns product state
-- graph owns render order
-- sources render to dry or FX
-- output processors finish the path
-- Robin is the main reference instrument
-
-The next improvements should focus less on inventing new flow and more on reducing coupling:
-
-- less controller centralization
-- less real-time locking
-- less per-block allocation
-- clearer separation between live params and structural engine commands
+- the UI keeps a temp patch state for editing
+- `SynthHost::stateJson()` exposes the snapshot form
+- native patch save/load serializes only the persistent state groups
+- runtime-only engine details are rebuilt, not stored continuously

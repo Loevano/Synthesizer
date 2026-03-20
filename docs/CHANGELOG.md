@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.1.7 - 2026-03-16
-- Added Robin `VCF`, `ENV VCF`, and low-pass filter support to the live synth path
+- Added Robin `VCF`, `VCF ENV`, and low-pass filter support to the live synth path
 - Reworked Robin around the current master/local voice model:
   - `Enabled`
   - `Linked to Master`

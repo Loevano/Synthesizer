@@ -26,7 +26,7 @@ public:
     void noteOn(int noteNumber, float velocity);
     void noteOff(int noteNumber);
 
-    void renderAdd(float* output, std::uint32_t frames, std::uint32_t channels, float masterGain);
+    void process(float* output, std::uint32_t frames, std::uint32_t channels, float masterGain);
 
 private:
     static float midiNoteToFrequency(int noteNumber);

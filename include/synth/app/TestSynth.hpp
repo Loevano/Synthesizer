@@ -6,20 +6,20 @@
 #include <string_view>
 #include <vector>
 
-#include "synth/app/Instrument.hpp"
-#include "synth/app/InstrumentState.hpp"
+#include "synth/app/Synth.hpp"
+#include "synth/app/SourceState.hpp"
 #include "synth/graph/TestSourceNode.hpp"
 
 namespace synth::app {
 
-class TestSynth final : public Instrument {
+class TestSynth final : public Synth {
 public:
     void prepare(double sampleRate, std::uint32_t outputChannels) override;
-    void renderAdd(float* output,
-                   std::uint32_t frames,
-                   std::uint32_t channels,
-                   bool enabled,
-                   float level) override;
+    void process(float* output,
+                 std::uint32_t frames,
+                 std::uint32_t channels,
+                 bool enabled,
+                 float level) override;
     void clearAllNotes();
     void noteOn(int noteNumber, float velocity) override;
     void noteOff(int noteNumber) override;

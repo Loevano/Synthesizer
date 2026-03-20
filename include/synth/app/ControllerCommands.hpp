@@ -84,6 +84,7 @@ enum class RealtimeCommandType : std::uint8_t {
     GlobalNoteOff,
     MidiNoteOn,
     MidiNoteOff,
+    MidiAllNotesOff,
 };
 
 struct RealtimeCommand {

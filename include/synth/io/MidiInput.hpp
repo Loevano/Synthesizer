@@ -12,7 +12,20 @@ class Logger;
 
 namespace synth::io {
 
-using MidiNoteCallback = std::function<void(std::uint32_t sourceIndex, int noteNumber, float velocity)>;
+enum class MidiMessageType : std::uint8_t {
+    NoteOn,
+    NoteOff,
+    AllNotesOff,
+};
+
+struct MidiMessage {
+    MidiMessageType type = MidiMessageType::NoteOff;
+    std::uint32_t sourceIndex = 0;
+    int noteNumber = -1;
+    float velocity = 0.0f;
+};
+
+using MidiMessageCallback = std::function<void(const MidiMessage&)>;
 
 struct MidiSourceInfo {
     std::uint32_t index = 0;
@@ -25,7 +38,7 @@ public:
     explicit MidiInput(core::Logger& logger);
     ~MidiInput();
 
-    bool start(MidiNoteCallback callback, bool connectAllSources = true);
+    bool start(MidiMessageCallback callback, bool connectAllSources = true);
     void stop();
     bool isRunning() const;
     std::size_t sourceCount() const;
@@ -35,6 +48,8 @@ public:
     void handlePacketData(std::uint32_t sourceIndex, const unsigned char* data, std::size_t length);
 
 private:
+    friend struct MidiInputTestAccess;
+
     struct SourceState {
         MidiSourceInfo info;
 #if defined(SYNTH_PLATFORM_MACOS)
@@ -43,7 +58,7 @@ private:
     };
 
     core::Logger& logger_;
-    MidiNoteCallback callback_;
+    MidiMessageCallback callback_;
     bool running_ = false;
     std::vector<SourceState> sources_;
 

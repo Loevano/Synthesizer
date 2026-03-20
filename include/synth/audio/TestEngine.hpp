@@ -22,6 +22,7 @@ public:
     void setEnvelopeDecaySeconds(float decaySeconds);
     void setEnvelopeSustainLevel(float sustainLevel);
     void setEnvelopeReleaseSeconds(float releaseSeconds);
+    void clearNotes();
     void noteOn(int noteNumber, float velocity);
     void noteOff(int noteNumber);
 

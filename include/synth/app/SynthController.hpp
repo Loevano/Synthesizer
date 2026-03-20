@@ -122,6 +122,12 @@ public:
 private:
     friend struct SynthControllerTestAccess;
 
+    struct HeldMidiNote {
+        bool fromMidiSource = false;
+        std::uint32_t sourceIndex = 0;
+        int noteNumber = -1;
+    };
+
     static const char* waveformToString(dsp::Waveform waveform);
     static bool tryParseWaveform(std::string_view value, dsp::Waveform& waveform);
     static const char* lfoWaveformToString(dsp::LfoWaveform waveform);
@@ -164,8 +170,14 @@ private:
     void handleNoteOffLocked(int noteNumber);
     void handleMidiNoteOnLocked(std::uint32_t sourceIndex, int noteNumber, float velocity);
     void handleMidiNoteOffLocked(std::uint32_t sourceIndex, int noteNumber);
+    void handleMidiAllNotesOffLocked(std::uint32_t sourceIndex);
     void handleTestNoteOnLocked(int noteNumber, float velocity);
     void handleTestNoteOffLocked(int noteNumber);
+    void trackHeldMidiNoteLocked(int noteNumber, bool fromMidiSource, std::uint32_t sourceIndex = 0);
+    bool releaseHeldMidiNoteLocked(int noteNumber, bool fromMidiSource, std::uint32_t sourceIndex = 0);
+    std::vector<int> releaseHeldMidiSourceNotesLocked(std::uint32_t sourceIndex);
+    std::vector<HeldMidiNote> releaseAllHeldMidiNotesLocked();
+    void syncActiveMidiNoteLocked();
 
     RuntimeConfig config_;
     core::Logger logger_;
@@ -195,7 +207,7 @@ private:
     bool midiEnabled_ = false;
     bool oscEnabled_ = false;
     int activeMidiNote_ = -1;
-    std::vector<int> heldMidiNotes_;
+    std::vector<HeldMidiNote> heldMidiNotes_;
     bool debugRobinOscillatorParams_ = false;
     bool debugCrashBreadcrumbs_ = false;
     mutable std::mutex mutex_;

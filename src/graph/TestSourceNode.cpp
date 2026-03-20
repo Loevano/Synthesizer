@@ -49,6 +49,10 @@ void TestSourceNode::setOutputEnabled(std::uint32_t outputChannel, bool enabled)
     engine_.setOutputEnabled(outputChannel, enabled);
 }
 
+void TestSourceNode::clearNotes() {
+    engine_.clearNotes();
+}
+
 void TestSourceNode::noteOn(int noteNumber, float velocity) {
     engine_.noteOn(noteNumber, velocity);
 }

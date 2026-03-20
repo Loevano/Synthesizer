@@ -70,8 +70,15 @@ struct VoiceState {
 };
 
 struct RobinVoiceAssignment {
+    std::uint64_t noteId = 0;
     int noteNumber = -1;
     std::uint32_t voiceIndex = 0;
+};
+
+struct RobinHeldNote {
+    std::uint64_t noteId = 0;
+    int noteNumber = -1;
+    std::optional<std::uint32_t> voiceIndex;
 };
 
 enum class RoutingPreset {
@@ -132,6 +139,8 @@ public:
     const audio::Synth& synth() const;
 
 private:
+    friend struct RobinTestAccess;
+
     static const char* waveformToString(dsp::Waveform waveform);
     static bool tryParseWaveform(std::string_view value, dsp::Waveform& waveform);
     static const char* lfoWaveformToString(dsp::LfoWaveform waveform);
@@ -177,7 +186,9 @@ private:
     std::uint32_t backwardOutputCursor_ = 0;
     std::vector<std::uint32_t> roundRobinPool_;
     std::optional<std::uint32_t> nextTriggerOutputIndex_;
+    std::vector<RobinHeldNote> heldNotes_;
     std::vector<RobinVoiceAssignment> voiceAssignments_;
+    std::uint64_t nextHeldNoteId_ = 1;
     std::uint32_t nextVoiceCursor_ = 0;
     std::minstd_rand routingRandom_{std::random_device{}()};
     bool autoActivatedVoice0_ = false;

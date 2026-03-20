@@ -20,6 +20,7 @@ public:
                    std::uint32_t channels,
                    bool enabled,
                    float level) override;
+    void clearAllNotes();
     void noteOn(int noteNumber, float velocity) override;
     void noteOff(int noteNumber) override;
 

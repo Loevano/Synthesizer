@@ -279,15 +279,22 @@ bool SynthController::startAudio() {
         midiInput_ = std::make_unique<io::MidiInput>(logger_);
     }
     if (!midiInput_->isRunning()) {
-        midiEnabled_ = midiInput_->start([this](std::uint32_t sourceIndex, int noteNumber, float velocity) {
+        midiEnabled_ = midiInput_->start([this](const io::MidiMessage& message) {
             RealtimeCommand command;
-            command.index = sourceIndex;
-            command.noteNumber = noteNumber;
-            if (velocity > 0.0f) {
-                command.type = RealtimeCommandType::MidiNoteOn;
-                command.value = velocity;
-            } else {
-                command.type = RealtimeCommandType::MidiNoteOff;
+            command.index = message.sourceIndex;
+            command.noteNumber = message.noteNumber;
+            command.value = message.velocity;
+
+            switch (message.type) {
+                case io::MidiMessageType::NoteOn:
+                    command.type = RealtimeCommandType::MidiNoteOn;
+                    break;
+                case io::MidiMessageType::NoteOff:
+                    command.type = RealtimeCommandType::MidiNoteOff;
+                    break;
+                case io::MidiMessageType::AllNotesOff:
+                    command.type = RealtimeCommandType::MidiAllNotesOff;
+                    break;
             }
             submitRealtimeCommandOrApply(command);
         }, false);
@@ -349,6 +356,15 @@ bool SynthController::startAudio() {
 
 void SynthController::stopAudio() {
     crashDiagnostics_.breadcrumb("stopAudio requested.");
+
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!heldMidiNotes_.empty()) {
+            robin_.clearAllNotes();
+            test_.clearAllNotes();
+            (void)releaseAllHeldMidiNotesLocked();
+        }
+    }
 
     if (oscServer_ != nullptr && oscServer_->isRunning()) {
         oscServer_->stop();
@@ -673,6 +689,9 @@ bool SynthController::setParam(std::string_view path, double value, std::string*
             return false;
         }
 
+        if (value < 0.5) {
+            handleMidiAllNotesOffLocked(sourceIndex);
+        }
         return true;
     }
 
@@ -1389,6 +1408,11 @@ void SynthController::applyRealtimeCommandLocked(const RealtimeCommand& command)
                     robin_.clearAllNotes();
                 }
                 applyRobinLevelLocked(sourceState->level);
+            } else if (command.index == 1) {
+                if (!sourceState->enabled) {
+                    test_.clearAllNotes();
+                }
+                applyTestLevelLocked(sourceState->level);
             }
             break;
         }
@@ -1489,6 +1513,9 @@ void SynthController::applyRealtimeCommandLocked(const RealtimeCommand& command)
             break;
         case RealtimeCommandType::MidiNoteOff:
             handleMidiNoteOffLocked(command.index, command.noteNumber);
+            break;
+        case RealtimeCommandType::MidiAllNotesOff:
+            handleMidiAllNotesOffLocked(command.index);
             break;
         default:
             break;
@@ -1844,30 +1871,82 @@ void SynthController::reconfigureStructureLocked(std::uint32_t voiceCount, std::
     liveGraph_.prepare(config_.sampleRate, config_.channels);
 }
 
+void SynthController::trackHeldMidiNoteLocked(int noteNumber, bool fromMidiSource, std::uint32_t sourceIndex) {
+    heldMidiNotes_.push_back({fromMidiSource, sourceIndex, noteNumber});
+    syncActiveMidiNoteLocked();
+}
+
+bool SynthController::releaseHeldMidiNoteLocked(int noteNumber, bool fromMidiSource, std::uint32_t sourceIndex) {
+    const auto heldNote = std::find_if(
+        heldMidiNotes_.begin(),
+        heldMidiNotes_.end(),
+        [noteNumber, fromMidiSource, sourceIndex](const HeldMidiNote& currentNote) {
+            return currentNote.noteNumber == noteNumber
+                && currentNote.fromMidiSource == fromMidiSource
+                && (!fromMidiSource || currentNote.sourceIndex == sourceIndex);
+        });
+    if (heldNote == heldMidiNotes_.end()) {
+        return false;
+    }
+
+    heldMidiNotes_.erase(heldNote);
+    syncActiveMidiNoteLocked();
+    return true;
+}
+
+std::vector<int> SynthController::releaseHeldMidiSourceNotesLocked(std::uint32_t sourceIndex) {
+    std::vector<int> releasedNotes;
+
+    auto nextHeldNote = std::find_if(
+        heldMidiNotes_.begin(),
+        heldMidiNotes_.end(),
+        [sourceIndex](const HeldMidiNote& heldNote) {
+            return heldNote.fromMidiSource && heldNote.sourceIndex == sourceIndex;
+        });
+
+    while (nextHeldNote != heldMidiNotes_.end()) {
+        releasedNotes.push_back(nextHeldNote->noteNumber);
+        nextHeldNote = heldMidiNotes_.erase(nextHeldNote);
+        nextHeldNote = std::find_if(
+            nextHeldNote,
+            heldMidiNotes_.end(),
+            [sourceIndex](const HeldMidiNote& heldNote) {
+                return heldNote.fromMidiSource && heldNote.sourceIndex == sourceIndex;
+            });
+    }
+
+    syncActiveMidiNoteLocked();
+    return releasedNotes;
+}
+
+std::vector<SynthController::HeldMidiNote> SynthController::releaseAllHeldMidiNotesLocked() {
+    std::vector<HeldMidiNote> releasedNotes = heldMidiNotes_;
+    heldMidiNotes_.clear();
+    syncActiveMidiNoteLocked();
+    return releasedNotes;
+}
+
+void SynthController::syncActiveMidiNoteLocked() {
+    activeMidiNote_ = heldMidiNotes_.empty() ? -1 : heldMidiNotes_.back().noteNumber;
+}
+
 void SynthController::handleNoteOnLocked(int noteNumber, float velocity) {
-    heldMidiNotes_.erase(std::remove(heldMidiNotes_.begin(), heldMidiNotes_.end(), noteNumber), heldMidiNotes_.end());
-    heldMidiNotes_.push_back(noteNumber);
-    activeMidiNote_ = noteNumber;
+    trackHeldMidiNoteLocked(noteNumber, false);
     liveGraph_.noteOn(noteNumber, velocity);
     markStateSnapshotDirty();
 }
 
 void SynthController::handleNoteOffLocked(int noteNumber) {
-    const auto newEnd = std::remove(heldMidiNotes_.begin(), heldMidiNotes_.end(), noteNumber);
-    if (newEnd == heldMidiNotes_.end()) {
+    if (!releaseHeldMidiNoteLocked(noteNumber, false)) {
         return;
     }
 
-    heldMidiNotes_.erase(newEnd, heldMidiNotes_.end());
-    activeMidiNote_ = heldMidiNotes_.empty() ? -1 : heldMidiNotes_.back();
     liveGraph_.noteOff(noteNumber);
     markStateSnapshotDirty();
 }
 
 void SynthController::handleMidiNoteOnLocked(std::uint32_t sourceIndex, int noteNumber, float velocity) {
-    heldMidiNotes_.erase(std::remove(heldMidiNotes_.begin(), heldMidiNotes_.end(), noteNumber), heldMidiNotes_.end());
-    heldMidiNotes_.push_back(noteNumber);
-    activeMidiNote_ = noteNumber;
+    trackHeldMidiNoteLocked(noteNumber, true, sourceIndex);
     markStateSnapshotDirty();
 
     const MidiSourceRouteState* routeState = findMidiRouteLocked(sourceIndex);
@@ -1884,13 +1963,10 @@ void SynthController::handleMidiNoteOnLocked(std::uint32_t sourceIndex, int note
 }
 
 void SynthController::handleMidiNoteOffLocked(std::uint32_t sourceIndex, int noteNumber) {
-    const auto newEnd = std::remove(heldMidiNotes_.begin(), heldMidiNotes_.end(), noteNumber);
-    if (newEnd == heldMidiNotes_.end()) {
+    if (!releaseHeldMidiNoteLocked(noteNumber, true, sourceIndex)) {
         return;
     }
 
-    heldMidiNotes_.erase(newEnd, heldMidiNotes_.end());
-    activeMidiNote_ = heldMidiNotes_.empty() ? -1 : heldMidiNotes_.back();
     markStateSnapshotDirty();
 
     const MidiSourceRouteState* routeState = findMidiRouteLocked(sourceIndex);
@@ -1903,6 +1979,29 @@ void SynthController::handleMidiNoteOffLocked(std::uint32_t sourceIndex, int not
     }
     if (routeState->test && testMixerState_.enabled) {
         handleTestNoteOffLocked(noteNumber);
+    }
+}
+
+void SynthController::handleMidiAllNotesOffLocked(std::uint32_t sourceIndex) {
+    const std::vector<int> releasedNotes = releaseHeldMidiSourceNotesLocked(sourceIndex);
+    if (releasedNotes.empty()) {
+        return;
+    }
+
+    markStateSnapshotDirty();
+
+    const MidiSourceRouteState* routeState = findMidiRouteLocked(sourceIndex);
+    if (routeState == nullptr) {
+        return;
+    }
+
+    for (const int noteNumber : releasedNotes) {
+        if (routeState->robin && robinMixerState_.enabled) {
+            robin_.noteOff(noteNumber);
+        }
+        if (routeState->test && testMixerState_.enabled) {
+            handleTestNoteOffLocked(noteNumber);
+        }
     }
 }
 

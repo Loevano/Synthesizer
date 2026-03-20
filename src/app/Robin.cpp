@@ -46,8 +46,10 @@ void Robin::configureStructure(std::uint32_t voiceCount,
     const auto previousMasterOscillators = masterOscillators_;
 
     sourceNode_.synth().clearNotes();
+    heldNotes_.clear();
     voiceAssignments_.clear();
     voiceReleaseUntil_.clear();
+    nextHeldNoteId_ = 1;
     nextVoiceCursor_ = 0;
     autoActivatedVoice0_ = false;
     resetRoutingState();
@@ -127,7 +129,9 @@ void Robin::configureStructure(std::uint32_t voiceCount,
 
 void Robin::clearAllNotes() {
     sourceNode_.synth().clearNotes();
+    heldNotes_.clear();
     voiceAssignments_.clear();
+    nextHeldNoteId_ = 1;
     nextVoiceCursor_ = 0;
     autoActivatedVoice0_ = false;
     resetRoutingState();
@@ -168,29 +172,13 @@ void Robin::noteOn(int noteNumber, float /*velocity*/) {
         return;
     }
 
-    const auto existingAssignment = std::find_if(
-        voiceAssignments_.begin(),
-        voiceAssignments_.end(),
-        [noteNumber](const RobinVoiceAssignment& currentAssignment) {
-            return currentAssignment.noteNumber == noteNumber;
-        });
-
-    if (existingAssignment != voiceAssignments_.end()) {
-        sourceNode_.synth().noteOff(existingAssignment->voiceIndex);
-        if (existingAssignment->voiceIndex < voiceReleaseUntil_.size()) {
-            const auto& voice = voices_[existingAssignment->voiceIndex];
-            const float releaseMs = voice.linkedToMaster ? envelopeState_.releaseMs : voice.envelope.releaseMs;
-            voiceReleaseUntil_[existingAssignment->voiceIndex] =
-                std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(std::ceil(releaseMs)));
-        }
-        voiceAssignments_.erase(existingAssignment);
-    }
-
+    const std::uint64_t noteId = nextHeldNoteId_++;
     const std::uint32_t voiceIndex = allocateVoice();
     if (voiceIndex < voiceReleaseUntil_.size()) {
         voiceReleaseUntil_[voiceIndex] = std::chrono::steady_clock::time_point::min();
     }
-    voiceAssignments_.push_back({noteNumber, voiceIndex});
+    heldNotes_.push_back({noteId, noteNumber, voiceIndex});
+    voiceAssignments_.push_back({noteId, noteNumber, voiceIndex});
     syncVoiceFrequency(voiceIndex);
 
     if (routingPreset_ == RoutingPreset::AllOutputs) {
@@ -203,26 +191,40 @@ void Robin::noteOn(int noteNumber, float /*velocity*/) {
 }
 
 void Robin::noteOff(int noteNumber) {
-    const auto assignment = std::find_if(
-        voiceAssignments_.begin(),
-        voiceAssignments_.end(),
-        [noteNumber](const RobinVoiceAssignment& currentAssignment) {
-            return currentAssignment.noteNumber == noteNumber;
+    const auto heldNote = std::find_if(
+        heldNotes_.begin(),
+        heldNotes_.end(),
+        [noteNumber](const RobinHeldNote& currentNote) {
+            return currentNote.noteNumber == noteNumber;
         });
 
-    if (assignment == voiceAssignments_.end()) {
+    if (heldNote == heldNotes_.end()) {
         return;
     }
 
-    const std::uint32_t voiceIndex = assignment->voiceIndex;
-    sourceNode_.synth().noteOff(voiceIndex);
-    if (voiceIndex < voiceReleaseUntil_.size()) {
-        const auto& voice = voices_[voiceIndex];
-        const float releaseMs = voice.linkedToMaster ? envelopeState_.releaseMs : voice.envelope.releaseMs;
-        voiceReleaseUntil_[voiceIndex] =
-            std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(std::ceil(releaseMs)));
+    const std::uint64_t noteId = heldNote->noteId;
+    const std::optional<std::uint32_t> voiceIndex = heldNote->voiceIndex;
+    heldNotes_.erase(heldNote);
+
+    if (voiceIndex.has_value()) {
+        sourceNode_.synth().noteOff(*voiceIndex);
+        if (*voiceIndex < voiceReleaseUntil_.size()) {
+            const auto& voice = voices_[*voiceIndex];
+            const float releaseMs = voice.linkedToMaster ? envelopeState_.releaseMs : voice.envelope.releaseMs;
+            voiceReleaseUntil_[*voiceIndex] =
+                std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(std::ceil(releaseMs)));
+        }
+
+        const auto assignment = std::find_if(
+            voiceAssignments_.begin(),
+            voiceAssignments_.end(),
+            [noteId](const RobinVoiceAssignment& currentAssignment) {
+                return currentAssignment.noteId == noteId;
+            });
+        if (assignment != voiceAssignments_.end()) {
+            voiceAssignments_.erase(assignment);
+        }
     }
-    voiceAssignments_.erase(assignment);
 
     if (autoActivatedVoice0_ && voiceAssignments_.empty() && !voices_.empty()) {
         voices_[0].active = false;
@@ -1617,6 +1619,22 @@ std::uint32_t Robin::allocateVoice() {
         });
     if (voiceAssignment != voiceAssignments_.end()) {
         sourceNode_.synth().noteOff(voiceAssignment->voiceIndex);
+        if (selectedVoice < voiceReleaseUntil_.size()) {
+            const auto& voice = voices_[selectedVoice];
+            const float releaseMs = voice.linkedToMaster ? envelopeState_.releaseMs : voice.envelope.releaseMs;
+            voiceReleaseUntil_[selectedVoice] =
+                std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(std::ceil(releaseMs)));
+        }
+
+        const auto heldNote = std::find_if(
+            heldNotes_.begin(),
+            heldNotes_.end(),
+            [noteId = voiceAssignment->noteId](const RobinHeldNote& currentNote) {
+                return currentNote.noteId == noteId;
+            });
+        if (heldNote != heldNotes_.end()) {
+            heldNote->voiceIndex.reset();
+        }
         voiceAssignments_.erase(voiceAssignment);
     }
 

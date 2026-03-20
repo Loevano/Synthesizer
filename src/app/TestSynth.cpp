@@ -21,6 +21,10 @@ void TestSynth::renderAdd(float* output,
     sourceNode_.renderAdd(output, frames, channels, enabled, level);
 }
 
+void TestSynth::clearAllNotes() {
+    sourceNode_.clearNotes();
+}
+
 void TestSynth::noteOn(int noteNumber, float velocity) {
     if (!state_.midiEnabled) {
         return;

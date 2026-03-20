@@ -1,6 +1,9 @@
 #include "synth/app/SynthController.hpp"
+#include "synth/app/Robin.hpp"
+#include "synth/core/Logger.hpp"
 #include "synth/graph/LiveGraph.hpp"
 #include "synth/interfaces/IAudioDriver.hpp"
+#include "synth/io/MidiInput.hpp"
 
 #include <cmath>
 #include <cstdlib>
@@ -24,7 +27,27 @@ struct SynthControllerTestAccess {
     }
 };
 
+struct RobinTestAccess {
+    static std::size_t assignmentCount(const Robin& robin) {
+        return robin.voiceAssignments_.size();
+    }
+
+    static std::size_t heldNoteCount(const Robin& robin) {
+        return robin.heldNotes_.size();
+    }
+};
+
 }  // namespace synth::app
+
+namespace synth::io {
+
+struct MidiInputTestAccess {
+    static void setCallback(MidiInput& midiInput, MidiMessageCallback callback) {
+        midiInput.callback_ = std::move(callback);
+    }
+};
+
+}  // namespace synth::io
 
 namespace {
 
@@ -240,6 +263,117 @@ void testQueuedGlobalNoteRefreshesStateWhileRunning() {
 
     const std::string noteOffStateJson = controller.stateJson();
     expect(noteOffStateJson.find("\"activeMidiNote\":-1") != std::string::npos, "queued note-off flushed into state");
+}
+
+void testQueuedRepeatedGlobalNoteRetainsLaterSamePitchInstance() {
+    synth::app::RuntimeConfig config;
+    config.logDirectory = testLogDirectory();
+
+    auto driver = std::make_unique<FakeAudioDriver>(makeTestDevices());
+    auto* driverPtr = driver.get();
+    synth::app::SynthController controller(config, std::move(driver));
+    expect(controller.initialize(), "controller initializes");
+
+    driverPtr->forceRunning(true);
+
+    synth::app::SynthControllerTestAccess::submitRealtimeCommandOrApply(
+        controller,
+        {synth::app::RealtimeCommandType::GlobalNoteOn, 0, 60, 1.0f});
+    synth::app::SynthControllerTestAccess::submitRealtimeCommandOrApply(
+        controller,
+        {synth::app::RealtimeCommandType::GlobalNoteOn, 0, 60, 1.0f});
+
+    const std::string repeatedNoteOnStateJson = controller.stateJson();
+    expect(
+        repeatedNoteOnStateJson.find("\"activeMidiNote\":60") != std::string::npos,
+        "repeated same-pitch note-on keeps note active");
+
+    synth::app::SynthControllerTestAccess::submitRealtimeCommandOrApply(
+        controller,
+        {synth::app::RealtimeCommandType::GlobalNoteOff, 0, 60, 0.0f});
+
+    const std::string firstNoteOffStateJson = controller.stateJson();
+    expect(
+        firstNoteOffStateJson.find("\"activeMidiNote\":60") != std::string::npos,
+        "first same-pitch note-off preserves later note instance");
+
+    synth::app::SynthControllerTestAccess::submitRealtimeCommandOrApply(
+        controller,
+        {synth::app::RealtimeCommandType::GlobalNoteOff, 0, 60, 0.0f});
+
+    const std::string secondNoteOffStateJson = controller.stateJson();
+    expect(
+        secondNoteOffStateJson.find("\"activeMidiNote\":-1") != std::string::npos,
+        "second same-pitch note-off releases final note instance");
+}
+
+void testRobinRetainsIndependentAssignmentsForRepeatedSamePitchNotes() {
+    synth::app::Robin robin;
+    robin.configureStructure(1, 1, 2);
+
+    robin.noteOn(60, 1.0f);
+    robin.noteOn(60, 1.0f);
+    expectEqual(
+        synth::app::RobinTestAccess::assignmentCount(robin),
+        static_cast<std::size_t>(1),
+        "single-voice robin keeps only one active assignment");
+    expectEqual(
+        synth::app::RobinTestAccess::heldNoteCount(robin),
+        static_cast<std::size_t>(2),
+        "single-voice robin tracks both same-pitch note instances");
+
+    robin.noteOff(60);
+    expectEqual(
+        synth::app::RobinTestAccess::assignmentCount(robin),
+        static_cast<std::size_t>(1),
+        "first same-pitch note-off preserves retriggered voice");
+    expectEqual(
+        synth::app::RobinTestAccess::heldNoteCount(robin),
+        static_cast<std::size_t>(1),
+        "first same-pitch note-off removes only the older held note");
+
+    robin.noteOff(60);
+    expectEqual(
+        synth::app::RobinTestAccess::assignmentCount(robin),
+        static_cast<std::size_t>(0),
+        "robin releases final same-pitch assignment");
+    expectEqual(
+        synth::app::RobinTestAccess::heldNoteCount(robin),
+        static_cast<std::size_t>(0),
+        "robin releases final same-pitch held note");
+}
+
+void testMidiInputParsesMultipleMessagesPerPacketAndTransportStop() {
+    synth::core::Logger logger(testLogDirectory());
+    synth::io::MidiInput midiInput(logger);
+    std::vector<synth::io::MidiMessage> messages;
+    synth::io::MidiInputTestAccess::setCallback(
+        midiInput,
+        [&messages](const synth::io::MidiMessage& message) {
+            messages.push_back(message);
+        });
+
+    const unsigned char repeatedNotePacket[] = {0x90, 60, 100, 0x80, 60, 0, 0x90, 60, 110};
+    midiInput.handlePacketData(3, repeatedNotePacket, sizeof(repeatedNotePacket));
+
+    expectEqual(messages.size(), static_cast<std::size_t>(3), "all MIDI messages in packet dispatched");
+    expect(messages[0].type == synth::io::MidiMessageType::NoteOn, "first packet message is note-on");
+    expectEqual(messages[0].sourceIndex, static_cast<std::uint32_t>(3), "first packet message source index");
+    expectEqual(messages[0].noteNumber, 60, "first packet message note number");
+    expect(messages[1].type == synth::io::MidiMessageType::NoteOff, "second packet message is note-off");
+    expectEqual(messages[1].noteNumber, 60, "second packet message note number");
+    expect(messages[2].type == synth::io::MidiMessageType::NoteOn, "third packet message is note-on");
+    expectEqual(messages[2].noteNumber, 60, "third packet message note number");
+
+    const unsigned char stopPacket[] = {0xFC};
+    midiInput.handlePacketData(3, stopPacket, sizeof(stopPacket));
+    expectEqual(messages.size(), static_cast<std::size_t>(4), "transport stop dispatches all-notes-off");
+    expect(messages[3].type == synth::io::MidiMessageType::AllNotesOff, "stop packet becomes all-notes-off");
+
+    const unsigned char mmcStopPacket[] = {0xF0, 0x7F, 0x7F, 0x06, 0x01, 0xF7};
+    midiInput.handlePacketData(3, mmcStopPacket, sizeof(mmcStopPacket));
+    expectEqual(messages.size(), static_cast<std::size_t>(5), "mmc stop dispatches all-notes-off");
+    expect(messages[4].type == synth::io::MidiMessageType::AllNotesOff, "mmc stop becomes all-notes-off");
 }
 
 void testQueuedRobinMasterParamsRefreshStateWhileRunning() {
@@ -627,6 +761,9 @@ int main() {
         {"state json refreshes after param mutation", testStateJsonRefreshesAfterParamMutation},
         {"queued realtime param refreshes state while running", testQueuedRealtimeParamRefreshesStateWhileRunning},
         {"queued global note refreshes state while running", testQueuedGlobalNoteRefreshesStateWhileRunning},
+        {"repeated same-pitch global notes retain later instance", testQueuedRepeatedGlobalNoteRetainsLaterSamePitchInstance},
+        {"robin keeps independent assignments for repeated same-pitch notes", testRobinRetainsIndependentAssignmentsForRepeatedSamePitchNotes},
+        {"midi input parses multi-message packets and transport stop", testMidiInputParsesMultipleMessagesPerPacketAndTransportStop},
         {"queued robin master params refresh state while running", testQueuedRobinMasterParamsRefreshStateWhileRunning},
         {"queued robin lfo params refresh state while running", testQueuedRobinLfoParamsRefreshStateWhileRunning},
         {"queued test and mixer/fx params refresh state while running", testQueuedTestAndMixerFxParamsRefreshStateWhileRunning},

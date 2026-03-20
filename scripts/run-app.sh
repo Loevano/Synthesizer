@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-EXTRA_ENV=()
+APP_ARGS=()
 while (($# > 0)); do
   case "$1" in
     --debug-crash)
-      EXTRA_ENV+=(SYNTH_DEBUG_CRASH=1 SYNTH_DEBUG_BRIDGE=1 SYNTH_DEBUG_ROBIN=1)
+      APP_ARGS+=("$1")
+      shift
+      ;;
+    --debug-bridge|--debug-robin)
+      APP_ARGS+=("$1")
       shift
       ;;
     --)
@@ -19,8 +23,13 @@ while (($# > 0)); do
 done
 
 ./scripts/build.sh
-if ((${#EXTRA_ENV[@]} > 0)); then
-  exec env "${EXTRA_ENV[@]}" "./build/Synthesizer.app/Contents/MacOS/Synthesizer" "$@"
+
+if (($# > 0)); then
+  APP_ARGS+=("$@")
 fi
 
-exec "./build/Synthesizer.app/Contents/MacOS/Synthesizer" "$@"
+if ((${#APP_ARGS[@]} > 0)); then
+  exec open -W -n "./build/Synthesizer.app" --args "${APP_ARGS[@]}"
+fi
+
+exec open -W -n "./build/Synthesizer.app"

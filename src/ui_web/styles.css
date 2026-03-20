@@ -215,6 +215,20 @@ h3 {
   margin-bottom: 10px;
 }
 
+.patch-actions {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.patch-panel__path {
+  margin-top: 14px;
+  font-family: "SFMono-Regular", "Menlo", monospace;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
 .status-tag {
   display: inline-flex;
   align-items: center;

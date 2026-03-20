@@ -65,6 +65,9 @@ Run the macOS app:
 ./scripts/run-app.sh
 ```
 
+This launches the `.app` bundle through LaunchServices. Avoid running
+`Synthesizer.app/Contents/MacOS/Synthesizer` directly from the terminal.
+
 Run the CLI host:
 
 ```bash
@@ -96,7 +99,7 @@ For crash-oriented tracing:
 Useful while tracing Robin and bridge issues:
 
 ```bash
-SYNTH_DEBUG_ROBIN=1 SYNTH_DEBUG_BRIDGE=1 ./scripts/run-app.sh
+./scripts/run-app.sh --debug-bridge --debug-robin
 ```
 
 On macOS app runs, logs are written under:

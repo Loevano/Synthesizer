@@ -176,6 +176,47 @@
           </p>
         </article>
 
+        <article class="panel controls patch-panel">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Patch Library</p>
+              <h2>Patch Menu</h2>
+            </div>
+            <span id="patchDirtyBadge" class="status-tag status-tag--live">Saved</span>
+          </div>
+
+          <label class="field">
+            <span>Select Patch</span>
+            <select id="patchSelect">
+              <option value="">Loading...</option>
+            </select>
+          </label>
+
+          <div class="patch-actions">
+            <button id="patchNewDefaultButton" type="button" class="ghost-button">Create New Default Patch</button>
+            <button id="patchLoadButton" type="button" class="ghost-button">Load Selected Patch</button>
+            <button id="patchSaveButton" type="button" class="ghost-button">Save Current Patch</button>
+            <button id="patchSaveAsButton" type="button" class="ghost-button">Save Current Patch As</button>
+            <button id="patchSaveDefaultButton" type="button" class="ghost-button">Save Current Patch as Default Patch</button>
+          </div>
+
+          <div class="kv-list">
+            <div class="kv-row">
+              <span>Current Patch</span>
+              <strong id="patchCurrentValue">Current Session</strong>
+            </div>
+            <div class="kv-row">
+              <span>Patch Folder</span>
+              <strong id="patchStorageModeValue">Loading...</strong>
+            </div>
+          </div>
+
+          <p id="patchDirectoryValue" class="note patch-panel__path">Loading patch library...</p>
+          <p id="patchHelpText" class="note">
+            Patch files save only the user patch state. Realtime engine and transport state stay out of the JSON.
+          </p>
+        </article>
+
         <article class="panel">
           <div class="panel-header">
             <div>

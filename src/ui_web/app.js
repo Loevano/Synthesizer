@@ -132,6 +132,9 @@ const UI_RESET_DEFAULTS = {
   },
 };
 
+const PATCH_SCHEMA_VERSION = 1;
+const DEFAULT_PATCH_FILE_NAME = "default-patch.json";
+
 const elements = {
   tabs: Array.from(document.querySelectorAll(".page-tab")),
   pages: Array.from(document.querySelectorAll(".page")),
@@ -155,6 +158,17 @@ const elements = {
   refreshButton: document.getElementById("refreshButton"),
   stateView: document.getElementById("stateView"),
   statusText: document.getElementById("statusText"),
+  patchSelect: document.getElementById("patchSelect"),
+  patchLoadButton: document.getElementById("patchLoadButton"),
+  patchNewDefaultButton: document.getElementById("patchNewDefaultButton"),
+  patchSaveButton: document.getElementById("patchSaveButton"),
+  patchSaveAsButton: document.getElementById("patchSaveAsButton"),
+  patchSaveDefaultButton: document.getElementById("patchSaveDefaultButton"),
+  patchDirtyBadge: document.getElementById("patchDirtyBadge"),
+  patchCurrentValue: document.getElementById("patchCurrentValue"),
+  patchStorageModeValue: document.getElementById("patchStorageModeValue"),
+  patchDirectoryValue: document.getElementById("patchDirectoryValue"),
+  patchHelpText: document.getElementById("patchHelpText"),
   midiDeviceGrid: document.getElementById("midiDeviceGrid"),
   sourceMixerGrid: document.getElementById("sourceMixerGrid"),
   outputMixerGrid: document.getElementById("outputMixerGrid"),
@@ -252,6 +266,16 @@ const queuedParams = new Map();
 let activeRangeInput = null;
 let hasDeferredRender = false;
 let selectedRobinVoiceIndex = null;
+let patchState = null;
+let factoryPatchState = null;
+let patchLibrary = [];
+let patchDirectory = "";
+let usingProjectPatchDirectory = false;
+let selectedPatchFileName = "";
+let currentPatchFileName = "";
+let currentPatchName = "Current Session";
+let lastSavedPatchJson = "";
+let patchActionInProgress = false;
 
 function getEngine() {
   return state?.engine ?? null;
@@ -275,6 +299,669 @@ function getRobin() {
 
 function getTest() {
   return state?.sources?.test ?? null;
+}
+
+function cloneJsonValue(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  return JSON.parse(JSON.stringify(value));
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function clampIntegerValue(value, min, max) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return min;
+  }
+
+  return Math.max(min, Math.min(max, Math.round(numericValue)));
+}
+
+function extractSourceMixerSlotPatch(slot) {
+  return {
+    enabled: Boolean(slot?.enabled),
+    level: Number(slot?.level ?? 0),
+    routeTarget: String(slot?.routeTarget ?? "dry"),
+  };
+}
+
+function extractPatchStateFromLiveState(liveState) {
+  const robin = liveState?.sources?.robin ?? {};
+  const test = liveState?.sources?.test ?? {};
+  const fx = liveState?.processors?.fx ?? {};
+  const outputMixer = Array.isArray(liveState?.outputMixer?.outputs) ? liveState.outputMixer.outputs : [];
+  const robinVoices = Array.isArray(robin.voices) ? robin.voices : [];
+  const masterOscillators = Array.isArray(robin.masterOscillators) ? robin.masterOscillators : [];
+  const testOutputs = Array.isArray(test.outputs) ? test.outputs : [];
+
+  return {
+    sourceMixer: {
+      robin: extractSourceMixerSlotPatch(liveState?.sourceMixer?.robin),
+      test: extractSourceMixerSlotPatch(liveState?.sourceMixer?.test),
+      decor: extractSourceMixerSlotPatch(liveState?.sourceMixer?.decor),
+      pieces: extractSourceMixerSlotPatch(liveState?.sourceMixer?.pieces),
+    },
+    outputMixer: {
+      outputs: outputMixer.map((output) => ({
+        level: Number(output?.level ?? 1),
+        delayMs: Number(output?.delayMs ?? 0),
+        eq: {
+          lowDb: Number(output?.eq?.lowDb ?? 0),
+          midDb: Number(output?.eq?.midDb ?? 0),
+          highDb: Number(output?.eq?.highDb ?? 0),
+        },
+      })),
+    },
+    sources: {
+      robin: {
+        voiceCount: Number(robin.voiceCount ?? 0),
+        oscillatorsPerVoice: Number(robin.oscillatorsPerVoice ?? 0),
+        frequency: Number(robin.frequency ?? 400),
+        gain: Number(robin.gain ?? 1),
+        transposeSemitones: Number(robin.transposeSemitones ?? 0),
+        fineTuneCents: Number(robin.fineTuneCents ?? 0),
+        routingPreset: String(robin.routingPreset ?? "forward"),
+        vcf: {
+          cutoffHz: Number(robin.vcf?.cutoffHz ?? 18000),
+          resonance: Number(robin.vcf?.resonance ?? 0.707),
+        },
+        envVcf: {
+          attackMs: Number(robin.envVcf?.attackMs ?? 20),
+          decayMs: Number(robin.envVcf?.decayMs ?? 250),
+          sustain: Number(robin.envVcf?.sustain ?? 0),
+          releaseMs: Number(robin.envVcf?.releaseMs ?? 220),
+          amount: Number(robin.envVcf?.amount ?? 0),
+        },
+        envelope: {
+          attackMs: Number(robin.envelope?.attackMs ?? 10),
+          decayMs: Number(robin.envelope?.decayMs ?? 80),
+          sustain: Number(robin.envelope?.sustain ?? 0.8),
+          releaseMs: Number(robin.envelope?.releaseMs ?? 200),
+        },
+        lfo: {
+          enabled: Boolean(robin.lfo?.enabled),
+          waveform: String(robin.lfo?.waveform ?? "sine"),
+          depth: Number(robin.lfo?.depth ?? 0.5),
+          clockLinked: Boolean(robin.lfo?.clockLinked),
+          tempoBpm: Number(robin.lfo?.tempoBpm ?? 120),
+          rateMultiplier: Number(robin.lfo?.rateMultiplier ?? 1),
+          fixedFrequencyHz: Number(robin.lfo?.fixedFrequencyHz ?? 2),
+          phaseSpreadDegrees: Number(robin.lfo?.phaseSpreadDegrees ?? 0),
+          polarityFlip: Boolean(robin.lfo?.polarityFlip),
+          unlinkedOutputs: Boolean(robin.lfo?.unlinkedOutputs),
+        },
+        masterOscillators: masterOscillators.map((oscillator) => ({
+          enabled: Boolean(oscillator?.enabled),
+          gain: Number(oscillator?.gain ?? 1),
+          relativeToVoice: Boolean(oscillator?.relativeToVoice),
+          frequencyValue: Number(oscillator?.frequencyValue ?? 1),
+          waveform: String(oscillator?.waveform ?? "sine"),
+        })),
+        voices: robinVoices.map((voice) => ({
+          active: Boolean(voice?.active),
+          linkedToMaster: Boolean(voice?.linkedToMaster),
+          frequency: Number(voice?.frequency ?? 400),
+          gain: Number(voice?.gain ?? 1),
+          vcf: {
+            cutoffHz: Number(voice?.vcf?.cutoffHz ?? 18000),
+            resonance: Number(voice?.vcf?.resonance ?? 0.707),
+          },
+          envVcf: {
+            attackMs: Number(voice?.envVcf?.attackMs ?? 20),
+            decayMs: Number(voice?.envVcf?.decayMs ?? 250),
+            sustain: Number(voice?.envVcf?.sustain ?? 0),
+            releaseMs: Number(voice?.envVcf?.releaseMs ?? 220),
+            amount: Number(voice?.envVcf?.amount ?? 0),
+          },
+          envelope: {
+            attackMs: Number(voice?.envelope?.attackMs ?? 10),
+            decayMs: Number(voice?.envelope?.decayMs ?? 80),
+            sustain: Number(voice?.envelope?.sustain ?? 0.8),
+            releaseMs: Number(voice?.envelope?.releaseMs ?? 200),
+          },
+          outputs: Array.isArray(voice?.outputs) ? voice.outputs.map((enabled) => Boolean(enabled)) : [],
+          oscillators: Array.isArray(voice?.oscillators)
+            ? voice.oscillators.map((oscillator) => ({
+              enabled: Boolean(oscillator?.enabled),
+              gain: Number(oscillator?.gain ?? 1),
+              relativeToVoice: Boolean(oscillator?.relativeToVoice),
+              frequencyValue: Number(oscillator?.frequencyValue ?? 1),
+              waveform: String(oscillator?.waveform ?? "sine"),
+            }))
+            : [],
+        })),
+      },
+      test: {
+        active: Boolean(test.active),
+        midiEnabled: Boolean(test.midiEnabled),
+        frequency: Number(test.frequency ?? 220),
+        gain: Number(test.gain ?? 0.4),
+        waveform: String(test.waveform ?? "sine"),
+        envelope: {
+          attackMs: Number(test.envelope?.attackMs ?? 10),
+          decayMs: Number(test.envelope?.decayMs ?? 80),
+          sustain: Number(test.envelope?.sustain ?? 0.8),
+          releaseMs: Number(test.envelope?.releaseMs ?? 200),
+        },
+        outputs: testOutputs.map((enabled) => Boolean(enabled)),
+      },
+    },
+    processors: {
+      fx: {
+        saturator: {
+          enabled: Boolean(fx.saturator?.enabled),
+          inputLevel: Number(fx.saturator?.inputLevel ?? 1),
+          outputLevel: Number(fx.saturator?.outputLevel ?? 1),
+        },
+        chorus: {
+          enabled: Boolean(fx.chorus?.enabled),
+          depth: Number(fx.chorus?.depth ?? 0.5),
+          speedHz: Number(fx.chorus?.speedHz ?? 0.25),
+          phaseSpreadDegrees: Number(fx.chorus?.phaseSpreadDegrees ?? 360),
+        },
+        sidechain: {
+          enabled: Boolean(fx.sidechain?.enabled),
+        },
+      },
+    },
+  };
+}
+
+function serializePatchStateSnapshot(snapshot) {
+  return snapshot ? JSON.stringify(snapshot) : "";
+}
+
+function serializeCurrentPatchState() {
+  return serializePatchStateSnapshot(patchState);
+}
+
+function isPatchDirty() {
+  return Boolean(patchState) && serializeCurrentPatchState() !== lastSavedPatchJson;
+}
+
+function syncPatchStateFromLiveState(liveState) {
+  if (!liveState) {
+    return;
+  }
+
+  patchState = extractPatchStateFromLiveState(liveState);
+  if (!factoryPatchState) {
+    factoryPatchState = cloneJsonValue(patchState);
+  }
+  if (!lastSavedPatchJson) {
+    lastSavedPatchJson = serializeCurrentPatchState();
+  }
+  updatePatchUi();
+}
+
+function setPatchSavedBaseline() {
+  lastSavedPatchJson = serializeCurrentPatchState();
+  updatePatchUi();
+}
+
+function findPatchEntry(fileName) {
+  return patchLibrary.find((entry) => entry.fileName === fileName) ?? null;
+}
+
+function renderPatchLibrary() {
+  const selectedFileName = patchLibrary.some((entry) => entry.fileName === selectedPatchFileName)
+    ? selectedPatchFileName
+    : (patchLibrary.some((entry) => entry.fileName === currentPatchFileName)
+      ? currentPatchFileName
+      : (patchLibrary[0]?.fileName ?? ""));
+
+  if (!patchLibrary.length) {
+    elements.patchSelect.innerHTML = `<option value="">No saved patches</option>`;
+    selectedPatchFileName = "";
+  } else {
+    elements.patchSelect.innerHTML = patchLibrary
+      .map((entry) => {
+        const label = entry.isDefault ? `${entry.name} (Default)` : entry.name;
+        return `<option value="${escapeHtml(entry.fileName)}">${escapeHtml(label)}</option>`;
+      })
+      .join("");
+    selectedPatchFileName = selectedFileName;
+    elements.patchSelect.value = selectedPatchFileName;
+  }
+
+  updatePatchUi();
+}
+
+function updatePatchUi() {
+  const dirty = isPatchDirty();
+  elements.patchDirtyBadge.textContent = dirty ? "Unsaved" : "Saved";
+  elements.patchDirtyBadge.className = `status-tag ${dirty ? "status-tag--warning" : "status-tag--live"}`;
+  elements.patchCurrentValue.textContent = currentPatchName || "Current Session";
+  elements.patchStorageModeValue.textContent = usingProjectPatchDirectory ? "./Patches" : "Application Support";
+  elements.patchDirectoryValue.textContent = patchDirectory || "Patch folder unavailable.";
+
+  const defaultPatch = patchLibrary.find((entry) => entry.isDefault) ?? null;
+  elements.patchHelpText.textContent = defaultPatch
+    ? `Default patch: ${defaultPatch.name}. Patch files save only the user patch state, not realtime engine state.`
+    : "No default patch saved yet. Patch files save only the user patch state, not realtime engine state.";
+
+  const hasSelection = Boolean(selectedPatchFileName);
+  const hasPatchState = Boolean(patchState);
+  const canCreateDefault = Boolean(defaultPatch || factoryPatchState);
+
+  elements.patchSelect.disabled = patchActionInProgress || !patchLibrary.length;
+  elements.patchLoadButton.disabled = patchActionInProgress || !hasSelection;
+  elements.patchNewDefaultButton.disabled = patchActionInProgress || !canCreateDefault;
+  elements.patchSaveButton.disabled = patchActionInProgress || !hasPatchState;
+  elements.patchSaveAsButton.disabled = patchActionInProgress || !hasPatchState;
+  elements.patchSaveDefaultButton.disabled = patchActionInProgress || !hasPatchState;
+}
+
+async function refreshPatchLibrary({ silent = true } = {}) {
+  if (!window.synth?.listPatches) {
+    patchLibrary = [];
+    patchDirectory = "";
+    usingProjectPatchDirectory = false;
+    renderPatchLibrary();
+    return;
+  }
+
+  try {
+    const library = await window.synth.listPatches();
+    patchLibrary = Array.isArray(library?.patches) ? library.patches : [];
+    patchDirectory = String(library?.directory ?? "");
+    usingProjectPatchDirectory = Boolean(library?.usingProjectDirectory);
+    renderPatchLibrary();
+    if (!silent) {
+      setStatus(`Patch library ready. ${patchLibrary.length} patch${patchLibrary.length === 1 ? "" : "es"} found.`);
+    }
+  } catch (error) {
+    patchLibrary = [];
+    patchDirectory = "";
+    usingProjectPatchDirectory = false;
+    renderPatchLibrary();
+    setStatus(`Patch library failed: ${error.message}`);
+  }
+}
+
+function buildPatchDocument(name) {
+  return {
+    schemaVersion: PATCH_SCHEMA_VERSION,
+    name,
+    savedAt: new Date().toISOString(),
+    context: {
+      outputChannels: Number(getEngine()?.outputChannels ?? 0),
+      storageMode: usingProjectPatchDirectory ? "project-patches" : "application-support",
+    },
+    data: cloneJsonValue(patchState),
+  };
+}
+
+function normalizeLoadedPatchDocument(document, fallbackName = "Patch") {
+  if (!document || typeof document !== "object") {
+    throw new Error("Patch file is empty or malformed.");
+  }
+
+  const patchData = document.data && typeof document.data === "object" ? document.data : document;
+  if (!patchData || typeof patchData !== "object") {
+    throw new Error("Patch file is missing patch data.");
+  }
+
+  const patchName = typeof document.name === "string" && document.name.trim()
+    ? document.name.trim()
+    : fallbackName;
+
+  return {
+    name: patchName,
+    data: cloneJsonValue(patchData),
+  };
+}
+
+function pushPatchParam(operations, path, value, { structural = false } = {}) {
+  if (value === undefined || value === null) {
+    return;
+  }
+
+  operations.push({ path, value, structural });
+}
+
+function pushEnvelopePatchParams(operations, prefix, envelope) {
+  if (!envelope || typeof envelope !== "object") {
+    return;
+  }
+
+  pushPatchParam(operations, `${prefix}.attackMs`, envelope.attackMs);
+  pushPatchParam(operations, `${prefix}.decayMs`, envelope.decayMs);
+  pushPatchParam(operations, `${prefix}.sustain`, envelope.sustain);
+  pushPatchParam(operations, `${prefix}.releaseMs`, envelope.releaseMs);
+}
+
+function pushEnvVcfPatchParams(operations, prefix, envelope) {
+  if (!envelope || typeof envelope !== "object") {
+    return;
+  }
+
+  pushPatchParam(operations, `${prefix}.attackMs`, envelope.attackMs);
+  pushPatchParam(operations, `${prefix}.decayMs`, envelope.decayMs);
+  pushPatchParam(operations, `${prefix}.sustain`, envelope.sustain);
+  pushPatchParam(operations, `${prefix}.releaseMs`, envelope.releaseMs);
+  pushPatchParam(operations, `${prefix}.amount`, envelope.amount);
+}
+
+function pushVcfPatchParams(operations, prefix, vcf) {
+  if (!vcf || typeof vcf !== "object") {
+    return;
+  }
+
+  pushPatchParam(operations, `${prefix}.cutoffHz`, vcf.cutoffHz);
+  pushPatchParam(operations, `${prefix}.resonance`, vcf.resonance);
+}
+
+function pushOscillatorPatchParams(operations, prefix, oscillator) {
+  if (!oscillator || typeof oscillator !== "object") {
+    return;
+  }
+
+  pushPatchParam(operations, `${prefix}.enabled`, oscillator.enabled);
+  pushPatchParam(operations, `${prefix}.waveform`, oscillator.waveform);
+  pushPatchParam(operations, `${prefix}.relative`, oscillator.relativeToVoice);
+  pushPatchParam(operations, `${prefix}.frequency`, oscillator.frequencyValue);
+  pushPatchParam(operations, `${prefix}.gain`, oscillator.gain);
+}
+
+function buildPatchOperations(patchData) {
+  const operations = [];
+  const outputCount = Math.max(
+    0,
+    clampIntegerValue(getEngine()?.outputChannels ?? patchData?.outputMixer?.outputs?.length ?? 0, 0, 64),
+  );
+
+  const sourceKeys = ["robin", "test", "decor", "pieces"];
+  sourceKeys.forEach((sourceKey) => {
+    const slot = patchData?.sourceMixer?.[sourceKey];
+    if (!slot || typeof slot !== "object") {
+      return;
+    }
+
+    pushPatchParam(operations, `sourceMixer.${sourceKey}.enabled`, slot.enabled);
+    pushPatchParam(operations, `sourceMixer.${sourceKey}.level`, slot.level);
+    pushPatchParam(operations, `sourceMixer.${sourceKey}.routeTarget`, slot.routeTarget);
+  });
+
+  const outputs = Array.isArray(patchData?.outputMixer?.outputs) ? patchData.outputMixer.outputs : [];
+  outputs.slice(0, outputCount).forEach((output, outputIndex) => {
+    pushPatchParam(operations, `outputMixer.output.${outputIndex}.level`, output?.level);
+    pushPatchParam(operations, `outputMixer.output.${outputIndex}.delayMs`, output?.delayMs);
+    pushPatchParam(operations, `outputMixer.output.${outputIndex}.eq.lowDb`, output?.eq?.lowDb);
+    pushPatchParam(operations, `outputMixer.output.${outputIndex}.eq.midDb`, output?.eq?.midDb);
+    pushPatchParam(operations, `outputMixer.output.${outputIndex}.eq.highDb`, output?.eq?.highDb);
+  });
+
+  const robin = patchData?.sources?.robin ?? {};
+  const voiceCount = clampIntegerValue(
+    robin.voiceCount ?? robin.voices?.length ?? getRobin()?.voiceCount ?? 8,
+    1,
+    32,
+  );
+  const oscillatorsPerVoice = clampIntegerValue(
+    robin.oscillatorsPerVoice ?? robin.masterOscillators?.length ?? getRobin()?.oscillatorsPerVoice ?? 6,
+    1,
+    8,
+  );
+
+  if (robin.voiceCount !== undefined || Array.isArray(robin.voices)) {
+    pushPatchParam(operations, "sources.robin.voiceCount", voiceCount, { structural: true });
+  }
+  if (robin.oscillatorsPerVoice !== undefined || Array.isArray(robin.masterOscillators)) {
+    pushPatchParam(operations, "sources.robin.oscillatorsPerVoice", oscillatorsPerVoice, { structural: true });
+  }
+
+  pushPatchParam(operations, "sources.robin.frequency", robin.frequency);
+  pushPatchParam(operations, "sources.robin.gain", robin.gain);
+  pushPatchParam(operations, "sources.robin.transposeSemitones", robin.transposeSemitones);
+  pushPatchParam(operations, "sources.robin.fineTuneCents", robin.fineTuneCents);
+  pushPatchParam(operations, "sources.robin.routingPreset", robin.routingPreset);
+  pushVcfPatchParams(operations, "sources.robin.vcf", robin.vcf);
+  pushEnvVcfPatchParams(operations, "sources.robin.envVcf", robin.envVcf);
+  pushEnvelopePatchParams(operations, "sources.robin.envelope", robin.envelope);
+
+  if (robin.lfo && typeof robin.lfo === "object") {
+    pushPatchParam(operations, "sources.robin.lfo.enabled", robin.lfo.enabled);
+    pushPatchParam(operations, "sources.robin.lfo.waveform", robin.lfo.waveform);
+    pushPatchParam(operations, "sources.robin.lfo.depth", robin.lfo.depth);
+    pushPatchParam(operations, "sources.robin.lfo.clockLinked", robin.lfo.clockLinked);
+    pushPatchParam(operations, "sources.robin.lfo.tempoBpm", robin.lfo.tempoBpm);
+    pushPatchParam(operations, "sources.robin.lfo.rateMultiplier", robin.lfo.rateMultiplier);
+    pushPatchParam(operations, "sources.robin.lfo.fixedFrequencyHz", robin.lfo.fixedFrequencyHz);
+    pushPatchParam(operations, "sources.robin.lfo.phaseSpreadDegrees", robin.lfo.phaseSpreadDegrees);
+    pushPatchParam(operations, "sources.robin.lfo.polarityFlip", robin.lfo.polarityFlip);
+    pushPatchParam(operations, "sources.robin.lfo.unlinkedOutputs", robin.lfo.unlinkedOutputs);
+  }
+
+  const masterOscillators = Array.isArray(robin.masterOscillators) ? robin.masterOscillators : [];
+  masterOscillators.slice(0, oscillatorsPerVoice).forEach((oscillator, oscillatorIndex) => {
+    pushOscillatorPatchParams(operations, `sources.robin.oscillator.${oscillatorIndex}`, oscillator);
+  });
+
+  const useCustomRouting = robin.routingPreset === "custom";
+  const robinVoices = Array.isArray(robin.voices) ? robin.voices : [];
+  robinVoices.slice(0, voiceCount).forEach((voice, voiceIndex) => {
+    const voicePrefix = `sources.robin.voice.${voiceIndex}`;
+    const finalLinkedToMaster = typeof voice?.linkedToMaster === "boolean" ? voice.linkedToMaster : true;
+
+    pushPatchParam(operations, `${voicePrefix}.active`, voice?.active);
+    pushPatchParam(operations, `${voicePrefix}.linkedToMaster`, false);
+    pushPatchParam(operations, `${voicePrefix}.frequency`, voice?.frequency);
+    pushPatchParam(operations, `${voicePrefix}.gain`, voice?.gain);
+    pushVcfPatchParams(operations, `${voicePrefix}.vcf`, voice?.vcf);
+    pushEnvVcfPatchParams(operations, `${voicePrefix}.envVcf`, voice?.envVcf);
+    pushEnvelopePatchParams(operations, `${voicePrefix}.envelope`, voice?.envelope);
+
+    if (useCustomRouting && Array.isArray(voice?.outputs)) {
+      voice.outputs.slice(0, outputCount).forEach((enabled, outputIndex) => {
+        pushPatchParam(operations, `${voicePrefix}.output.${outputIndex}`, enabled);
+      });
+    }
+
+    const voiceOscillators = Array.isArray(voice?.oscillators) ? voice.oscillators : [];
+    voiceOscillators.slice(0, oscillatorsPerVoice).forEach((oscillator, oscillatorIndex) => {
+      pushOscillatorPatchParams(
+        operations,
+        `${voicePrefix}.oscillator.${oscillatorIndex}`,
+        oscillator,
+      );
+    });
+
+    pushPatchParam(operations, `${voicePrefix}.linkedToMaster`, finalLinkedToMaster);
+  });
+
+  const test = patchData?.sources?.test ?? {};
+  pushPatchParam(operations, "sources.test.active", test.active);
+  pushPatchParam(operations, "sources.test.midiEnabled", test.midiEnabled);
+  pushPatchParam(operations, "sources.test.frequency", test.frequency);
+  pushPatchParam(operations, "sources.test.gain", test.gain);
+  pushPatchParam(operations, "sources.test.waveform", test.waveform);
+  pushEnvelopePatchParams(operations, "sources.test.envelope", test.envelope);
+  if (Array.isArray(test.outputs)) {
+    test.outputs.slice(0, outputCount).forEach((enabled, outputIndex) => {
+      pushPatchParam(operations, `sources.test.output.${outputIndex}`, enabled);
+    });
+  }
+
+  const fx = patchData?.processors?.fx ?? {};
+  pushPatchParam(operations, "processors.fx.saturator.enabled", fx.saturator?.enabled);
+  pushPatchParam(operations, "processors.fx.saturator.inputLevel", fx.saturator?.inputLevel);
+  pushPatchParam(operations, "processors.fx.saturator.outputLevel", fx.saturator?.outputLevel);
+  pushPatchParam(operations, "processors.fx.chorus.enabled", fx.chorus?.enabled);
+  pushPatchParam(operations, "processors.fx.chorus.depth", fx.chorus?.depth);
+  pushPatchParam(operations, "processors.fx.chorus.speedHz", fx.chorus?.speedHz);
+  pushPatchParam(operations, "processors.fx.chorus.phaseSpreadDegrees", fx.chorus?.phaseSpreadDegrees);
+  pushPatchParam(operations, "processors.fx.sidechain.enabled", fx.sidechain?.enabled);
+
+  return operations;
+}
+
+function resetPendingParamState() {
+  activeRangeInput = null;
+  hasDeferredRender = false;
+  queuedParams.clear();
+  inFlightParams.clear();
+  flushRobinStructuralUiState();
+}
+
+async function sendPatchOperation(operation) {
+  if (!window.synth) {
+    throw new Error("Native bridge unavailable.");
+  }
+
+  if (operation.structural) {
+    await window.synth.setParam(operation.path, operation.value);
+    return;
+  }
+
+  await window.synth.setParamFast(operation.path, operation.value);
+}
+
+async function applyPatchDataToSynth(patchData, { name, fileName = "" } = {}) {
+  const operations = buildPatchOperations(patchData);
+  patchActionInProgress = true;
+  updatePatchUi();
+  resetPendingParamState();
+
+  try {
+    for (const operation of operations) {
+      await sendPatchOperation(operation);
+    }
+
+    await refreshState({ silent: true });
+    currentPatchFileName = fileName;
+    currentPatchName = name || "Current Session";
+    if (fileName) {
+      selectedPatchFileName = fileName;
+      renderPatchLibrary();
+    }
+    setPatchSavedBaseline();
+  } finally {
+    patchActionInProgress = false;
+    updatePatchUi();
+  }
+}
+
+function promptForPatchName(initialName = "Patch") {
+  const response = window.prompt("Patch name", initialName);
+  if (response === null) {
+    return null;
+  }
+
+  const trimmed = response.trim();
+  if (!trimmed) {
+    setStatus("Patch name cannot be empty.");
+    return null;
+  }
+
+  return trimmed;
+}
+
+function confirmPatchReplace(actionLabel) {
+  if (!isPatchDirty()) {
+    return true;
+  }
+
+  return window.confirm(`Current patch has unsaved changes. ${actionLabel}?`);
+}
+
+async function savePatchToLibrary({ fileName = "", name, statusMessage, adoptSavedPatch = true }) {
+  if (!window.synth?.savePatch || !patchState) {
+    return null;
+  }
+
+  patchActionInProgress = true;
+  updatePatchUi();
+
+  try {
+    const payload = {
+      name,
+      patch: buildPatchDocument(name),
+    };
+    if (fileName) {
+      payload.fileName = fileName;
+    }
+
+    const savedPatch = await window.synth.savePatch(payload);
+    await refreshPatchLibrary({ silent: true });
+
+    if (adoptSavedPatch) {
+      currentPatchFileName = String(savedPatch?.fileName ?? fileName);
+      currentPatchName = String(savedPatch?.name ?? name);
+      selectedPatchFileName = currentPatchFileName;
+      renderPatchLibrary();
+      setPatchSavedBaseline();
+    } else {
+      renderPatchLibrary();
+    }
+    setStatus(statusMessage ?? `Saved patch ${currentPatchName}.`);
+    return savedPatch;
+  } finally {
+    patchActionInProgress = false;
+    updatePatchUi();
+  }
+}
+
+async function loadPatchFromLibrary(fileName) {
+  if (!window.synth?.loadPatch || !fileName) {
+    return;
+  }
+
+  const patchEntry = findPatchEntry(fileName);
+  const patchDocument = await window.synth.loadPatch(fileName);
+  const normalizedPatch = normalizeLoadedPatchDocument(patchDocument, patchEntry?.name ?? "Patch");
+  await applyPatchDataToSynth(normalizedPatch.data, {
+    name: normalizedPatch.name,
+    fileName,
+  });
+  setStatus(`Loaded patch ${normalizedPatch.name}.`);
+}
+
+async function createNewDefaultPatch() {
+  if (!confirmPatchReplace("Create a new patch from the default patch")) {
+    return;
+  }
+
+  const defaultPatch = patchLibrary.find((entry) => entry.isDefault) ?? null;
+  if (defaultPatch) {
+    const patchDocument = await window.synth.loadPatch(defaultPatch.fileName);
+    const normalizedPatch = normalizeLoadedPatchDocument(patchDocument, defaultPatch.name);
+    await applyPatchDataToSynth(normalizedPatch.data, {
+      name: "New Default Patch",
+      fileName: "",
+    });
+    currentPatchFileName = "";
+    currentPatchName = "New Default Patch";
+    selectedPatchFileName = defaultPatch.fileName;
+    renderPatchLibrary();
+    setPatchSavedBaseline();
+    setStatus(`Started a new patch from ${defaultPatch.name}.`);
+    return;
+  }
+
+  if (!factoryPatchState) {
+    throw new Error("Factory default patch is not available yet.");
+  }
+
+  await applyPatchDataToSynth(factoryPatchState, {
+    name: "New Default Patch",
+    fileName: "",
+  });
+  currentPatchFileName = "";
+  currentPatchName = "New Default Patch";
+  setPatchSavedBaseline();
+  updatePatchUi();
+  setStatus("Started a new patch from the factory default state.");
 }
 
 function formatLevelPercent(value) {
@@ -1372,6 +2059,10 @@ function applyMidiRouteUpdate(sourceIndex, target, rawValue) {
 function applyTempStateMutation(applyLocalState = null, rerender = null) {
   if (typeof applyLocalState === "function") {
     applyLocalState();
+  }
+
+  if (state) {
+    syncPatchStateFromLiveState(state);
   }
 
   if (activeRangeInput) {
@@ -2567,6 +3258,7 @@ function renderFxOutputGrid() {
 
 function applyStateToUi(nextState) {
   state = nextState;
+  syncPatchStateFromLiveState(nextState);
 
   const engine = getEngine();
   const test = getTest();
@@ -3214,7 +3906,7 @@ function bindTestOutputControls() {
   });
 }
 
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
   document.addEventListener(
     "pointerdown",
     (event) => {
@@ -3655,6 +4347,83 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   elements.refreshButton.addEventListener("click", refreshState);
+  elements.patchSelect.addEventListener("change", () => {
+    selectedPatchFileName = elements.patchSelect.value;
+    updatePatchUi();
+  });
 
-  refreshState();
+  elements.patchLoadButton.addEventListener("click", async () => {
+    if (!selectedPatchFileName || !confirmPatchReplace("Load the selected patch")) {
+      return;
+    }
+
+    try {
+      await loadPatchFromLibrary(selectedPatchFileName);
+    } catch (error) {
+      setStatus(`Could not load patch: ${error.message}`);
+    }
+  });
+
+  elements.patchNewDefaultButton.addEventListener("click", async () => {
+    try {
+      await createNewDefaultPatch();
+    } catch (error) {
+      setStatus(`Could not create a new default patch: ${error.message}`);
+    }
+  });
+
+  elements.patchSaveButton.addEventListener("click", async () => {
+    try {
+      if (currentPatchFileName) {
+        await savePatchToLibrary({
+          fileName: currentPatchFileName,
+          name: currentPatchName || "Patch",
+        });
+        return;
+      }
+
+      const patchName = promptForPatchName(currentPatchName === "Current Session" ? "Patch" : currentPatchName);
+      if (!patchName) {
+        return;
+      }
+
+      await savePatchToLibrary({
+        name: patchName,
+      });
+    } catch (error) {
+      setStatus(`Could not save patch: ${error.message}`);
+    }
+  });
+
+  elements.patchSaveAsButton.addEventListener("click", async () => {
+    const patchName = promptForPatchName(currentPatchName === "Current Session" ? "Patch" : currentPatchName);
+    if (!patchName) {
+      return;
+    }
+
+    try {
+      await savePatchToLibrary({
+        name: patchName,
+      });
+    } catch (error) {
+      setStatus(`Could not save patch as: ${error.message}`);
+    }
+  });
+
+  elements.patchSaveDefaultButton.addEventListener("click", async () => {
+    try {
+      await savePatchToLibrary({
+        fileName: DEFAULT_PATCH_FILE_NAME,
+        name: "Default Patch",
+        statusMessage: "Saved current patch as the default patch.",
+        adoptSavedPatch: currentPatchFileName === DEFAULT_PATCH_FILE_NAME,
+      });
+    } catch (error) {
+      setStatus(`Could not save the default patch: ${error.message}`);
+    }
+  });
+
+  await refreshState();
+  await refreshPatchLibrary({ silent: true });
+  updatePatchUi();
 });

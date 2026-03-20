@@ -4,10 +4,17 @@
 #include "synth/app/SynthController.hpp"
 #include "synth/core/CrashDiagnostics.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -47,6 +54,15 @@ constexpr const char* kBridgeScript = R"JS(
     },
     setParamFast(path, value) {
       return request("setParamFast", { path, value });
+    },
+    listPatches() {
+      return request("listPatches");
+    },
+    loadPatch(fileName) {
+      return request("loadPatch", { fileName });
+    },
+    savePatch(payload) {
+      return request("savePatch", payload);
     }
   };
 })();
@@ -92,6 +108,128 @@ std::string escapeJavaScriptString(const std::string& value) {
     return escaped;
 }
 
+std::string jsonStringFromFoundationObject(id object) {
+    if (object == nil || ![NSJSONSerialization isValidJSONObject:object]) {
+        return "null";
+    }
+
+    NSError* error = nil;
+    NSData* jsonData = [NSJSONSerialization dataWithJSONObject:object options:0 error:&error];
+    if (jsonData == nil || error != nil) {
+        return "null";
+    }
+
+    NSString* jsonString = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+    if (jsonString == nil) {
+        return "null";
+    }
+
+    return std::string([jsonString UTF8String]);
+}
+
+std::string trimAscii(std::string value) {
+    const auto first = value.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) {
+        return {};
+    }
+
+    const auto last = value.find_last_not_of(" \t\r\n");
+    return value.substr(first, last - first + 1);
+}
+
+std::string sanitizePatchName(std::string_view rawName) {
+    std::string sanitized;
+    sanitized.reserve(rawName.size());
+
+    bool previousWasSeparator = false;
+    for (const char ch : rawName) {
+        const unsigned char code = static_cast<unsigned char>(ch);
+        if (std::isalnum(code)) {
+            sanitized.push_back(ch);
+            previousWasSeparator = false;
+            continue;
+        }
+
+        if (ch == ' ' || ch == '-' || ch == '_') {
+            if (!previousWasSeparator && !sanitized.empty()) {
+                sanitized.push_back(' ');
+                previousWasSeparator = true;
+            }
+        }
+    }
+
+    sanitized = trimAscii(std::move(sanitized));
+    if (sanitized.empty()) {
+        sanitized = "Patch";
+    }
+    if (sanitized.size() > 80) {
+        sanitized.resize(80);
+        sanitized = trimAscii(std::move(sanitized));
+    }
+    return sanitized;
+}
+
+std::string displayNameFromFileStem(std::string stem) {
+    std::replace(stem.begin(), stem.end(), '-', ' ');
+    std::replace(stem.begin(), stem.end(), '_', ' ');
+    stem = trimAscii(std::move(stem));
+    return stem.empty() ? "Patch" : stem;
+}
+
+std::filesystem::path developmentPatchDirectory() {
+#if defined(SYNTH_PROJECT_SOURCE_DIR)
+    return std::filesystem::path(SYNTH_PROJECT_SOURCE_DIR) / "Patches";
+#else
+    return {};
+#endif
+}
+
+std::filesystem::path applicationSupportPatchDirectory() {
+    NSFileManager* fileManager = [NSFileManager defaultManager];
+    NSURL* applicationSupportUrl =
+        [[fileManager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask] firstObject];
+    if (applicationSupportUrl == nil) {
+        if (const char* home = std::getenv("HOME"); home != nullptr && *home != '\0') {
+            return std::filesystem::path(home) / "Library" / "Application Support" / "Synthesizer" / "Patches";
+        }
+        return std::filesystem::path("Patches");
+    }
+
+    NSURL* synthUrl = [applicationSupportUrl URLByAppendingPathComponent:@"Synthesizer" isDirectory:YES];
+    NSURL* patchesUrl = [synthUrl URLByAppendingPathComponent:@"Patches" isDirectory:YES];
+    return std::filesystem::path([[patchesUrl path] UTF8String]);
+}
+
+bool pathHasPrefix(const std::filesystem::path& path, const std::filesystem::path& prefix) {
+    const auto normalizedPath = path.lexically_normal();
+    const auto normalizedPrefix = prefix.lexically_normal();
+    auto mismatch = std::mismatch(
+        normalizedPrefix.begin(),
+        normalizedPrefix.end(),
+        normalizedPath.begin(),
+        normalizedPath.end());
+    return mismatch.first == normalizedPrefix.end();
+}
+
+void applyLaunchArgumentsToEnvironment(int argc, const char* argv[]) {
+    for (int index = 1; index < argc; ++index) {
+        const std::string_view argument = argv[index] != nullptr ? std::string_view(argv[index]) : std::string_view{};
+        if (argument == "--debug-crash") {
+            setenv("SYNTH_DEBUG_CRASH", "1", 1);
+            setenv("SYNTH_DEBUG_BRIDGE", "1", 1);
+            setenv("SYNTH_DEBUG_ROBIN", "1", 1);
+            continue;
+        }
+        if (argument == "--debug-bridge") {
+            setenv("SYNTH_DEBUG_BRIDGE", "1", 1);
+            continue;
+        }
+        if (argument == "--debug-robin") {
+            setenv("SYNTH_DEBUG_ROBIN", "1", 1);
+        }
+    }
+}
+
 }  // namespace
 
 static void handleUncaughtNsException(NSException* exception) {
@@ -101,7 +239,7 @@ static void handleUncaughtNsException(NSException* exception) {
     synth::core::CrashDiagnostics::noteObjectiveCException(name, reason);
 }
 
-@interface SynthAppDelegate : NSObject <NSApplicationDelegate, WKScriptMessageHandler>
+@interface SynthAppDelegate : NSObject <NSApplicationDelegate, WKScriptMessageHandler, WKUIDelegate>
 @end
 
 @implementation SynthAppDelegate {
@@ -110,6 +248,155 @@ static void handleUncaughtNsException(NSException* exception) {
     std::unique_ptr<synth::app::SynthController> controller_;
     BOOL debugBridge_;
     BOOL debugCrash_;
+}
+
+- (std::filesystem::path)resolvedPatchDirectoryUsingProjectDirectory:(BOOL*)usingProjectDirectory {
+    const std::filesystem::path devDirectory = developmentPatchDirectory();
+    NSString* bundlePathString = [[NSBundle mainBundle] bundlePath];
+    const std::filesystem::path bundlePath =
+        bundlePathString != nil ? std::filesystem::path([bundlePathString UTF8String]) : std::filesystem::path{};
+    const std::filesystem::path projectDirectory = devDirectory.parent_path();
+
+    if (!devDirectory.empty()
+        && !bundlePath.empty()
+        && std::filesystem::exists(projectDirectory)
+        && pathHasPrefix(bundlePath, projectDirectory)) {
+        if (usingProjectDirectory != nullptr) {
+            *usingProjectDirectory = YES;
+        }
+        return devDirectory;
+    }
+
+    if (usingProjectDirectory != nullptr) {
+        *usingProjectDirectory = NO;
+    }
+    return applicationSupportPatchDirectory();
+}
+
+- (BOOL)ensurePatchDirectory:(std::filesystem::path*)directoryPath error:(std::string*)errorMessage {
+    BOOL usingProjectDirectory = NO;
+    std::filesystem::path resolvedDirectory = [self resolvedPatchDirectoryUsingProjectDirectory:&usingProjectDirectory];
+
+    try {
+        std::filesystem::create_directories(resolvedDirectory);
+    } catch (const std::exception& exception) {
+        if (errorMessage != nullptr) {
+            *errorMessage = "Could not create patch directory: " + std::string(exception.what());
+        }
+        return NO;
+    }
+
+    if (directoryPath != nullptr) {
+        *directoryPath = std::move(resolvedDirectory);
+    }
+    return YES;
+}
+
+- (std::optional<std::filesystem::path>)patchPathForFileName:(NSString*)fileName error:(std::string*)errorMessage {
+    if (fileName == nil) {
+        if (errorMessage != nullptr) {
+            *errorMessage = "Missing patch file name.";
+        }
+        return std::nullopt;
+    }
+
+    const std::string candidate([fileName UTF8String]);
+    if (candidate.empty() || candidate.find('/') != std::string::npos || candidate.find('\\') != std::string::npos
+        || candidate == "." || candidate == "..") {
+        if (errorMessage != nullptr) {
+            *errorMessage = "Invalid patch file name.";
+        }
+        return std::nullopt;
+    }
+
+    std::filesystem::path directoryPath;
+    if (![self ensurePatchDirectory:&directoryPath error:errorMessage]) {
+        return std::nullopt;
+    }
+
+    std::filesystem::path patchPath(candidate);
+    if (patchPath.has_parent_path()) {
+        if (errorMessage != nullptr) {
+            *errorMessage = "Patch file name must not include directories.";
+        }
+        return std::nullopt;
+    }
+
+    if (patchPath.extension() != ".json") {
+        patchPath += ".json";
+    }
+
+    return directoryPath / patchPath.filename();
+}
+
+- (NSDictionary*)patchMetadataForPath:(const std::filesystem::path&)patchPath {
+    NSString* fileName = [NSString stringWithUTF8String:patchPath.filename().string().c_str()];
+    NSString* displayName = [NSString stringWithUTF8String:displayNameFromFileStem(patchPath.stem().string()).c_str()];
+    NSMutableDictionary* metadata = [@{
+        @"fileName": fileName,
+        @"name": displayName,
+        @"isDefault": @([fileName isEqualToString:@"default-patch.json"]),
+    } mutableCopy];
+
+    NSData* patchData = [NSData dataWithContentsOfFile:[NSString stringWithUTF8String:patchPath.string().c_str()]];
+    if (patchData != nil) {
+        NSError* error = nil;
+        id patchJson = [NSJSONSerialization JSONObjectWithData:patchData options:0 error:&error];
+        NSDictionary* patchDictionary = [patchJson isKindOfClass:[NSDictionary class]] ? (NSDictionary*)patchJson : nil;
+        NSString* patchName = [patchDictionary[@"name"] isKindOfClass:[NSString class]] ? patchDictionary[@"name"] : nil;
+        if (patchName != nil && patchName.length > 0) {
+            metadata[@"name"] = patchName;
+        }
+    }
+
+    return metadata;
+}
+
+- (std::string)patchLibraryJsonWithError:(std::string*)errorMessage {
+    std::filesystem::path directoryPath;
+    if (![self ensurePatchDirectory:&directoryPath error:errorMessage]) {
+        return "null";
+    }
+
+    BOOL usingProjectDirectory = NO;
+    (void)[self resolvedPatchDirectoryUsingProjectDirectory:&usingProjectDirectory];
+
+    NSMutableArray* patches = [NSMutableArray array];
+    try {
+        std::vector<std::filesystem::path> patchPaths;
+        for (const auto& entry : std::filesystem::directory_iterator(directoryPath)) {
+            if (!entry.is_regular_file() || entry.path().extension() != ".json") {
+                continue;
+            }
+            patchPaths.push_back(entry.path());
+        }
+
+        std::sort(patchPaths.begin(), patchPaths.end(), [](const auto& left, const auto& right) {
+            const bool leftIsDefault = left.filename() == "default-patch.json";
+            const bool rightIsDefault = right.filename() == "default-patch.json";
+            if (leftIsDefault != rightIsDefault) {
+                return leftIsDefault;
+            }
+            return left.filename().string() < right.filename().string();
+        });
+
+        for (const auto& patchPath : patchPaths) {
+            [patches addObject:[self patchMetadataForPath:patchPath]];
+        }
+    } catch (const std::exception& exception) {
+        if (errorMessage != nullptr) {
+            *errorMessage = "Could not list patches: " + std::string(exception.what());
+        }
+        return "null";
+    }
+
+    NSDictionary* payload = @{
+        @"directory": [NSString stringWithUTF8String:directoryPath.string().c_str()],
+        @"usingProjectDirectory": @(usingProjectDirectory),
+        @"defaultPatchFileName": @"default-patch.json",
+        @"patches": patches,
+    };
+    return jsonStringFromFoundationObject(payload);
 }
 
 - (void)bringMainWindowToFront {
@@ -198,6 +485,7 @@ static void handleUncaughtNsException(NSException* exception) {
 
     webView_ = [[WKWebView alloc] initWithFrame:[[window_ contentView] bounds] configuration:config];
     [webView_ setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+    [webView_ setUIDelegate:self];
     [[window_ contentView] addSubview:webView_];
 
     NSURL* indexUrl = [[NSBundle mainBundle] URLForResource:@"index" withExtension:@"html" subdirectory:@"web"];
@@ -251,6 +539,90 @@ static void handleUncaughtNsException(NSException* exception) {
             controller_->crashDiagnostics().breadcrumb("Bridge getState request.");
         }
         [self sendResponse:requestId ok:YES payload:controller_->stateJson() error:""];
+        return;
+    }
+
+    if ([type isEqualToString:@"listPatches"]) {
+        std::string errorMessage;
+        const std::string payloadJson = [self patchLibraryJsonWithError:&errorMessage];
+        if (payloadJson == "null" && !errorMessage.empty()) {
+            [self sendResponse:requestId ok:NO payload:"null" error:errorMessage];
+            return;
+        }
+
+        [self sendResponse:requestId ok:YES payload:payloadJson error:""];
+        return;
+    }
+
+    if ([type isEqualToString:@"loadPatch"]) {
+        NSString* fileName = [payload[@"fileName"] isKindOfClass:[NSString class]] ? payload[@"fileName"] : nil;
+        std::string errorMessage;
+        const auto patchPath = [self patchPathForFileName:fileName error:&errorMessage];
+        if (!patchPath.has_value()) {
+            [self sendResponse:requestId ok:NO payload:"null" error:errorMessage];
+            return;
+        }
+
+        NSData* patchData = [NSData dataWithContentsOfFile:[NSString stringWithUTF8String:patchPath->string().c_str()]];
+        if (patchData == nil) {
+            [self sendResponse:requestId ok:NO payload:"null" error:"Could not read patch file."];
+            return;
+        }
+
+        NSError* parseError = nil;
+        id patchJson = [NSJSONSerialization JSONObjectWithData:patchData options:0 error:&parseError];
+        if (patchJson == nil || ![patchJson isKindOfClass:[NSDictionary class]] || parseError != nil) {
+            [self sendResponse:requestId ok:NO payload:"null" error:"Patch file is not valid JSON."];
+            return;
+        }
+
+        NSString* patchJsonString = [[NSString alloc] initWithData:patchData encoding:NSUTF8StringEncoding];
+        if (patchJsonString == nil) {
+            [self sendResponse:requestId ok:NO payload:"null" error:"Patch file is not UTF-8 JSON."];
+            return;
+        }
+
+        [self sendResponse:requestId ok:YES payload:std::string([patchJsonString UTF8String]) error:""];
+        return;
+    }
+
+    if ([type isEqualToString:@"savePatch"]) {
+        NSDictionary* patchPayload = [payload[@"patch"] isKindOfClass:[NSDictionary class]] ? payload[@"patch"] : nil;
+        NSString* fileName = [payload[@"fileName"] isKindOfClass:[NSString class]] ? payload[@"fileName"] : nil;
+        NSString* patchName = [payload[@"name"] isKindOfClass:[NSString class]] ? payload[@"name"] : nil;
+
+        if (patchPayload == nil || ![NSJSONSerialization isValidJSONObject:patchPayload]) {
+            [self sendResponse:requestId ok:NO payload:"null" error:"Missing or invalid patch payload."];
+            return;
+        }
+
+        if (fileName == nil) {
+            const std::string sanitizedName = sanitizePatchName(
+                patchName != nil ? std::string([patchName UTF8String]) : std::string{});
+            fileName = [NSString stringWithUTF8String:(sanitizedName + ".json").c_str()];
+        }
+
+        std::string errorMessage;
+        const auto patchPath = [self patchPathForFileName:fileName error:&errorMessage];
+        if (!patchPath.has_value()) {
+            [self sendResponse:requestId ok:NO payload:"null" error:errorMessage];
+            return;
+        }
+
+        NSError* jsonError = nil;
+        NSData* patchData = [NSJSONSerialization dataWithJSONObject:patchPayload options:NSJSONWritingPrettyPrinted error:&jsonError];
+        if (patchData == nil || jsonError != nil) {
+            [self sendResponse:requestId ok:NO payload:"null" error:"Could not serialize patch JSON."];
+            return;
+        }
+
+        if (![patchData writeToFile:[NSString stringWithUTF8String:patchPath->string().c_str()] atomically:YES]) {
+            [self sendResponse:requestId ok:NO payload:"null" error:"Could not write patch file."];
+            return;
+        }
+
+        NSDictionary* metadata = [self patchMetadataForPath:*patchPath];
+        [self sendResponse:requestId ok:YES payload:jsonStringFromFoundationObject(metadata) error:""];
         return;
     }
 
@@ -354,14 +726,98 @@ static void handleUncaughtNsException(NSException* exception) {
     }
 }
 
+- (void)webView:(WKWebView*)webView
+runJavaScriptAlertPanelWithMessage:(NSString*)message
+initiatedByFrame:(WKFrameInfo*)frame
+completionHandler:(void (^)(void))completionHandler {
+    (void)webView;
+    (void)frame;
+
+    NSAlert* alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"Synthesizer"];
+    [alert setInformativeText:message ?: @""];
+    [alert addButtonWithTitle:@"OK"];
+
+    if (window_ != nil) {
+        [alert beginSheetModalForWindow:window_
+                      completionHandler:^(__unused NSModalResponse returnCode) {
+                          completionHandler();
+                      }];
+        return;
+    }
+
+    [alert runModal];
+    completionHandler();
+}
+
+- (void)webView:(WKWebView*)webView
+runJavaScriptConfirmPanelWithMessage:(NSString*)message
+initiatedByFrame:(WKFrameInfo*)frame
+completionHandler:(void (^)(BOOL result))completionHandler {
+    (void)webView;
+    (void)frame;
+
+    NSAlert* alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"Synthesizer"];
+    [alert setInformativeText:message ?: @""];
+    [alert addButtonWithTitle:@"OK"];
+    [alert addButtonWithTitle:@"Cancel"];
+
+    if (window_ != nil) {
+        [alert beginSheetModalForWindow:window_
+                      completionHandler:^(NSModalResponse returnCode) {
+                          completionHandler(returnCode == NSAlertFirstButtonReturn);
+                      }];
+        return;
+    }
+
+    completionHandler([alert runModal] == NSAlertFirstButtonReturn);
+}
+
+- (void)webView:(WKWebView*)webView
+runJavaScriptTextInputPanelWithPrompt:(NSString*)prompt
+defaultText:(NSString*)defaultText
+initiatedByFrame:(WKFrameInfo*)frame
+completionHandler:(void (^)(NSString* _Nullable result))completionHandler {
+    (void)webView;
+    (void)frame;
+
+    NSAlert* alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"Synthesizer"];
+    [alert setInformativeText:prompt ?: @""];
+    [alert addButtonWithTitle:@"OK"];
+    [alert addButtonWithTitle:@"Cancel"];
+
+    NSTextField* inputField = [[NSTextField alloc] initWithFrame:NSMakeRect(0.0, 0.0, 320.0, 24.0)];
+    [inputField setStringValue:defaultText ?: @""];
+    [alert setAccessoryView:inputField];
+
+    if (window_ != nil) {
+        [alert beginSheetModalForWindow:window_
+                      completionHandler:^(NSModalResponse returnCode) {
+                          if (returnCode == NSAlertFirstButtonReturn) {
+                              completionHandler([inputField stringValue]);
+                              return;
+                          }
+                          completionHandler(nil);
+                      }];
+        return;
+    }
+
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        completionHandler([inputField stringValue]);
+        return;
+    }
+
+    completionHandler(nil);
+}
+
 @end
 
 int main(int argc, const char* argv[]) {
-    (void)argc;
-    (void)argv;
-
     @autoreleasepool {
         NSSetUncaughtExceptionHandler(&handleUncaughtNsException);
+        applyLaunchArgumentsToEnvironment(argc, argv);
         NSApplication* application = [NSApplication sharedApplication];
         SynthAppDelegate* delegate = [[SynthAppDelegate alloc] init];
         [application setDelegate:delegate];

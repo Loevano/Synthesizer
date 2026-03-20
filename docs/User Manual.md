@@ -501,6 +501,9 @@ Run:
 ./scripts/run-app.sh --debug-crash
 ```
 
+Launch the app through `./scripts/run-app.sh` or `open /path/to/Synthesizer.app`.
+Do not run `Synthesizer.app/Contents/MacOS/Synthesizer` directly from the terminal.
+
 Logs are written under:
 
 ```bash

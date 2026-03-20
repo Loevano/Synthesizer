@@ -79,6 +79,7 @@ if(APPLE)
     target_include_directories(Synthesizer PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_libraries(Synthesizer PRIVATE synth_core)
     target_compile_options(Synthesizer PRIVATE "-fobjc-arc")
+    target_compile_definitions(Synthesizer PRIVATE SYNTH_PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
     set_target_properties(Synthesizer PROPERTIES
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.loevano.synthesizer"
         MACOSX_BUNDLE_BUNDLE_NAME "Synthesizer"

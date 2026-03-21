@@ -392,7 +392,8 @@ let currentPatchFileName = "";
 let currentPatchName = "Current Session";
 let lastSavedPatchJson = "";
 let patchActionInProgress = false;
-let expandedRobinSpreadSlotIndex = 0;
+const openRobinSpreadSlotIndexes = new Set();
+let robinSpreadSlotOpenStateInitialized = false;
 const robinDebugModuleVisibility = {
   macros: true,
   osc: true,
@@ -3939,8 +3940,22 @@ function renderRobinSpreadSlots() {
     return;
   }
 
-  if (expandedRobinSpreadSlotIndex >= spreadSlots.length) {
-    expandedRobinSpreadSlotIndex = 0;
+  for (const slotIndex of Array.from(openRobinSpreadSlotIndexes)) {
+    if (slotIndex < 0 || slotIndex >= spreadSlots.length) {
+      openRobinSpreadSlotIndexes.delete(slotIndex);
+    }
+  }
+
+  if (!robinSpreadSlotOpenStateInitialized) {
+    spreadSlots.forEach((slot, slotIndex) => {
+      if (slot.enabled) {
+        openRobinSpreadSlotIndexes.add(slotIndex);
+      }
+    });
+    if (!openRobinSpreadSlotIndexes.size) {
+      openRobinSpreadSlotIndexes.add(0);
+    }
+    robinSpreadSlotOpenStateInitialized = true;
   }
   let slotSections = Array.from(elements.robinSpreadSlots.querySelectorAll("[data-robin-spread-slot]"));
   if (slotSections.length !== spreadSlots.length) {
@@ -4035,7 +4050,7 @@ function renderRobinSpreadSlots() {
 
   slotSections.forEach((section, slotIndex) => {
     const slot = spreadSlots[slotIndex];
-    const isOpen = slotIndex === expandedRobinSpreadSlotIndex;
+    const isOpen = openRobinSpreadSlotIndexes.has(slotIndex);
     const targetConfig = getRobinSpreadTargetConfig(slot.target);
     const summary = section.querySelector("[data-robin-spread-summary]");
     const toggle = section.querySelector("[data-robin-spread-open]");
@@ -4119,7 +4134,12 @@ function bindRobinSpreadControls() {
       return;
     }
 
-    expandedRobinSpreadSlotIndex = Number(button.dataset.robinSpreadOpen);
+    const slotIndex = Number(button.dataset.robinSpreadOpen);
+    if (openRobinSpreadSlotIndexes.has(slotIndex)) {
+      openRobinSpreadSlotIndexes.delete(slotIndex);
+    } else {
+      openRobinSpreadSlotIndexes.add(slotIndex);
+    }
     renderRobinSpreadSlots();
   });
 
@@ -4130,6 +4150,11 @@ function bindRobinSpreadControls() {
       const slotIndex = Number(target.dataset.robinSpreadEnabled);
       setParamTemp(`sources.robin.spread.${slotIndex}.enabled`, target.checked, {
         applyLocalState: () => {
+          if (target.checked) {
+            openRobinSpreadSlotIndexes.add(slotIndex);
+          } else {
+            openRobinSpreadSlotIndexes.delete(slotIndex);
+          }
           applyRobinSpreadSlotUpdate(slotIndex, "enabled", target.checked);
         },
         rerender: () => {

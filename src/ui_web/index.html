@@ -260,31 +260,34 @@
     </section>
 
     <section id="page-robin" class="page">
-      <div class="panel panel-intro">
-        <div class="panel-header">
+      <details id="robinIntroPanel" class="panel panel-intro robin-intro-panel" open>
+        <summary class="robin-disclosure__summary">
           <div>
-            <h2>Robin</h2>
-            <p>
-              Robin is a multivoice spatial synth built around one shared master voice and a speaker-aware voice bank.
-              It is good at wide pads, distributed chord clouds, shifting pulse patterns, stacked detuned ensembles,
-              and moving timbres that stay related while spreading across the output field.
-            </p>
+            <p class="section-kicker">Robin</p>
+            <h2>Master Voice, Oscillators, and Voice Overrides</h2>
           </div>
           <span id="robinLinkBadge" class="status-tag status-tag--live">Master bank linked</span>
+        </summary>
+        <div class="robin-intro-panel__body">
+          <p class="note">
+            Robin is a multivoice spatial synth built around one shared master voice and a speaker-aware voice bank.
+            It is good at wide pads, distributed chord clouds, shifting pulse patterns, stacked detuned ensembles,
+            and moving timbres that stay related while spreading across the output field.
+          </p>
+          <p class="note">
+            Recommended use: build one strong master sound first, choose the voice count and routing behavior, then
+            unlink only the voices you want to turn into accents, rhythmic offsets, or local spatial variations.
+          </p>
+          <p class="note">
+            Programming tip: start with the oscillator bank, shape the shared filter and envelopes, then listen to the
+            spatial allocation before adding local overrides. Keep most voices linked and use unlinking sparingly.
+          </p>
+          <p id="robinLinkNote" class="note">
+            Live state: every voice can be `Enabled` or `Linked to Master`. Linked voices mirror the master template;
+            unlinked voices open full local controls.
+          </p>
         </div>
-        <p class="note">
-          Recommended use: build one strong master sound first, choose the voice count and routing behavior, then
-          unlink only the voices you want to turn into accents, rhythmic offsets, or local spatial variations.
-        </p>
-        <p class="note">
-          Programming tip: start with the oscillator bank, shape the shared filter and envelopes, then listen to the
-          spatial allocation before adding local overrides. Keep most voices linked and use unlinking sparingly.
-        </p>
-        <p id="robinLinkNote" class="note">
-          Live state: every voice can be `Enabled` or `Linked to Master`. Linked voices mirror the master template;
-          unlinked voices open full local controls.
-        </p>
-      </div>
+      </details>
 
       <div id="robinDebugPanel" class="panel panel-intro robin-debug-panel">
         <div class="panel-header">
@@ -321,7 +324,7 @@
           </label>
           <label class="toggle-pill">
             <input id="robinDebugLfo" type="checkbox" checked>
-            <span>LFO Panel</span>
+            <span>Cross-Mod</span>
           </label>
           <label class="toggle-pill">
             <input id="robinDebugSpread" type="checkbox" checked>
@@ -334,118 +337,219 @@
         </div>
       </div>
 
-      <article class="panel panel--wide robin-voice-editor robin-master-editor">
-        <div class="panel-header">
-          <div>
-            <p class="section-kicker">Master Voice</p>
-            <h2>Linked Voice Template</h2>
+      <div class="robin-subtab-bar" role="tablist" aria-label="Robin sections">
+        <button type="button" class="robin-subtab is-active" data-robin-tab="overview" role="tab" aria-selected="true">
+          Overview
+        </button>
+        <button type="button" class="robin-subtab" data-robin-tab="oscillators" role="tab" aria-selected="false">
+          Oscillators
+        </button>
+        <button type="button" class="robin-subtab" data-robin-tab="voices" role="tab" aria-selected="false">
+          Voices
+        </button>
+      </div>
+
+      <section class="robin-subpage is-active" data-robin-panel="overview" role="tabpanel">
+        <article class="panel panel--wide robin-voice-editor robin-master-editor">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Master Voice</p>
+              <h2>Overview</h2>
+            </div>
+            <span class="status-tag status-tag--live">Master Template</span>
           </div>
-          <span class="status-tag status-tag--live">Master Template</span>
+          <p class="note">
+            Build the shared core sound here first. Linked voices follow this template across the output field; local
+            voice overrides only break away when you want contrast, rhythm, or spatial offsets.
+          </p>
+
+          <div class="robin-master-layout robin-master-layout--overview">
+            <section class="robin-voice-module robin-master-layout__layout">
+              <div class="robin-voice-module__header">
+                <h3>Layout</h3>
+                <span>Voice scaffold</span>
+              </div>
+
+              <div class="robin-master-layout__meta-grid">
+                <label class="field field--compact">
+                  <span>Voice Count</span>
+                  <input id="voiceCount" type="range" min="1" max="32" step="1">
+                  <output id="voiceCountValue">16</output>
+                </label>
+
+                <label class="field field--compact">
+                  <span>Oscillator Slots / Voice</span>
+                  <input id="oscillatorsPerVoice" type="range" min="1" max="8" step="1">
+                  <output id="oscillatorsPerVoiceValue">6</output>
+                </label>
+
+                <label class="field field--compact robin-master-layout__field--wide">
+                  <span>Output Routing Algorithm</span>
+                  <select id="routingPreset">
+                    <option value="forward">Forward</option>
+                    <option value="backward">Backward</option>
+                    <option value="random">Random</option>
+                    <option value="round-robin">Round Robin</option>
+                    <option value="all-outputs">All Outputs</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+
+            <section class="robin-voice-module robin-master-layout__pitch">
+              <div class="robin-voice-module__header">
+                <h3>Pitch</h3>
+                <span>Transpose and fine tune</span>
+              </div>
+
+              <div class="robin-voice-module__grid robin-voice-module__grid--compact">
+                <label class="field field--compact">
+                  <span>Transpose</span>
+                  <input id="transposeSemitones" type="range" min="-12" max="12" step="1">
+                  <output id="transposeSemitonesValue">0 st</output>
+                </label>
+
+                <label class="field field--compact">
+                  <span>Fine Tune</span>
+                  <input id="fineTuneCents" type="range" min="-100" max="100" step="1">
+                  <output id="fineTuneCentsValue">0 ct</output>
+                </label>
+              </div>
+            </section>
+
+            <section class="robin-voice-module robin-master-layout__mix">
+              <div class="robin-voice-module__header">
+                <h3>Volume</h3>
+                <span>Source mixer link</span>
+              </div>
+
+              <label class="field field--compact">
+                <span>Robin Source Level</span>
+                <input id="robinMixerLevel" type="range" min="0" max="1" step="0.01">
+                <output id="robinMixerLevelValue">15%</output>
+              </label>
+              <p class="robin-voice-module__copy">
+                This is the same level control exposed on the Source Mixer page.
+              </p>
+            </section>
+
+            <section id="robinMasterMacrosModule" class="robin-voice-module robin-master-layout__macros">
+              <div class="robin-voice-module__header">
+                <h3>Performance Macros</h3>
+                <span>Mapped to spread depth</span>
+              </div>
+              <p class="robin-voice-module__copy">
+                Six live macros map directly to spread-slot depth so you can push motion without leaving Overview.
+              </p>
+              <div id="robinPerformanceMacros" class="robin-performance-macro-grid"></div>
+            </section>
+
+            <section id="robinMasterVcfModule" class="robin-voice-module robin-master-layout__vcf">
+              <div class="robin-voice-module__header">
+                <h3>VCF</h3>
+                <span>Cutoff, resonance, and ENV amount</span>
+              </div>
+
+              <div class="robin-voice-module__grid robin-voice-module__grid--compact">
+                <label class="field field--compact">
+                  <span>Cutoff</span>
+                  <input id="robinVcfCutoff" type="range" min="20" max="20000" step="1">
+                  <output id="robinVcfCutoffValue">18000 Hz</output>
+                </label>
+                <label class="field field--compact">
+                  <span>Resonance</span>
+                  <input id="robinVcfResonance" type="range" min="0.1" max="10" step="0.01">
+                  <output id="robinVcfResonanceValue">0.71</output>
+                </label>
+                <label class="field field--compact">
+                  <span>ENV Amount</span>
+                  <input id="robinEnvVcfAmount" type="range" min="0" max="1" step="0.01">
+                  <output id="robinEnvVcfAmountValue">0.00</output>
+                </label>
+              </div>
+            </section>
+          </div>
+        </article>
+      </section>
+
+      <section class="robin-subpage" data-robin-panel="oscillators" role="tabpanel" hidden>
+        <article class="panel panel--wide robin-voice-editor robin-master-editor">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Master Voice</p>
+              <h2>Oscillators</h2>
+            </div>
+            <span class="status-tag status-tag--live">Linked OSC Bank</span>
+          </div>
+          <p class="note">
+            Use this tab for the full master oscillator bank and the linked-voice modulation layer that sits on top of
+            it.
+          </p>
+
+          <div class="robin-master-layout robin-master-layout--oscillators">
+            <section id="robinMasterOscModule" class="robin-voice-module robin-master-layout__osc">
+              <div class="robin-voice-module__header">
+                <h3>OSC Bank</h3>
+                <span>Master oscillators</span>
+              </div>
+              <div id="oscillatorRows" class="robin-voice-osc-grid robin-master-osc-grid"></div>
+            </section>
+
+            <section id="robinMasterSpreadModule" class="robin-voice-module robin-master-layout__modulation">
+              <div class="robin-voice-module__header">
+                <h3>Spread Modulation</h3>
+                <span>Linked voice offsets</span>
+              </div>
+              <p class="robin-voice-module__copy">
+                Spread slots add static variation on top of the master template. They only affect enabled voices that
+                are still linked to master, and they distribute offsets by linked voice order rather than speaker
+                output.
+              </p>
+              <div id="robinSpreadSlots" class="robin-spread-grid"></div>
+            </section>
+
+            <section id="robinMasterLfoModule" class="robin-voice-module robin-voice-module--planned robin-master-layout__lfo">
+              <div class="robin-voice-module__header">
+                <h3>Oscillator Modulation</h3>
+                <span>AM + FM reserved</span>
+              </div>
+              <p class="robin-voice-module__copy">
+                Reserve this section for oscillator-to-oscillator motion: AM, FM, sync, ring modulation, and phase
+                relationships. Robin&apos;s current live LFO still lives on the dedicated LFO page.
+              </p>
+              <div class="token-row">
+                <span class="token">AM</span>
+                <span class="token">FM</span>
+                <span class="token">Sync</span>
+                <span class="token">Ring</span>
+                <span class="token">Phase</span>
+              </div>
+            </section>
+          </div>
+        </article>
+      </section>
+
+      <section class="robin-subpage" data-robin-panel="voices" role="tabpanel" hidden>
+        <div class="panel panel-intro">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Voices</p>
+              <h2>Linked Voices and Local Overrides</h2>
+            </div>
+            <span class="status-tag status-tag--live">Linked + Local</span>
+          </div>
+          <p class="note">
+            The old "local layer" idea is just this: a voice that has been unlinked from the master template. Linked
+            voices stay compact and inherit the shared sound; local voices get their own private oscillator, filter,
+            envelope, and level settings in the editor below.
+          </p>
         </div>
-        <p class="note">
-          Dial in the shared core timbre here. Linked voices follow this template across the speaker field; local
-          voices diverge below only where you need contrast or motion.
-        </p>
-
-        <div class="robin-master-layout">
-          <section class="robin-voice-module robin-master-layout__layout">
-            <div class="robin-voice-module__header">
-              <h3>Layout</h3>
-              <span>Voice scaffold</span>
-            </div>
-
-            <div class="robin-master-layout__meta-grid">
-              <label class="field field--compact">
-                <span>Voice Count</span>
-                <input id="voiceCount" type="range" min="1" max="32" step="1">
-                <output id="voiceCountValue">16</output>
-              </label>
-
-              <label class="field field--compact">
-                <span>Oscillator Slots / Voice</span>
-                <input id="oscillatorsPerVoice" type="range" min="1" max="8" step="1">
-                <output id="oscillatorsPerVoiceValue">6</output>
-              </label>
-
-              <label class="field field--compact robin-master-layout__field--wide">
-                <span>Output Routing Algorithm</span>
-                <select id="routingPreset">
-                  <option value="forward">Forward</option>
-                  <option value="backward">Backward</option>
-                  <option value="random">Random</option>
-                  <option value="round-robin">Round Robin</option>
-                  <option value="all-outputs">All Outputs</option>
-                  <option value="custom">Custom</option>
-                </select>
-              </label>
-            </div>
-          </section>
-
-          <section class="robin-voice-module robin-master-layout__pitch">
-            <div class="robin-voice-module__header">
-              <h3>Pitch</h3>
-              <span>Transpose and fine tune</span>
-            </div>
-
-            <div class="robin-voice-module__grid robin-voice-module__grid--compact">
-              <label class="field field--compact">
-                <span>Transpose</span>
-                <input id="transposeSemitones" type="range" min="-12" max="12" step="1">
-                <output id="transposeSemitonesValue">0 st</output>
-              </label>
-
-              <label class="field field--compact">
-                <span>Fine Tune</span>
-                <input id="fineTuneCents" type="range" min="-100" max="100" step="1">
-                <output id="fineTuneCentsValue">0 ct</output>
-              </label>
-            </div>
-          </section>
-
-          <section id="robinMasterMacrosModule" class="robin-voice-module robin-master-layout__macros">
-            <div class="robin-voice-module__header">
-              <h3>Performance Macros</h3>
-              <span>Mapped to spread depth</span>
-            </div>
-            <p class="robin-voice-module__copy">
-              Six live macros sit above the oscillator bank and currently open or close the corresponding spread slot
-              depth for performance moves.
-            </p>
-            <div id="robinPerformanceMacros" class="robin-performance-macro-grid"></div>
-          </section>
-
-          <section id="robinMasterOscModule" class="robin-voice-module robin-master-layout__osc">
-            <div class="robin-voice-module__header">
-              <h3>OSC Bank</h3>
-              <span>Master oscillators</span>
-            </div>
-            <div id="oscillatorRows" class="robin-voice-osc-grid robin-master-osc-grid"></div>
-          </section>
-
-          <section id="robinMasterVcfModule" class="robin-voice-module robin-master-layout__vcf">
-            <div class="robin-voice-module__header">
-              <h3>VCF</h3>
-              <span>Cutoff and resonance</span>
-            </div>
-
-            <div class="robin-voice-module__grid robin-voice-module__grid--compact">
-              <label class="field field--compact">
-                <span>Cutoff</span>
-                <input id="robinVcfCutoff" type="range" min="20" max="20000" step="1">
-                <output id="robinVcfCutoffValue">18000 Hz</output>
-              </label>
-              <label class="field field--compact">
-                <span>Resonance</span>
-                <input id="robinVcfResonance" type="range" min="0.1" max="10" step="0.01">
-                <output id="robinVcfResonanceValue">0.71</output>
-              </label>
-            </div>
-          </section>
-
+        <div class="robin-master-layout robin-master-layout--voices">
           <section id="robinMasterEnvVcfModule" class="robin-voice-module robin-voice-module--env robin-voice-module--env-vcf robin-master-layout__env-vcf">
             <div class="robin-voice-module__header">
               <h3>VCF ENV</h3>
-              <span>Filter contour</span>
+              <span>Filter contour timing</span>
             </div>
 
             <div class="robin-voice-module__grid">
@@ -471,12 +575,6 @@
                 <span>Release</span>
                 <input id="robinEnvVcfRelease" type="range" min="0" max="5000" step="1">
                 <output id="robinEnvVcfReleaseValue">220 ms</output>
-              </label>
-
-              <label class="field field--compact">
-                <span>Amount</span>
-                <input id="robinEnvVcfAmount" type="range" min="0" max="1" step="0.01">
-                <output id="robinEnvVcfAmountValue">0.00</output>
               </label>
             </div>
           </section>
@@ -513,116 +611,72 @@
               </label>
             </div>
           </section>
-
-          <section id="robinMasterSpreadModule" class="robin-voice-module robin-master-layout__modulation">
-            <div class="robin-voice-module__header">
-              <h3>Modulation</h3>
-              <span>Linked voice spread</span>
-            </div>
-            <p class="robin-voice-module__copy">
-              Spread slots add static variation on top of the master template. They only affect enabled voices that are
-              still linked to master, and they distribute offsets by linked voice order rather than speaker output.
-            </p>
-            <div id="robinSpreadSlots" class="robin-spread-grid"></div>
-          </section>
-
-          <section id="robinMasterLfoModule" class="robin-voice-module robin-voice-module--planned robin-master-layout__lfo">
-            <div class="robin-voice-module__header">
-              <h3>LFOs</h3>
-              <span>Reserved motion space</span>
-            </div>
-            <p class="robin-voice-module__copy">
-              Keep this area open for direct LFO assignment and per-section motion. The live Robin LFO still sits on
-              the dedicated LFO page for now.
-            </p>
-            <div class="token-row">
-              <span class="token">Waveform</span>
-              <span class="token">Depth</span>
-              <span class="token">Clock</span>
-              <span class="token">Output Spread</span>
-            </div>
-          </section>
         </div>
-      </article>
+        <div id="voicesGrid" class="voices-grid"></div>
+        <article id="selectedVoiceEditor" class="panel panel--wide robin-voice-editor"></article>
+        <details class="panel panel--wide robin-model-panel">
+          <summary class="robin-disclosure__summary">
+            <div>
+              <p class="section-kicker">Control Model</p>
+              <h2>Master, Modulate, Override</h2>
+            </div>
+            <span class="status-tag">Reference</span>
+          </summary>
+          <div class="robin-section-grid">
+            <article class="robin-section-card robin-section-card--live">
+              <div class="robin-section-card__header">
+                <h3>Master Voice Live Now</h3>
+                <span class="status-tag status-tag--live">Current</span>
+              </div>
+              <p>
+                Dial in one complete voice template once, then let linked voices mirror it exactly.
+              </p>
+              <div class="token-row">
+                <span class="token">Root</span>
+                <span class="token">Voice Level</span>
+                <span class="token">Pitch Offsets</span>
+                <span class="token">VCF</span>
+                <span class="token">VCF ENV</span>
+                <span class="token">VCA ENV</span>
+                <span class="token">Oscillator Bank</span>
+                <span class="token">Output Routing</span>
+              </div>
+            </article>
 
-      <details class="panel panel--wide robin-model-panel">
-        <summary class="robin-disclosure__summary">
-          <div>
-            <p class="section-kicker">Control Model</p>
-            <h2>Master, Modulate, Override</h2>
+            <article class="robin-section-card robin-section-card--planned">
+              <div class="robin-section-card__header">
+                <h3>Modulators Next</h3>
+                <span class="status-tag status-tag--planned">Planned</span>
+              </div>
+              <p>
+                Spread algorithms should add offsets on top of the master values so big master moves still read
+                musically.
+              </p>
+              <div class="token-row">
+                <span class="token">Linear Ramps</span>
+                <span class="token">Section Spread</span>
+                <span class="token">Offset Modulation</span>
+              </div>
+            </article>
+
+            <article class="robin-section-card robin-section-card--live">
+              <div class="robin-section-card__header">
+                <h3>Voice Link State</h3>
+                <span class="status-tag status-tag--live">Current</span>
+              </div>
+              <p>
+                Each voice either stays linked to the master template or becomes a full local override with its own
+                root, level, filters, envelopes, and oscillator bank.
+              </p>
+              <div class="token-row">
+                <span class="token">Voice Enable</span>
+                <span class="token">Linked To Master</span>
+                <span class="token">Full Local Voice</span>
+              </div>
+            </article>
           </div>
-          <span class="status-tag">Reference</span>
-        </summary>
-        <div class="robin-section-grid">
-          <article class="robin-section-card robin-section-card--live">
-            <div class="robin-section-card__header">
-              <h3>Master Voice Live Now</h3>
-              <span class="status-tag status-tag--live">Current</span>
-            </div>
-            <p>
-              Dial in one complete voice template once, then let linked voices mirror it exactly.
-            </p>
-            <div class="token-row">
-              <span class="token">Root</span>
-              <span class="token">Voice Level</span>
-              <span class="token">Pitch Offsets</span>
-              <span class="token">VCF</span>
-              <span class="token">VCF ENV</span>
-              <span class="token">VCA ENV</span>
-              <span class="token">Oscillator Bank</span>
-              <span class="token">Output Routing</span>
-            </div>
-          </article>
-
-          <article class="robin-section-card robin-section-card--planned">
-            <div class="robin-section-card__header">
-              <h3>Modulators Next</h3>
-              <span class="status-tag status-tag--planned">Planned</span>
-            </div>
-            <p>
-              Spread algorithms should add offsets on top of the master values so big master moves still read
-              musically.
-            </p>
-            <div class="token-row">
-              <span class="token">Linear Ramps</span>
-              <span class="token">Section Spread</span>
-              <span class="token">Offset Modulation</span>
-            </div>
-          </article>
-
-          <article class="robin-section-card robin-section-card--live">
-            <div class="robin-section-card__header">
-              <h3>Voice Link State</h3>
-              <span class="status-tag status-tag--live">Current</span>
-            </div>
-            <p>
-              Each voice either stays linked to the master template or becomes a full local override with its own
-              root, level, filters, envelopes, and oscillator bank.
-            </p>
-            <div class="token-row">
-              <span class="token">Voice Enable</span>
-              <span class="token">Linked To Master</span>
-              <span class="token">Full Local Voice</span>
-            </div>
-          </article>
-        </div>
-      </details>
-
-      <div class="panel panel-intro">
-        <div class="panel-header">
-          <div>
-            <p class="section-kicker">Local Layer</p>
-            <h2>Voice States</h2>
-          </div>
-          <span class="status-tag status-tag--live">Enabled + Linked</span>
-        </div>
-        <p>
-          Linked voices stay compact and inherit the full master template. Unlinked voices open the whole local voice
-          surface so you can diverge without affecting the master.
-        </p>
-      </div>
-      <div id="voicesGrid" class="voices-grid"></div>
-      <article id="selectedVoiceEditor" class="panel panel--wide robin-voice-editor"></article>
+        </details>
+      </section>
 
     </section>
 

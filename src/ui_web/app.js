@@ -233,6 +233,8 @@ const debugUiEnabled = Boolean(window.__SYNTH_FLAGS__?.debugUi);
 const elements = {
   tabs: Array.from(document.querySelectorAll(".page-tab")),
   pages: Array.from(document.querySelectorAll(".page")),
+  robinTabButtons: Array.from(document.querySelectorAll("[data-robin-tab]")),
+  robinTabPanels: Array.from(document.querySelectorAll("[data-robin-panel]")),
   heroOutputCount: document.getElementById("heroOutputCount"),
   heroVoiceCount: document.getElementById("heroVoiceCount"),
   heroRoutingValue: document.getElementById("heroRoutingValue"),
@@ -274,6 +276,8 @@ const elements = {
   oscillatorsPerVoice: document.getElementById("oscillatorsPerVoice"),
   oscillatorsPerVoiceValue: document.getElementById("oscillatorsPerVoiceValue"),
   routingPreset: document.getElementById("routingPreset"),
+  robinMixerLevel: document.getElementById("robinMixerLevel"),
+  robinMixerLevelValue: document.getElementById("robinMixerLevelValue"),
   transposeSemitones: document.getElementById("transposeSemitones"),
   transposeSemitonesValue: document.getElementById("transposeSemitonesValue"),
   fineTuneCents: document.getElementById("fineTuneCents"),
@@ -382,6 +386,7 @@ let liveParamFrameHandle = null;
 let activeRangeInput = null;
 let hasDeferredRender = false;
 let selectedRobinVoiceIndex = null;
+let activeRobinTab = "overview";
 let patchState = null;
 let factoryPatchState = null;
 let patchLibrary = [];
@@ -2598,6 +2603,24 @@ function selectPage(pageName) {
   }
 }
 
+function selectRobinTab(tabName) {
+  const nextTab = elements.robinTabButtons.some((button) => button.dataset.robinTab === tabName)
+    ? tabName
+    : "overview";
+  activeRobinTab = nextTab;
+
+  elements.robinTabButtons.forEach((button) => {
+    const isActive = button.dataset.robinTab === nextTab;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  elements.robinTabPanels.forEach((panel) => {
+    const isActive = panel.dataset.robinPanel === nextTab;
+    panel.classList.toggle("is-active", isActive);
+    panel.hidden = !isActive;
+  });
+}
+
 function formatRoutingPresetLabel(value) {
   return ROUTING_LABELS[value] ?? value;
 }
@@ -2681,6 +2704,42 @@ function setFineTuneCentsLabel(value) {
   const numericValue = Math.round(Number(value));
   const prefix = numericValue > 0 ? "+" : "";
   elements.fineTuneCentsValue.textContent = `${prefix}${numericValue} ct`;
+}
+
+function setRobinMixerLevelLabel(value) {
+  elements.robinMixerLevelValue.textContent = formatLevelPercent(value);
+}
+
+function syncSourceMixerLevelControls(sourceKey) {
+  const slot = getSourceMixer()?.[sourceKey];
+  if (!slot) {
+    return;
+  }
+
+  const nextValue = String(slot.level);
+  const nextLabel = formatLevelPercent(slot.level);
+
+  document.querySelectorAll(`[data-source-level="${sourceKey}"]`).forEach((input) => {
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
+
+    if (input !== activeRangeInput && input.value !== nextValue) {
+      input.value = nextValue;
+    }
+
+    const output = input.parentElement?.querySelector("output");
+    if (output) {
+      output.textContent = nextLabel;
+    }
+  });
+
+  if (sourceKey === "robin") {
+    if (elements.robinMixerLevel && elements.robinMixerLevel !== activeRangeInput) {
+      elements.robinMixerLevel.value = nextValue;
+    }
+    setRobinMixerLevelLabel(slot.level);
+  }
 }
 
 function setRobinVcfCutoffLabel(value) {
@@ -3222,7 +3281,7 @@ function buildSelectedVoiceEditorEmptyMarkup() {
       <span class="status-tag">Waiting</span>
     </div>
     <p class="note">
-      Unlink a Robin voice to open one local editor at a time. The overview above stays dense while detailed editing
+      Unlink a Robin voice to open one local editor at a time. The voice list above stays dense while detailed editing
       happens here.
     </p>
   `;
@@ -3309,7 +3368,7 @@ function buildSelectedVoiceEditorMarkup(selectedVoice) {
       </div>
     </div>
     <p class="note">
-      This voice is unlinked from the master. Edit it here without crowding the overview above.
+      This voice is unlinked from the master. Edit it here without crowding the voice list above.
     </p>
 
     <div class="robin-voice-editor__layout">
@@ -4347,6 +4406,7 @@ function applyStateToUi(nextState) {
   syncPatchStateFromLiveState(nextState);
 
   const engine = getEngine();
+  const sourceMixer = getSourceMixer();
   const test = getTest();
   const robin = getRobin();
   const pieces = getPieces();
@@ -4378,6 +4438,8 @@ function applyStateToUi(nextState) {
   setOscillatorCountLabel(robin.oscillatorsPerVoice);
 
   elements.routingPreset.value = robin.routingPreset;
+  elements.robinMixerLevel.value = String(sourceMixer?.robin?.level ?? UI_RESET_DEFAULTS.sourceMixer.robin.level);
+  setRobinMixerLevelLabel(sourceMixer?.robin?.level ?? UI_RESET_DEFAULTS.sourceMixer.robin.level);
   elements.transposeSemitones.value = String(robin.transposeSemitones);
   setTransposeSemitonesLabel(robin.transposeSemitones);
   elements.fineTuneCents.value = String(robin.fineTuneCents);
@@ -4621,13 +4683,12 @@ function bindSourceMixerControls() {
   });
 
   document.querySelectorAll("[data-source-level]").forEach((input) => {
-    const output = input.parentElement.querySelector("output");
     input.addEventListener("input", () => {
       const sourceKey = input.dataset.sourceLevel;
       const nextValue = Number(input.value);
-      output.textContent = formatLevelPercent(nextValue);
       setParamTempLive(`sourceMixer.${sourceKey}.level`, nextValue, () => {
         applySourceMixerUpdate(sourceKey, "level", nextValue);
+        syncSourceMixerLevelControls(sourceKey);
       });
     });
   });
@@ -5085,6 +5146,12 @@ window.addEventListener("DOMContentLoaded", async () => {
       selectPage(button.dataset.page);
     });
   });
+  elements.robinTabButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      selectRobinTab(button.dataset.robinTab);
+    });
+  });
+  selectRobinTab(activeRobinTab);
 
   elements.engineOutputDevice.addEventListener("change", () => {
     setStructuralParam("engine.outputDeviceId", elements.engineOutputDevice.value);
@@ -5119,6 +5186,15 @@ window.addEventListener("DOMContentLoaded", async () => {
       rerender: () => {
         elements.heroRoutingValue.textContent = formatRoutingPresetLabel(nextValue);
       },
+    });
+  });
+
+  elements.robinMixerLevel.addEventListener("input", () => {
+    const nextValue = Number(elements.robinMixerLevel.value);
+    setRobinMixerLevelLabel(nextValue);
+    setParamTempLive("sourceMixer.robin.level", nextValue, () => {
+      applySourceMixerUpdate("robin", "level", nextValue);
+      syncSourceMixerLevelControls("robin");
     });
   });
 

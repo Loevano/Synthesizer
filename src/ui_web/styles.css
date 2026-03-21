@@ -138,6 +138,7 @@ h3 {
 }
 
 .page-tab,
+.robin-subtab,
 .ghost-button,
 .route-button {
   border-radius: 999px;
@@ -153,16 +154,19 @@ h3 {
 }
 
 .page-tab:hover,
+.robin-subtab:hover,
 .ghost-button:hover,
 .route-button:hover {
   transform: translateY(-1px);
 }
 
-.page-tab {
+.page-tab,
+.robin-subtab {
   padding: 10px 16px;
 }
 
-.page-tab.is-active {
+.page-tab.is-active,
+.robin-subtab.is-active {
   border-color: rgba(239, 190, 92, 0.54);
   background: rgba(239, 190, 92, 0.18);
 }
@@ -711,6 +715,28 @@ select,
   contain-intrinsic-size: 420px;
 }
 
+.robin-intro-panel__body {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.robin-subtab-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 16px;
+}
+
+.robin-subtab {
+  font-weight: 600;
+}
+
+.robin-subpage {
+  display: grid;
+  gap: 16px;
+}
+
 .robin-section-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -1153,11 +1179,30 @@ select,
 }
 
 .robin-master-layout__layout {
-  grid-column: span 5;
+  grid-column: span 4;
 }
 
 .robin-master-layout__pitch {
-  grid-column: span 7;
+  grid-column: span 4;
+}
+
+.robin-master-layout__mix {
+  grid-column: span 4;
+}
+
+.robin-master-layout--overview .robin-master-layout__vcf {
+  grid-column: 1 / -1;
+  justify-self: start;
+  width: min(100%, 560px);
+}
+
+.robin-master-layout--overview .robin-master-layout__vcf .robin-voice-module__grid {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.robin-master-layout--voices .robin-master-layout__env-vcf,
+.robin-master-layout--voices .robin-master-layout__amp {
+  grid-column: span 6;
 }
 
 .robin-master-layout__macros,
@@ -1171,7 +1216,7 @@ select,
 }
 
 .robin-master-layout__amp {
-  grid-column: span 5;
+  grid-column: 1 / -1;
 }
 
 .robin-master-layout__vcf {
@@ -1179,7 +1224,7 @@ select,
 }
 
 .robin-master-layout__lfo {
-  grid-column: span 7;
+  grid-column: 1 / -1;
 }
 
 .robin-master-layout__meta-grid {
@@ -1366,6 +1411,7 @@ select,
 
   .robin-master-layout__layout,
   .robin-master-layout__pitch,
+  .robin-master-layout__mix,
   .robin-master-layout__macros,
   .robin-master-layout__osc,
   .robin-master-layout__env-vcf,

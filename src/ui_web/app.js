@@ -18,6 +18,14 @@ const ROBIN_SPREAD_ALGORITHM_LABELS = {
   alternating: "Alternating",
 };
 
+const PIECES_OUTPUT_ALGORITHM_LABELS = {
+  "round-robin": "Round Robin",
+  random: "Random",
+  "ping-pong": "Ping Pong",
+  "center-out": "Center Out",
+  spray: "Spray",
+};
+
 const ROBIN_SPREAD_TARGET_CONFIG = {
   "vcf-cutoff": {
     label: "VCF Cutoff",
@@ -190,6 +198,22 @@ const UI_RESET_DEFAULTS = {
       releaseMs: 200,
     },
   },
+  pieces: {
+    grainSizeMs: 140,
+    grainDensityHz: 6,
+    activeGrains: 8,
+    position: 0.22,
+    positionJitter: 0.14,
+    pitchSemitones: 0,
+    pitchJitterCents: 10,
+    outputAlgorithm: "round-robin",
+    outputSpread: 0.35,
+    feedback: {
+      amount: 0.18,
+      highPassHz: 120,
+      lowPassHz: 7500,
+    },
+  },
   fx: {
     saturator: {
       enabled: false,
@@ -341,6 +365,32 @@ const elements = {
   decorVoiceCountValue: document.getElementById("decorVoiceCountValue"),
   decorOutputGrid: document.getElementById("decorOutputGrid"),
   piecesVoiceCountValue: document.getElementById("piecesVoiceCountValue"),
+  piecesGrainSize: document.getElementById("piecesGrainSize"),
+  piecesGrainSizeValue: document.getElementById("piecesGrainSizeValue"),
+  piecesGrainDensity: document.getElementById("piecesGrainDensity"),
+  piecesGrainDensityValue: document.getElementById("piecesGrainDensityValue"),
+  piecesActiveGrains: document.getElementById("piecesActiveGrains"),
+  piecesActiveGrainsValue: document.getElementById("piecesActiveGrainsValue"),
+  piecesPosition: document.getElementById("piecesPosition"),
+  piecesPositionValue: document.getElementById("piecesPositionValue"),
+  piecesPositionJitter: document.getElementById("piecesPositionJitter"),
+  piecesPositionJitterValue: document.getElementById("piecesPositionJitterValue"),
+  piecesPitch: document.getElementById("piecesPitch"),
+  piecesPitchValue: document.getElementById("piecesPitchValue"),
+  piecesPitchJitter: document.getElementById("piecesPitchJitter"),
+  piecesPitchJitterValue: document.getElementById("piecesPitchJitterValue"),
+  piecesOutputAlgorithm: document.getElementById("piecesOutputAlgorithm"),
+  piecesOutputSpread: document.getElementById("piecesOutputSpread"),
+  piecesOutputSpreadValue: document.getElementById("piecesOutputSpreadValue"),
+  piecesFeedbackAmount: document.getElementById("piecesFeedbackAmount"),
+  piecesFeedbackAmountValue: document.getElementById("piecesFeedbackAmountValue"),
+  piecesFeedbackHighPass: document.getElementById("piecesFeedbackHighPass"),
+  piecesFeedbackHighPassValue: document.getElementById("piecesFeedbackHighPassValue"),
+  piecesFeedbackLowPass: document.getElementById("piecesFeedbackLowPass"),
+  piecesFeedbackLowPassValue: document.getElementById("piecesFeedbackLowPassValue"),
+  piecesSourceModeValue: document.getElementById("piecesSourceModeValue"),
+  piecesSampleValue: document.getElementById("piecesSampleValue"),
+  piecesLiveInputValue: document.getElementById("piecesLiveInputValue"),
   fxSaturatorEnabled: document.getElementById("fxSaturatorEnabled"),
   fxSaturatorInputLevel: document.getElementById("fxSaturatorInputLevel"),
   fxSaturatorInputLevelValue: document.getElementById("fxSaturatorInputLevelValue"),
@@ -513,6 +563,7 @@ function extractSourceMixerSlotPatch(slot) {
 function extractPatchStateFromLiveState(liveState) {
   const robin = liveState?.sources?.robin ?? {};
   const test = liveState?.sources?.test ?? {};
+  const pieces = liveState?.sources?.pieces ?? {};
   const fx = liveState?.processors?.fx ?? {};
   const outputMixer = Array.isArray(liveState?.outputMixer?.outputs) ? liveState.outputMixer.outputs : [];
   const robinVoices = Array.isArray(robin.voices) ? robin.voices : [];
@@ -629,6 +680,25 @@ function extractPatchStateFromLiveState(liveState) {
           releaseMs: Number(test.envelope?.releaseMs ?? 200),
         },
         outputs: testOutputs.map((enabled) => Boolean(enabled)),
+      },
+      pieces: {
+        grainSizeMs: Number(pieces.grainSizeMs ?? 140),
+        grainDensityHz: Number(pieces.grainDensityHz ?? 6),
+        activeGrains: Number(pieces.activeGrains ?? pieces.voiceCount ?? 8),
+        position: Number(pieces.position ?? 0.22),
+        positionJitter: Number(pieces.positionJitter ?? 0.14),
+        pitchSemitones: Number(pieces.pitchSemitones ?? 0),
+        pitchJitterCents: Number(pieces.pitchJitterCents ?? 10),
+        outputAlgorithm: String(pieces.outputAlgorithm ?? "round-robin"),
+        outputSpread: Number(pieces.outputSpread ?? 0.35),
+        sourceMode: String(pieces.sourceMode ?? "sample"),
+        sampleName: String(pieces.sampleName ?? "Built In Texture"),
+        liveInputSupported: Boolean(pieces.liveInputSupported),
+        feedback: {
+          amount: Number(pieces.feedback?.amount ?? 0.18),
+          highPassHz: Number(pieces.feedback?.highPassHz ?? 120),
+          lowPassHz: Number(pieces.feedback?.lowPassHz ?? 7500),
+        },
       },
     },
     processors: {
@@ -968,6 +1038,20 @@ function buildPatchOperations(patchData) {
     });
   }
 
+  const pieces = patchData?.sources?.pieces ?? {};
+  pushPatchParam(operations, "sources.pieces.grainSizeMs", pieces.grainSizeMs);
+  pushPatchParam(operations, "sources.pieces.grainDensityHz", pieces.grainDensityHz);
+  pushPatchParam(operations, "sources.pieces.activeGrains", pieces.activeGrains);
+  pushPatchParam(operations, "sources.pieces.position", pieces.position);
+  pushPatchParam(operations, "sources.pieces.positionJitter", pieces.positionJitter);
+  pushPatchParam(operations, "sources.pieces.pitchSemitones", pieces.pitchSemitones);
+  pushPatchParam(operations, "sources.pieces.pitchJitterCents", pieces.pitchJitterCents);
+  pushPatchParam(operations, "sources.pieces.outputAlgorithm", pieces.outputAlgorithm);
+  pushPatchParam(operations, "sources.pieces.outputSpread", pieces.outputSpread);
+  pushPatchParam(operations, "sources.pieces.feedback.amount", pieces.feedback?.amount);
+  pushPatchParam(operations, "sources.pieces.feedback.highPassHz", pieces.feedback?.highPassHz);
+  pushPatchParam(operations, "sources.pieces.feedback.lowPassHz", pieces.feedback?.lowPassHz);
+
   const fx = patchData?.processors?.fx ?? {};
   pushPatchParam(operations, "processors.fx.saturator.enabled", fx.saturator?.enabled);
   pushPatchParam(operations, "processors.fx.saturator.inputLevel", fx.saturator?.inputLevel);
@@ -1209,6 +1293,18 @@ function getStaticResetValue(controlId) {
     testDecay: UI_RESET_DEFAULTS.test.envelope.decayMs,
     testSustain: UI_RESET_DEFAULTS.test.envelope.sustain,
     testRelease: UI_RESET_DEFAULTS.test.envelope.releaseMs,
+    piecesGrainSize: UI_RESET_DEFAULTS.pieces.grainSizeMs,
+    piecesGrainDensity: UI_RESET_DEFAULTS.pieces.grainDensityHz,
+    piecesActiveGrains: UI_RESET_DEFAULTS.pieces.activeGrains,
+    piecesPosition: UI_RESET_DEFAULTS.pieces.position,
+    piecesPositionJitter: UI_RESET_DEFAULTS.pieces.positionJitter,
+    piecesPitch: UI_RESET_DEFAULTS.pieces.pitchSemitones,
+    piecesPitchJitter: UI_RESET_DEFAULTS.pieces.pitchJitterCents,
+    piecesOutputAlgorithm: UI_RESET_DEFAULTS.pieces.outputAlgorithm,
+    piecesOutputSpread: UI_RESET_DEFAULTS.pieces.outputSpread,
+    piecesFeedbackAmount: UI_RESET_DEFAULTS.pieces.feedback.amount,
+    piecesFeedbackHighPass: UI_RESET_DEFAULTS.pieces.feedback.highPassHz,
+    piecesFeedbackLowPass: UI_RESET_DEFAULTS.pieces.feedback.lowPassHz,
     fxSaturatorEnabled: UI_RESET_DEFAULTS.fx.saturator.enabled,
     fxSaturatorInputLevel: UI_RESET_DEFAULTS.fx.saturator.inputLevel,
     fxSaturatorOutputLevel: UI_RESET_DEFAULTS.fx.saturator.outputLevel,
@@ -2393,6 +2489,69 @@ function applyTestOutputUpdate(outputIndex, rawValue) {
   outputs[outputIndex] = Boolean(rawValue);
 }
 
+function applyPiecesStateUpdate(field, rawValue) {
+  const pieces = getPieces();
+  if (!pieces) {
+    return;
+  }
+
+  if (field === "outputAlgorithm") {
+    pieces.outputAlgorithm = String(rawValue);
+    return;
+  }
+
+  if (field === "activeGrains") {
+    pieces.activeGrains = clampIntegerValue(rawValue, 1, 32);
+    pieces.voiceCount = pieces.activeGrains;
+    return;
+  }
+
+  if (field === "pitchSemitones") {
+    pieces.pitchSemitones = clampValue(rawValue, -24, 24);
+    return;
+  }
+
+  if (field === "pitchJitterCents") {
+    pieces.pitchJitterCents = clampValue(rawValue, 0, 120);
+    return;
+  }
+
+  if (field === "grainSizeMs") {
+    pieces.grainSizeMs = clampValue(rawValue, 15, 1000);
+    return;
+  }
+
+  if (field === "grainDensityHz") {
+    pieces.grainDensityHz = clampValue(rawValue, 0.25, 40);
+    return;
+  }
+
+  if (field === "position" || field === "positionJitter" || field === "outputSpread") {
+    pieces[field] = clampValue(rawValue, 0, 1);
+  }
+}
+
+function applyPiecesFeedbackUpdate(field, rawValue) {
+  const feedback = getPieces()?.feedback;
+  if (!feedback) {
+    return;
+  }
+
+  if (field === "amount") {
+    feedback.amount = clampValue(rawValue, 0, 0.97);
+    return;
+  }
+
+  if (field === "highPassHz") {
+    feedback.highPassHz = clampValue(rawValue, 20, 12000);
+    return;
+  }
+
+  if (field === "lowPassHz") {
+    feedback.lowPassHz = clampValue(rawValue, 120, 18000);
+  }
+}
+
 function applyLfoUpdate(field, rawValue) {
   const lfo = getRobin()?.lfo;
   if (!lfo) {
@@ -2748,6 +2907,52 @@ function setTestSustainLabel(value) {
 
 function setTestReleaseLabel(value) {
   elements.testReleaseValue.textContent = `${Math.round(Number(value))} ms`;
+}
+
+function setPiecesGrainSizeLabel(value) {
+  elements.piecesGrainSizeValue.textContent = `${Math.round(Number(value))} ms`;
+}
+
+function setPiecesGrainDensityLabel(value) {
+  elements.piecesGrainDensityValue.textContent = `${Number(value).toFixed(2)} Hz`;
+}
+
+function setPiecesActiveGrainsLabel(value) {
+  elements.piecesActiveGrainsValue.textContent = `${Math.round(Number(value))}`;
+}
+
+function setPiecesPositionLabel(value) {
+  elements.piecesPositionValue.textContent = `${Math.round(Number(value) * 100)}%`;
+}
+
+function setPiecesPositionJitterLabel(value) {
+  elements.piecesPositionJitterValue.textContent = `${Math.round(Number(value) * 100)}%`;
+}
+
+function setPiecesPitchLabel(value) {
+  const numericValue = Math.round(Number(value));
+  const prefix = numericValue > 0 ? "+" : "";
+  elements.piecesPitchValue.textContent = `${prefix}${numericValue} st`;
+}
+
+function setPiecesPitchJitterLabel(value) {
+  elements.piecesPitchJitterValue.textContent = `${Math.round(Number(value))} ct`;
+}
+
+function setPiecesOutputSpreadLabel(value) {
+  elements.piecesOutputSpreadValue.textContent = `${Math.round(Number(value) * 100)}%`;
+}
+
+function setPiecesFeedbackAmountLabel(value) {
+  elements.piecesFeedbackAmountValue.textContent = Number(value).toFixed(2);
+}
+
+function setPiecesFeedbackHighPassLabel(value) {
+  elements.piecesFeedbackHighPassValue.textContent = `${Math.round(Number(value))} Hz`;
+}
+
+function setPiecesFeedbackLowPassLabel(value) {
+  elements.piecesFeedbackLowPassValue.textContent = `${Math.round(Number(value))} Hz`;
 }
 
 function setVoiceCountLabel(value) {
@@ -4396,6 +4601,33 @@ function applyStateToUi(nextState) {
   elements.testRelease.value = String(test.envelope.releaseMs);
   setTestReleaseLabel(test.envelope.releaseMs);
 
+  elements.piecesGrainSize.value = String(pieces.grainSizeMs);
+  setPiecesGrainSizeLabel(pieces.grainSizeMs);
+  elements.piecesGrainDensity.value = String(pieces.grainDensityHz);
+  setPiecesGrainDensityLabel(pieces.grainDensityHz);
+  elements.piecesActiveGrains.value = String(pieces.activeGrains);
+  setPiecesActiveGrainsLabel(pieces.activeGrains);
+  elements.piecesPosition.value = String(pieces.position);
+  setPiecesPositionLabel(pieces.position);
+  elements.piecesPositionJitter.value = String(pieces.positionJitter);
+  setPiecesPositionJitterLabel(pieces.positionJitter);
+  elements.piecesPitch.value = String(pieces.pitchSemitones);
+  setPiecesPitchLabel(pieces.pitchSemitones);
+  elements.piecesPitchJitter.value = String(pieces.pitchJitterCents);
+  setPiecesPitchJitterLabel(pieces.pitchJitterCents);
+  elements.piecesOutputAlgorithm.value = pieces.outputAlgorithm;
+  elements.piecesOutputSpread.value = String(pieces.outputSpread);
+  setPiecesOutputSpreadLabel(pieces.outputSpread);
+  elements.piecesFeedbackAmount.value = String(pieces.feedback.amount);
+  setPiecesFeedbackAmountLabel(pieces.feedback.amount);
+  elements.piecesFeedbackHighPass.value = String(pieces.feedback.highPassHz);
+  setPiecesFeedbackHighPassLabel(pieces.feedback.highPassHz);
+  elements.piecesFeedbackLowPass.value = String(pieces.feedback.lowPassHz);
+  setPiecesFeedbackLowPassLabel(pieces.feedback.lowPassHz);
+  elements.piecesSourceModeValue.textContent = pieces.sourceMode === "sample" ? "Sample" : pieces.sourceMode;
+  elements.piecesSampleValue.textContent = pieces.sampleName;
+  elements.piecesLiveInputValue.textContent = pieces.liveInputSupported ? "Supported" : "Pending Host Support";
+
   elements.lfoEnabled.checked = robin.lfo.enabled;
   elements.lfoWaveform.value = robin.lfo.waveform;
   elements.lfoDepth.value = String(robin.lfo.depth);
@@ -4427,7 +4659,7 @@ function applyStateToUi(nextState) {
   setChorusPhaseLabel(fx.chorus.phaseSpreadDegrees);
   elements.fxSidechainEnabled.checked = fx.sidechain.enabled;
 
-  elements.piecesVoiceCountValue.textContent = `${pieces.voiceCount} voices`;
+  elements.piecesVoiceCountValue.textContent = `${pieces.activeGrains}`;
 
   updateStateView();
 
@@ -5273,6 +5505,104 @@ window.addEventListener("DOMContentLoaded", async () => {
     setTestReleaseLabel(nextValue);
     setParamTempLive("sources.test.envelope.releaseMs", nextValue, () => {
       applyTestEnvelopeUpdate("releaseMs", nextValue);
+    });
+  });
+
+  elements.piecesGrainSize.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesGrainSize.value);
+    setPiecesGrainSizeLabel(nextValue);
+    setParamTempLive("sources.pieces.grainSizeMs", nextValue, () => {
+      applyPiecesStateUpdate("grainSizeMs", nextValue);
+    });
+  });
+
+  elements.piecesGrainDensity.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesGrainDensity.value);
+    setPiecesGrainDensityLabel(nextValue);
+    setParamTempLive("sources.pieces.grainDensityHz", nextValue, () => {
+      applyPiecesStateUpdate("grainDensityHz", nextValue);
+    });
+  });
+
+  elements.piecesActiveGrains.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesActiveGrains.value);
+    setPiecesActiveGrainsLabel(nextValue);
+    setParamTempLive("sources.pieces.activeGrains", nextValue, () => {
+      applyPiecesStateUpdate("activeGrains", nextValue);
+      elements.piecesVoiceCountValue.textContent = `${clampIntegerValue(nextValue, 1, 32)}`;
+    });
+  });
+
+  elements.piecesPosition.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesPosition.value);
+    setPiecesPositionLabel(nextValue);
+    setParamTempLive("sources.pieces.position", nextValue, () => {
+      applyPiecesStateUpdate("position", nextValue);
+    });
+  });
+
+  elements.piecesPositionJitter.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesPositionJitter.value);
+    setPiecesPositionJitterLabel(nextValue);
+    setParamTempLive("sources.pieces.positionJitter", nextValue, () => {
+      applyPiecesStateUpdate("positionJitter", nextValue);
+    });
+  });
+
+  elements.piecesPitch.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesPitch.value);
+    setPiecesPitchLabel(nextValue);
+    setParamTempLive("sources.pieces.pitchSemitones", nextValue, () => {
+      applyPiecesStateUpdate("pitchSemitones", nextValue);
+    });
+  });
+
+  elements.piecesPitchJitter.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesPitchJitter.value);
+    setPiecesPitchJitterLabel(nextValue);
+    setParamTempLive("sources.pieces.pitchJitterCents", nextValue, () => {
+      applyPiecesStateUpdate("pitchJitterCents", nextValue);
+    });
+  });
+
+  elements.piecesOutputAlgorithm.addEventListener("change", () => {
+    const nextValue = elements.piecesOutputAlgorithm.value;
+    setParamTemp("sources.pieces.outputAlgorithm", nextValue, {
+      applyLocalState: () => {
+        applyPiecesStateUpdate("outputAlgorithm", nextValue);
+      },
+    });
+  });
+
+  elements.piecesOutputSpread.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesOutputSpread.value);
+    setPiecesOutputSpreadLabel(nextValue);
+    setParamTempLive("sources.pieces.outputSpread", nextValue, () => {
+      applyPiecesStateUpdate("outputSpread", nextValue);
+    });
+  });
+
+  elements.piecesFeedbackAmount.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesFeedbackAmount.value);
+    setPiecesFeedbackAmountLabel(nextValue);
+    setParamTempLive("sources.pieces.feedback.amount", nextValue, () => {
+      applyPiecesFeedbackUpdate("amount", nextValue);
+    });
+  });
+
+  elements.piecesFeedbackHighPass.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesFeedbackHighPass.value);
+    setPiecesFeedbackHighPassLabel(nextValue);
+    setParamTempLive("sources.pieces.feedback.highPassHz", nextValue, () => {
+      applyPiecesFeedbackUpdate("highPassHz", nextValue);
+    });
+  });
+
+  elements.piecesFeedbackLowPass.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesFeedbackLowPass.value);
+    setPiecesFeedbackLowPassLabel(nextValue);
+    setParamTempLive("sources.pieces.feedback.lowPassHz", nextValue, () => {
+      applyPiecesFeedbackUpdate("lowPassHz", nextValue);
     });
   });
 

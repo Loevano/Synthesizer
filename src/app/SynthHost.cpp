@@ -362,8 +362,10 @@ void SynthHost::stopAudio() {
         if (!heldMidiNotes_.empty()) {
             renderRobin_.clearAllNotes();
             renderTest_.clearAllNotes();
+            renderPieces_.clearAllNotes();
             robin_.clearAllNotes();
             test_.clearAllNotes();
+            pieces_.clearAllNotes();
             (void)releaseAllHeldMidiNotesLocked();
         }
     }
@@ -600,18 +602,14 @@ std::string SynthHost::buildStateJsonLocked() const {
     test_.appendStateJson(json);
     json << ",\"robin\":";
     robin_.appendStateJson(json);
+    json << ",\"pieces\":";
+    pieces_.appendStateJson(json);
     json << ","
          << "\"decor\":{"
          << "\"implemented\":" << (decorState_.implemented ? "true" : "false") << ","
          << "\"playable\":" << (decorState_.playable ? "true" : "false") << ","
          << "\"voiceCount\":" << decorState_.voiceCount << ","
          << "\"routingMode\":\"voice-per-output\""
-         << "},"
-         << "\"pieces\":{"
-         << "\"implemented\":" << (piecesState_.implemented ? "true" : "false") << ","
-         << "\"playable\":" << (piecesState_.playable ? "true" : "false") << ","
-         << "\"voiceCount\":" << piecesState_.voiceCount << ","
-         << "\"routingMode\":\"algorithmic-granular\""
          << "}"
          << "},"
          << "\"processors\":{"
@@ -714,8 +712,6 @@ bool SynthHost::setParam(std::string_view path, double value, std::string* error
             SourceMixerSlotState* sourceState = nullptr;
             if (parts[1] == "decor") {
                 sourceState = &decorMixerState_;
-            } else if (parts[1] == "pieces") {
-                sourceState = &piecesMixerState_;
             }
             if (sourceState != nullptr) {
                 sourceState->level = static_cast<float>(std::clamp(value, 0.0, 1.0));
@@ -795,6 +791,16 @@ bool SynthHost::setParam(std::string_view path, double value, std::string* error
                 routeState->decor = enabled;
             } else if (parts[5] == "pieces") {
                 routeState->pieces = enabled;
+                if (driver_ != nullptr && driver_->isRunning()) {
+                    renderCommand = RealtimeCommand{
+                        RealtimeCommandType::MidiRoutePieces,
+                        sourceIndex,
+                        -1,
+                        enabled ? 1.0f : 0.0f,
+                    };
+                } else {
+                    syncRenderStateFromSnapshotLocked();
+                }
             } else {
                 if (errorMessage != nullptr) {
                     *errorMessage = "Unsupported MIDI route target.";
@@ -1093,6 +1099,12 @@ RealtimeParamResult SynthHost::tryEnqueueRealtimeNumericParam(std::string_view p
                 return testResult;
             }
             handled = true;
+        } else if (const auto piecesResult = pieces_.tryBuildRealtimeNumericCommand(parts, value, command, errorMessage);
+                   piecesResult != RealtimeParamResult::NotHandled) {
+            if (piecesResult != RealtimeParamResult::Applied) {
+                return piecesResult;
+            }
+            handled = true;
         }
 
         if (!handled && parts.size() == 3 && parts[0] == "sourceMixer" && parts[2] == "enabled") {
@@ -1109,6 +1121,8 @@ RealtimeParamResult SynthHost::tryEnqueueRealtimeNumericParam(std::string_view p
                 command.type = RealtimeCommandType::SourceLevelRobin;
             } else if (parts[1] == "test") {
                 command.type = RealtimeCommandType::SourceLevelTest;
+            } else if (parts[1] == "pieces") {
+                command.type = RealtimeCommandType::SourceLevelPieces;
             } else {
                 return RealtimeParamResult::NotHandled;
             }
@@ -1239,6 +1253,12 @@ RealtimeParamResult SynthHost::tryEnqueueRealtimeStringParam(std::string_view pa
                 return testResult;
             }
             handled = true;
+        } else if (const auto piecesResult = pieces_.tryBuildRealtimeStringCommand(parts, value, command, errorMessage);
+                   piecesResult != RealtimeParamResult::NotHandled) {
+            if (piecesResult != RealtimeParamResult::Applied) {
+                return piecesResult;
+            }
+            handled = true;
         }
 
         if (!handled && parts.size() == 3 && parts[0] == "sourceMixer" && parts[2] == "routeTarget") {
@@ -1356,6 +1376,11 @@ void SynthHost::applyStateMirrorCommandLocked(const RealtimeCommand& command) {
         return;
     }
 
+    if (pieces_.handlesRealtimeCommand(command.type)) {
+        pieces_.applyRealtimeCommand(command);
+        return;
+    }
+
     if (robin_.handlesRealtimeCommand(command.type)) {
         robin_.applyRealtimeCommand(command);
         if (command.type == RealtimeCommandType::RobinMasterFrequency) {
@@ -1372,6 +1397,9 @@ void SynthHost::applyStateMirrorCommandLocked(const RealtimeCommand& command) {
         case RealtimeCommandType::SourceLevelTest:
             testMixerState_.level = std::clamp(command.value, 0.0f, 1.0f);
             break;
+        case RealtimeCommandType::SourceLevelPieces:
+            piecesMixerState_.level = std::clamp(command.value, 0.0f, 1.0f);
+            break;
         case RealtimeCommandType::SourceMixerEnabled: {
             SourceMixerSlotState* sourceState = sourceMixerStateForCode(command.index);
             if (sourceState == nullptr) {
@@ -1380,6 +1408,8 @@ void SynthHost::applyStateMirrorCommandLocked(const RealtimeCommand& command) {
             sourceState->enabled = command.value >= 0.5f;
             if (command.index == 0 && !sourceState->enabled) {
                 robin_.clearAllNotes();
+            } else if (command.index == 3 && !sourceState->enabled) {
+                pieces_.clearAllNotes();
             }
             break;
         }
@@ -1461,6 +1491,14 @@ void SynthHost::applyStateMirrorCommandLocked(const RealtimeCommand& command) {
             routeState->test = command.value >= 0.5f;
             break;
         }
+        case RealtimeCommandType::MidiRoutePieces: {
+            MidiSourceRouteState* routeState = findMidiRouteLocked(command.index);
+            if (routeState == nullptr) {
+                return;
+            }
+            routeState->pieces = command.value >= 0.5f;
+            break;
+        }
         default:
             break;
     }
@@ -1487,6 +1525,11 @@ void SynthHost::applyRenderStateCommandLocked(const RealtimeCommand& command) {
         return;
     }
 
+    if (renderPieces_.handlesRealtimeCommand(command.type)) {
+        renderPieces_.applyRealtimeCommand(command);
+        return;
+    }
+
     if (renderRobin_.handlesRealtimeCommand(command.type)) {
         renderRobin_.applyRealtimeCommand(command);
         return;
@@ -1498,6 +1541,9 @@ void SynthHost::applyRenderStateCommandLocked(const RealtimeCommand& command) {
             break;
         case RealtimeCommandType::SourceLevelTest:
             applyTestLevelLocked(command.value);
+            break;
+        case RealtimeCommandType::SourceLevelPieces:
+            applyPiecesLevelLocked(command.value);
             break;
         case RealtimeCommandType::SourceMixerEnabled: {
             SourceMixerSlotState* sourceState = sourceMixerStateForCode(command.index);
@@ -1516,6 +1562,11 @@ void SynthHost::applyRenderStateCommandLocked(const RealtimeCommand& command) {
                     renderTest_.clearAllNotes();
                 }
                 applyTestLevelLocked(sourceState->level);
+            } else if (command.index == 3) {
+                if (!sourceState->enabled) {
+                    renderPieces_.clearAllNotes();
+                }
+                applyPiecesLevelLocked(sourceState->level);
             }
             break;
         }
@@ -1596,6 +1647,14 @@ void SynthHost::applyRenderStateCommandLocked(const RealtimeCommand& command) {
             routeState->test = command.value >= 0.5f;
             break;
         }
+        case RealtimeCommandType::MidiRoutePieces: {
+            MidiSourceRouteState* routeState = findRenderMidiRouteLocked(command.index);
+            if (routeState == nullptr) {
+                return;
+            }
+            routeState->pieces = command.value >= 0.5f;
+            break;
+        }
         case RealtimeCommandType::TestActive:
         case RealtimeCommandType::TestMidiEnabled:
         case RealtimeCommandType::TestFrequency:
@@ -1606,6 +1665,18 @@ void SynthHost::applyRenderStateCommandLocked(const RealtimeCommand& command) {
         case RealtimeCommandType::TestEnvelopeReleaseMs:
         case RealtimeCommandType::TestOutputEnabled:
         case RealtimeCommandType::TestWaveform:
+        case RealtimeCommandType::PiecesGrainSizeMs:
+        case RealtimeCommandType::PiecesGrainDensityHz:
+        case RealtimeCommandType::PiecesActiveGrains:
+        case RealtimeCommandType::PiecesPosition:
+        case RealtimeCommandType::PiecesPositionJitter:
+        case RealtimeCommandType::PiecesPitchSemitones:
+        case RealtimeCommandType::PiecesPitchJitterCents:
+        case RealtimeCommandType::PiecesOutputAlgorithm:
+        case RealtimeCommandType::PiecesOutputSpread:
+        case RealtimeCommandType::PiecesFeedbackAmount:
+        case RealtimeCommandType::PiecesFeedbackHighPassHz:
+        case RealtimeCommandType::PiecesFeedbackLowPassHz:
             return;
         case RealtimeCommandType::GlobalNoteOn:
             handleNoteOnLocked(command.noteNumber, command.value);
@@ -1693,17 +1764,25 @@ void SynthHost::buildLiveGraphLocked() {
 
     liveGraph_.addSourceNode({
         "pieces",
-        nullptr,
-        [this]() { return renderPiecesMixerState_.implemented; },
+        [this](double sampleRate, std::uint32_t outputChannels) {
+            renderPieces_.prepare(sampleRate, outputChannels);
+        },
+        [this]() { return renderPieces_.implemented(); },
         [this]() { return renderPiecesMixerState_.enabled; },
         [this]() {
             return renderPiecesMixerState_.routeTarget == SourceMixerSlotState::RouteTarget::Fx
                 ? graph::LiveGraph::SourceRenderTarget::FxBus
                 : graph::LiveGraph::SourceRenderTarget::Dry;
         },
-        nullptr,
-        nullptr,
-        nullptr,
+        [this](float* output, std::uint32_t frames, std::uint32_t channels) {
+            renderPieces_.process(output,
+                                  frames,
+                                  channels,
+                                  renderPiecesMixerState_.enabled,
+                                  renderPiecesMixerState_.level);
+        },
+        [this](int noteNumber, float velocity) { renderPieces_.noteOn(noteNumber, velocity); },
+        [this](int noteNumber) { renderPieces_.noteOff(noteNumber); },
     });
 
     liveGraph_.addOutputProcessorNode({
@@ -1771,13 +1850,13 @@ void SynthHost::resizeScaffoldStateLocked() {
     testMixerState_.implemented = test_.implemented();
     decorMixerState_.available = true;
     piecesMixerState_.available = true;
+    piecesMixerState_.implemented = pieces_.implemented();
 
     const std::uint32_t outputCount = std::max<std::uint32_t>(1, config_.channels);
     test_.resizeOutputs(outputCount);
 
     outputMixerChannels_.resize(outputCount);
     decorState_.voiceCount = outputCount;
-    piecesState_.voiceCount = std::max<std::uint32_t>(1, config_.voiceCount);
 }
 
 void SynthHost::syncTestSourceLocked() {
@@ -1787,6 +1866,7 @@ void SynthHost::syncTestSourceLocked() {
 void SynthHost::syncRenderStateFromSnapshotLocked() {
     renderRobin_.applyStateSnapshot(robin_.stateSnapshot());
     renderTest_.applyState(test_.state());
+    renderPieces_.applyState(pieces_.state());
     renderRobinMixerState_ = robinMixerState_;
     renderTestMixerState_ = testMixerState_;
     renderDecorMixerState_ = decorMixerState_;
@@ -2094,6 +2174,10 @@ void SynthHost::applyTestLevelLocked(float level) {
     renderTestMixerState_.level = std::clamp(level, 0.0f, 1.0f);
 }
 
+void SynthHost::applyPiecesLevelLocked(float level) {
+    renderPiecesMixerState_.level = std::clamp(level, 0.0f, 1.0f);
+}
+
 void SynthHost::reconfigureStructureLocked(std::uint32_t voiceCount, std::uint32_t oscillatorsPerVoice) {
     config_.voiceCount = std::max<std::uint32_t>(1, voiceCount);
     config_.oscillatorsPerVoice = std::max<std::uint32_t>(1, oscillatorsPerVoice);
@@ -2189,6 +2273,9 @@ void SynthHost::handleMidiNoteOnLocked(std::uint32_t sourceIndex, int noteNumber
     if (routeState->test && renderTestMixerState_.enabled) {
         handleTestNoteOnLocked(noteNumber, velocity);
     }
+    if (routeState->pieces && renderPiecesMixerState_.enabled) {
+        renderPieces_.noteOn(noteNumber, velocity);
+    }
 }
 
 void SynthHost::handleMidiNoteOffLocked(std::uint32_t sourceIndex, int noteNumber) {
@@ -2204,6 +2291,9 @@ void SynthHost::handleMidiNoteOffLocked(std::uint32_t sourceIndex, int noteNumbe
     }
     if (routeState->test && renderTestMixerState_.enabled) {
         handleTestNoteOffLocked(noteNumber);
+    }
+    if (routeState->pieces && renderPiecesMixerState_.enabled) {
+        renderPieces_.noteOff(noteNumber);
     }
 }
 
@@ -2230,6 +2320,9 @@ void SynthHost::handleMidiAllNotesOffLocked(std::uint32_t sourceIndex) {
         }
         if (routeState->test && renderTestMixerState_.enabled) {
             handleTestNoteOffLocked(noteNumber);
+        }
+        if (routeState->pieces && renderPiecesMixerState_.enabled) {
+            renderPieces_.noteOff(noteNumber);
         }
     }
 }

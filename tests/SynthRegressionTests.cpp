@@ -265,6 +265,54 @@ void testQueuedRealtimeParamRefreshesStateWhileRunning() {
         "queued chorus depth flushed into state");
 }
 
+void testPiecesParamsRefreshStateJson() {
+    synth::app::RuntimeConfig config;
+    config.logDirectory = testLogDirectory();
+
+    synth::app::SynthHost controller(config, makeFakeDriver());
+    expect(controller.initialize(), "controller initializes");
+
+    std::string errorMessage;
+    expect(controller.setParam("sources.pieces.grainSizeMs", 220.0, &errorMessage), "pieces grain size update succeeds");
+    expect(errorMessage.empty(), "no pieces grain size error");
+    expect(controller.setParam("sources.pieces.outputAlgorithm", "spray", &errorMessage), "pieces algorithm update succeeds");
+    expect(errorMessage.empty(), "no pieces algorithm error");
+    expect(controller.setParam("sources.pieces.feedback.amount", 0.42, &errorMessage), "pieces feedback update succeeds");
+    expect(errorMessage.empty(), "no pieces feedback error");
+
+    const std::string refreshedStateJson = controller.stateJson();
+    expect(refreshedStateJson.find("\"sampleName\":\"Built In Texture\"") != std::string::npos, "pieces sample name in state");
+    expect(refreshedStateJson.find("\"grainSizeMs\":220") != std::string::npos, "pieces grain size in state");
+    expect(refreshedStateJson.find("\"outputAlgorithm\":\"spray\"") != std::string::npos, "pieces algorithm in state");
+    expect(refreshedStateJson.find("\"amount\":0.42") != std::string::npos, "pieces feedback amount in state");
+}
+
+void testQueuedPiecesParamsRefreshStateWhileRunning() {
+    synth::app::RuntimeConfig config;
+    config.logDirectory = testLogDirectory();
+
+    auto driver = std::make_unique<FakeAudioDriver>(makeTestDevices());
+    auto* driverPtr = driver.get();
+    synth::app::SynthHost controller(config, std::move(driver));
+    expect(controller.initialize(), "controller initializes");
+
+    driverPtr->forceRunning(true);
+
+    std::string errorMessage;
+    expect(controller.setParam("sources.pieces.grainDensityHz", 9.5, &errorMessage), "queued pieces density update succeeds");
+    expect(errorMessage.empty(), "no queued pieces density error");
+    expect(controller.setParam("sources.pieces.outputAlgorithm", "center-out", &errorMessage), "queued pieces algorithm update succeeds");
+    expect(errorMessage.empty(), "no queued pieces algorithm error");
+    expect(controller.setParam("sourceMixer.pieces.level", 0.27, &errorMessage), "queued pieces level update succeeds");
+    expect(errorMessage.empty(), "no queued pieces level error");
+
+    const std::string refreshedStateJson = controller.stateJson();
+    expect(refreshedStateJson.find("\"grainDensityHz\":9.5") != std::string::npos, "queued pieces density flushed");
+    expect(refreshedStateJson.find("\"outputAlgorithm\":\"center-out\"") != std::string::npos, "queued pieces algorithm flushed");
+    expect(refreshedStateJson.find("\"pieces\":{\"available\":true,\"implemented\":true,\"enabled\":false,\"level\":0.27") != std::string::npos,
+           "queued pieces mixer level flushed");
+}
+
 void testQueuedGlobalNoteRefreshesStateWhileRunning() {
     synth::app::RuntimeConfig config;
     config.logDirectory = testLogDirectory();
@@ -936,6 +984,8 @@ int main() {
         {"controller output channels clamp to selected device maximum", testControllerOutputChannelSelectionClampsToDeviceMaximum},
         {"state json refreshes after param mutation", testStateJsonRefreshesAfterParamMutation},
         {"queued realtime param refreshes state while running", testQueuedRealtimeParamRefreshesStateWhileRunning},
+        {"pieces params refresh state json", testPiecesParamsRefreshStateJson},
+        {"queued pieces params refresh state while running", testQueuedPiecesParamsRefreshStateWhileRunning},
         {"queued global note refreshes state while running", testQueuedGlobalNoteRefreshesStateWhileRunning},
         {"repeated same-pitch global notes retain later instance", testQueuedRepeatedGlobalNoteRetainsLaterSamePitchInstance},
         {"robin keeps independent assignments for repeated same-pitch notes", testRobinRetainsIndependentAssignmentsForRepeatedSamePitchNotes},

@@ -782,27 +782,141 @@
               <p class="section-kicker">Sound Source</p>
               <h2>Pieces</h2>
             </div>
-            <span class="status-tag status-tag--planned">Scaffold Only</span>
+            <span class="status-tag status-tag--live">Live</span>
           </div>
           <p class="note">
-            Pieces is reserved for a playable granular source that routes voices algorithmically across the speaker
-            system.
+            Pieces now runs as a sample-based granular source with per-grain output algorithms and an internal
+            feedback path. Live input capture still needs host-side input support.
           </p>
         </article>
 
+        <article class="panel controls">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Grains</p>
+              <h2>Density + Window</h2>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Grain Size</span>
+            <input id="piecesGrainSize" type="range" min="15" max="1000" step="1">
+            <output id="piecesGrainSizeValue">140 ms</output>
+          </label>
+
+          <label class="field">
+            <span>Grain Density</span>
+            <input id="piecesGrainDensity" type="range" min="0.25" max="40" step="0.01">
+            <output id="piecesGrainDensityValue">6.00 Hz</output>
+          </label>
+
+          <label class="field">
+            <span>Active Grains</span>
+            <input id="piecesActiveGrains" type="range" min="1" max="32" step="1">
+            <output id="piecesActiveGrainsValue">8</output>
+          </label>
+
+          <label class="field">
+            <span>Position</span>
+            <input id="piecesPosition" type="range" min="0" max="1" step="0.001">
+            <output id="piecesPositionValue">22%</output>
+          </label>
+
+          <label class="field">
+            <span>Position Jitter</span>
+            <input id="piecesPositionJitter" type="range" min="0" max="1" step="0.001">
+            <output id="piecesPositionJitterValue">14%</output>
+          </label>
+        </article>
+
+        <article class="panel controls">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Pitch + Spread</p>
+              <h2>Routing Behavior</h2>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Pitch</span>
+            <input id="piecesPitch" type="range" min="-24" max="24" step="1">
+            <output id="piecesPitchValue">0 st</output>
+          </label>
+
+          <label class="field">
+            <span>Pitch Jitter</span>
+            <input id="piecesPitchJitter" type="range" min="0" max="120" step="1">
+            <output id="piecesPitchJitterValue">10 ct</output>
+          </label>
+
+          <label class="field">
+            <span>Output Algorithm</span>
+            <select id="piecesOutputAlgorithm">
+              <option value="round-robin">Round Robin</option>
+              <option value="random">Random</option>
+              <option value="ping-pong">Ping Pong</option>
+              <option value="center-out">Center Out</option>
+              <option value="spray">Spray</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Output Spread</span>
+            <input id="piecesOutputSpread" type="range" min="0" max="1" step="0.001">
+            <output id="piecesOutputSpreadValue">35%</output>
+          </label>
+        </article>
+
+        <article class="panel controls">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Feedback</p>
+              <h2>Tone Shaping</h2>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Feedback Amount</span>
+            <input id="piecesFeedbackAmount" type="range" min="0" max="0.97" step="0.001">
+            <output id="piecesFeedbackAmountValue">0.18</output>
+          </label>
+
+          <label class="field">
+            <span>Feedback High-Pass</span>
+            <input id="piecesFeedbackHighPass" type="range" min="20" max="12000" step="1">
+            <output id="piecesFeedbackHighPassValue">120 Hz</output>
+          </label>
+
+          <label class="field">
+            <span>Feedback Low-Pass</span>
+            <input id="piecesFeedbackLowPass" type="range" min="120" max="18000" step="1">
+            <output id="piecesFeedbackLowPassValue">7500 Hz</output>
+          </label>
+        </article>
+
         <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Status</p>
+              <h2>Source Summary</h2>
+            </div>
+          </div>
           <div class="kv-list">
             <div class="kv-row">
-              <span>Voice Count</span>
-              <strong id="piecesVoiceCountValue">Follows Robin for now</strong>
+              <span>Mode</span>
+              <strong id="piecesSourceModeValue">Sample</strong>
             </div>
             <div class="kv-row">
-              <span>Routing</span>
-              <strong>Algorithmic</strong>
+              <span>Sample</span>
+              <strong id="piecesSampleValue">Built In Texture</strong>
             </div>
             <div class="kv-row">
-              <span>Status</span>
-              <strong>Granular engine pending</strong>
+              <span>Live Input</span>
+              <strong id="piecesLiveInputValue">Pending Host Support</strong>
+            </div>
+            <div class="kv-row">
+              <span>Active Grains</span>
+              <strong id="piecesVoiceCountValue">8</strong>
             </div>
           </div>
         </article>

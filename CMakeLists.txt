@@ -26,6 +26,7 @@ add_library(synth_core
     src/dsp/Lfo.cpp
     src/audio/Voice.cpp
     src/audio/TestEngine.cpp
+    src/audio/PiecesEngine.cpp
     src/audio/PolySynth.cpp
     src/graph/RobinSourceNode.cpp
     src/graph/TestSourceNode.cpp
@@ -33,6 +34,7 @@ add_library(synth_core
     src/graph/OutputMixerNode.cpp
     src/graph/LiveGraph.cpp
     src/app/Robin.cpp
+    src/app/Pieces.cpp
     src/app/TestSynth.cpp
     src/app/SynthHost.cpp
     src/io/MidiInput.cpp

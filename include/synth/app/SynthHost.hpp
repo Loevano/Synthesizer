@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "synth/app/RealtimeCommands.hpp"
+#include "synth/app/Pieces.hpp"
 #include "synth/app/SourceState.hpp"
 #include "synth/app/Robin.hpp"
 #include "synth/app/TestSynth.hpp"
@@ -186,6 +187,7 @@ private:
                                  std::string* errorMessage);
     void applyRobinLevelLocked(float level);
     void applyTestLevelLocked(float level);
+    void applyPiecesLevelLocked(float level);
     void reconfigureStructureLocked(std::uint32_t voiceCount, std::uint32_t oscillatorsPerVoice);
     void handleNoteOnLocked(int noteNumber, float velocity);
     void handleNoteOffLocked(int noteNumber);
@@ -208,23 +210,24 @@ private:
     std::unique_ptr<io::OscServer> oscServer_;
     Robin robin_;
     TestSynth test_;
+    Pieces pieces_;
     Robin renderRobin_;
     TestSynth renderTest_;
+    Pieces renderPieces_;
     graph::FxRackNode fxRackNode_;
     graph::OutputMixerNode outputMixerNode_;
     graph::LiveGraph liveGraph_;
     SourceMixerSlotState robinMixerState_{true, true, false, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState testMixerState_{true, true, true, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState decorMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
-    SourceMixerSlotState piecesMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
+    SourceMixerSlotState piecesMixerState_{true, true, false, 0.12f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState renderRobinMixerState_{true, true, false, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState renderTestMixerState_{true, true, true, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState renderDecorMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
-    SourceMixerSlotState renderPiecesMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
+    SourceMixerSlotState renderPiecesMixerState_{true, true, false, 0.12f, SourceMixerSlotState::RouteTarget::Dry};
     std::vector<OutputMixerChannelState> outputMixerChannels_;
     std::vector<OutputMixerChannelState> renderOutputMixerChannels_;
     PlaceholderSourceState decorState_{false, true, 0};
-    PlaceholderSourceState piecesState_{false, true, 0};
     SaturatorState saturatorState_;
     ChorusState chorusState_;
     SidechainState sidechainState_;

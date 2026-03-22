@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <vector>
 
 #include "synth/dsp/Oscillator.hpp"
@@ -24,6 +25,36 @@ struct TestSourceState {
     dsp::Waveform waveform = dsp::Waveform::Sine;
     EnvelopeState envelope;
     std::vector<bool> outputs;
+};
+
+enum class PiecesOutputAlgorithm {
+    RoundRobin,
+    Random,
+    PingPong,
+    CenterOut,
+    Spray,
+};
+
+struct PiecesFeedbackState {
+    float amount = 0.18f;
+    float highPassHz = 120.0f;
+    float lowPassHz = 7500.0f;
+};
+
+struct PiecesSourceState {
+    bool implemented = true;
+    bool playable = true;
+    bool liveInputSupported = false;
+    float grainSizeMs = 140.0f;
+    float grainDensityHz = 6.0f;
+    std::uint32_t activeGrains = 8;
+    float position = 0.22f;
+    float positionJitter = 0.14f;
+    float pitchSemitones = 0.0f;
+    float pitchJitterCents = 10.0f;
+    PiecesOutputAlgorithm outputAlgorithm = PiecesOutputAlgorithm::RoundRobin;
+    float outputSpread = 0.35f;
+    PiecesFeedbackState feedback;
 };
 
 }  // namespace synth::app

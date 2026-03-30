@@ -30,15 +30,19 @@ void LowPassFilter::reset() {
     z2_ = 0.0f;
 }
 
-void LowPassFilter::setCutoffHz(float cutoffHz) {
+void LowPassFilter::setParameters(float cutoffHz, float resonance) {
     const float maxCutoffHz = std::max(kMinCutoffHz, static_cast<float>(sampleRate_ * kNyquistSafety));
     cutoffHz_ = std::clamp(cutoffHz, kMinCutoffHz, maxCutoffHz);
+    resonance_ = std::clamp(resonance, kMinResonance, kMaxResonance);
     updateCoefficients();
 }
 
+void LowPassFilter::setCutoffHz(float cutoffHz) {
+    setParameters(cutoffHz, resonance_);
+}
+
 void LowPassFilter::setResonance(float resonance) {
-    resonance_ = std::clamp(resonance, kMinResonance, kMaxResonance);
-    updateCoefficients();
+    setParameters(cutoffHz_, resonance);
 }
 
 float LowPassFilter::processSample(float inputSample) {

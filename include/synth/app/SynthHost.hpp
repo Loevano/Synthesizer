@@ -183,6 +183,7 @@ private:
     void processAudioBlockLocked(float* output, std::uint32_t frames, std::uint32_t channels);
     bool applyOutputEngineConfig(std::optional<std::string> outputDeviceId,
                                  std::optional<std::uint32_t> outputChannels,
+                                 std::optional<std::uint32_t> framesPerBuffer,
                                  std::string* errorMessage);
     void applyRobinLevelLocked(float level);
     void applyTestLevelLocked(float level);
@@ -244,6 +245,8 @@ private:
     mutable std::mutex mutex_;
     mutable std::mutex realtimeCommandMutex_;
     std::deque<RealtimeCommand> queuedRealtimeCommands_;
+    std::deque<RealtimeCommand> drainingRealtimeCommands_;
+    std::atomic<bool> queuedRealtimeCommandsPending_{false};
     mutable std::mutex stateSnapshotMutex_;
     mutable std::string stateJsonCache_;
     mutable std::atomic<bool> stateSnapshotDirty_{true};

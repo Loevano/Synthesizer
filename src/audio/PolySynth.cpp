@@ -370,8 +370,10 @@ void PolySynth::process(float* output, std::uint32_t frames, std::uint32_t chann
 
     const float gain = gain_.load();
     const std::size_t sampleCount = static_cast<std::size_t>(frames) * channels;
-    lfoModulationBuffer_.resize(sampleCount);
-    std::fill(lfoModulationBuffer_.begin(), lfoModulationBuffer_.end(), 1.0f);
+    if (lfoModulationBuffer_.size() < sampleCount) {
+        lfoModulationBuffer_.resize(sampleCount);
+    }
+    std::fill(lfoModulationBuffer_.begin(), lfoModulationBuffer_.begin() + sampleCount, 1.0f);
 
     for (std::uint32_t frame = 0; frame < frames; ++frame) {
         lfo_.renderFrame(lfoModulationBuffer_.data() + (frame * channels), channels);
@@ -396,6 +398,14 @@ void PolySynth::noteOff(std::uint32_t voiceIndex) {
     }
 
     voices_[voiceIndex].noteOff();
+}
+
+void PolySynth::clearVoice(std::uint32_t voiceIndex) {
+    if (voiceIndex >= voices_.size()) {
+        return;
+    }
+
+    voices_[voiceIndex].clearNote();
 }
 
 void PolySynth::clearNotes() {

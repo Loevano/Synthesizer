@@ -151,8 +151,8 @@ std::filesystem::path testLogDirectory() {
 
 std::vector<OutputDeviceInfo> makeTestDevices() {
     return {
-        {"device-a", "Device A", 8, true},
-        {"device-b", "Device B", 2, false},
+        {"device-a", "Device A", 8, 256, 32, 1024, true},
+        {"device-b", "Device B", 2, 128, 64, 512, false},
     };
 }
 
@@ -186,6 +186,12 @@ void testControllerInitializesFromInjectedDriver() {
     expect(stateJson.find("\"availableOutputDevices\"") != std::string::npos, "output devices included in state");
     expect(stateJson.find("\"id\":\"device-a\"") != std::string::npos, "device-a present in state");
     expect(stateJson.find("\"id\":\"device-b\"") != std::string::npos, "device-b present in state");
+    expect(
+        stateJson.find("\"sources\":[]},\"availableOutputDevices\":[") != std::string::npos,
+        "output devices serialized at engine level");
+    expect(
+        stateJson.find("\"sources\":[],\"availableOutputDevices\":[") == std::string::npos,
+        "output devices not nested inside midi state");
 }
 
 void testControllerOutputDeviceSelectionClampsChannels() {
@@ -215,6 +221,25 @@ void testControllerOutputChannelSelectionClampsToDeviceMaximum() {
     expect(controller.setParam("engine.outputChannels", 99.0, &errorMessage), "output channel update succeeds");
     expect(errorMessage.empty(), "no output channel update error");
     expectEqual(controller.config().channels, static_cast<std::uint32_t>(8), "channels clamped to device maximum");
+}
+
+void testControllerBufferSizeSelectionClampsToDeviceRange() {
+    synth::app::RuntimeConfig config;
+    config.framesPerBuffer = 256;
+    config.logDirectory = testLogDirectory();
+
+    synth::app::SynthHost controller(config, makeFakeDriver());
+    expect(controller.initialize(), "controller initializes");
+
+    std::string errorMessage;
+    expect(controller.setParam("engine.framesPerBuffer", 99999.0, &errorMessage), "buffer size update succeeds");
+    expect(errorMessage.empty(), "no buffer size update error");
+    expectEqual(controller.config().framesPerBuffer, static_cast<std::uint32_t>(1024), "buffer size clamped to device maximum");
+
+    const std::string refreshedStateJson = controller.stateJson();
+    expect(refreshedStateJson.find("\"framesPerBuffer\":1024") != std::string::npos, "buffer size flushed into state");
+    expect(refreshedStateJson.find("\"minBufferFrames\":32") != std::string::npos, "device buffer minimum in state");
+    expect(refreshedStateJson.find("\"maxBufferFrames\":1024") != std::string::npos, "device buffer maximum in state");
 }
 
 void testStateJsonRefreshesAfterParamMutation() {
@@ -367,6 +392,31 @@ void testRobinRetainsIndependentAssignmentsForRepeatedSamePitchNotes() {
         synth::app::RobinTestAccess::heldNoteCount(robin),
         static_cast<std::size_t>(0),
         "robin releases final same-pitch held note");
+}
+
+void testRobinVoiceStealRestartsFromSilence() {
+    synth::app::Robin robin;
+    robin.configureStructure(1, 1, 1);
+    robin.prepare(48000.0, 1);
+    robin.applyRealtimeCommand({synth::app::RealtimeCommandType::RobinMasterGain, 0, -1, 1.0f});
+    robin.applyRealtimeCommand({synth::app::RealtimeCommandType::RobinMasterEnvelopeAttackMs, 0, -1, 50.0f});
+    robin.applyRealtimeCommand({synth::app::RealtimeCommandType::RobinMasterEnvelopeDecayMs, 0, -1, 0.0f});
+    robin.applyRealtimeCommand({synth::app::RealtimeCommandType::RobinMasterEnvelopeSustain, 0, -1, 1.0f});
+    robin.applyRealtimeCommand({synth::app::RealtimeCommandType::RobinMasterEnvelopeReleaseMs, 0, -1, 200.0f});
+
+    std::vector<float> sustainedBuffer(4096, 0.0f);
+    robin.noteOn(60, 1.0f);
+    robin.process(sustainedBuffer.data(), static_cast<std::uint32_t>(sustainedBuffer.size()), 1, true, 1.0f);
+
+    const float sustainedLevel = meanAbsoluteLevel(sustainedBuffer, 3072, sustainedBuffer.size());
+    expect(sustainedLevel > 0.1f, "reference note reaches audible sustain level");
+
+    std::vector<float> stolenBuffer(96, 0.0f);
+    robin.noteOn(67, 1.0f);
+    robin.process(stolenBuffer.data(), static_cast<std::uint32_t>(stolenBuffer.size()), 1, true, 1.0f);
+
+    const float stolenLevel = meanAbsoluteLevel(stolenBuffer, 0, 32);
+    expect(stolenLevel < sustainedLevel * 0.25f, "voice steal restarts from near silence");
 }
 
 void testMidiInputParsesMultipleMessagesPerPacketAndTransportStop() {
@@ -809,6 +859,45 @@ void testQueuedRobinVoiceParamsRefreshStateWhileRunning() {
     expect(refreshedStateJson.find("\"gain\":0.27") != std::string::npos, "queued robin voice oscillator gain flushed");
 }
 
+void testVoiceCutoffChangeRampsSmoothlyWhileActive() {
+    synth::audio::Voice voice;
+    voice.configure(1);
+    voice.setSampleRate(48000.0);
+    voice.setActive(true);
+    voice.setWaveform(synth::dsp::Waveform::Saw);
+    voice.setFrequency(2000.0f);
+    voice.setGain(1.0f);
+    voice.setEnvelopeAttackSeconds(0.0f);
+    voice.setEnvelopeDecaySeconds(0.0f);
+    voice.setEnvelopeSustainLevel(1.0f);
+    voice.setEnvelopeReleaseSeconds(0.0f);
+    voice.setFilterCutoffHz(18000.0f);
+    voice.setFilterResonance(0.707f);
+    voice.noteOn();
+
+    std::vector<float> warmupBuffer(4096, 0.0f);
+    voice.process(
+        warmupBuffer.data(),
+        static_cast<std::uint32_t>(warmupBuffer.size()),
+        1,
+        1.0f,
+        nullptr);
+
+    voice.setFilterCutoffHz(200.0f);
+
+    std::vector<float> transitionBuffer(1024, 0.0f);
+    voice.process(
+        transitionBuffer.data(),
+        static_cast<std::uint32_t>(transitionBuffer.size()),
+        1,
+        1.0f,
+        nullptr);
+
+    const float earlyLevel = meanAbsoluteLevel(transitionBuffer, 0, 128);
+    const float lateLevel = meanAbsoluteLevel(transitionBuffer, 768, 1024);
+    expect(earlyLevel > lateLevel * 1.5f, "active cutoff change ramps instead of stepping immediately");
+}
+
 void testVoiceFilterEnvelopeStillClosesAtHighCutoff() {
     synth::audio::Voice voice;
     voice.configure(1);
@@ -934,11 +1023,13 @@ int main() {
         {"controller initializes from injected driver", testControllerInitializesFromInjectedDriver},
         {"controller output device selection clamps channels", testControllerOutputDeviceSelectionClampsChannels},
         {"controller output channels clamp to selected device maximum", testControllerOutputChannelSelectionClampsToDeviceMaximum},
+        {"controller buffer size selection clamps to device range", testControllerBufferSizeSelectionClampsToDeviceRange},
         {"state json refreshes after param mutation", testStateJsonRefreshesAfterParamMutation},
         {"queued realtime param refreshes state while running", testQueuedRealtimeParamRefreshesStateWhileRunning},
         {"queued global note refreshes state while running", testQueuedGlobalNoteRefreshesStateWhileRunning},
         {"repeated same-pitch global notes retain later instance", testQueuedRepeatedGlobalNoteRetainsLaterSamePitchInstance},
         {"robin keeps independent assignments for repeated same-pitch notes", testRobinRetainsIndependentAssignmentsForRepeatedSamePitchNotes},
+        {"robin voice steal restarts from silence", testRobinVoiceStealRestartsFromSilence},
         {"midi input parses multi-message packets and transport stop", testMidiInputParsesMultipleMessagesPerPacketAndTransportStop},
         {"midi source connections preserve user choices across structure restart", testMidiSourceConnectionsPreserveUserChoicesAcrossStructureRestart},
         {"midi source routes preserve user choices across structure restart", testMidiSourceRoutesPreserveUserChoicesAcrossStructureRestart},
@@ -947,6 +1038,7 @@ int main() {
         {"queued robin spread params refresh state while running", testQueuedRobinSpreadParamsRefreshStateWhileRunning},
         {"queued test and mixer/fx params refresh state while running", testQueuedTestAndMixerFxParamsRefreshStateWhileRunning},
         {"queued robin voice params refresh state while running", testQueuedRobinVoiceParamsRefreshStateWhileRunning},
+        {"voice cutoff change ramps smoothly while active", testVoiceCutoffChangeRampsSmoothlyWhileActive},
         {"voice filter envelope closes even with high cutoff", testVoiceFilterEnvelopeStillClosesAtHighCutoff},
         {"chorus depth transition fades in wet path", testChorusDepthTransitionFadesInWetPath},
         {"live graph render order respects dry and fx routing", testLiveGraphDryFxRenderOrder},

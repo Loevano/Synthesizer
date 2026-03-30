@@ -54,6 +54,8 @@ public:
                    const float* outputModulation);
 
 private:
+    void updateFilterSmoothingCoefficient();
+    void syncFilterParametersImmediately();
     void updateOscillatorFrequency(OscillatorSlot& slot);
 
     std::vector<OscillatorSlot> oscillators_;
@@ -69,7 +71,10 @@ private:
     float gain_ = 1.0f;
     float filterCutoffHz_ = 18000.0f;
     float filterResonance_ = 0.707f;
+    float filterSmoothedCutoffHz_ = 18000.0f;
+    float filterSmoothedResonance_ = 0.707f;
     float filterEnvelopeAmount_ = 0.0f;
+    float filterSmoothingCoefficient_ = 1.0f;
 };
 
 }  // namespace synth::audio

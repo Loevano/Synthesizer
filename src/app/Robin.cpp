@@ -2263,12 +2263,11 @@ std::uint32_t Robin::allocateVoice() {
             return assignment.voiceIndex == selectedVoice;
         });
     if (voiceAssignment != voiceAssignments_.end()) {
-        sourceNode_.engine().noteOff(voiceAssignment->voiceIndex);
+        // Stealing a voice should restart it from silence rather than
+        // retuning a still-audible release tail.
+        sourceNode_.engine().clearVoice(voiceAssignment->voiceIndex);
         if (selectedVoice < voiceReleaseUntil_.size()) {
-            const auto& voice = voices_[selectedVoice];
-            const float releaseMs = voice.linkedToMaster ? envelopeState_.releaseMs : voice.envelope.releaseMs;
-            voiceReleaseUntil_[selectedVoice] =
-                std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(std::ceil(releaseMs)));
+            voiceReleaseUntil_[selectedVoice] = std::chrono::steady_clock::time_point::min();
         }
 
         const auto heldNote = std::find_if(

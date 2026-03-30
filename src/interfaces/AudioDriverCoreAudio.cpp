@@ -3,6 +3,7 @@
 #include "synth/core/Logger.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <vector>
 
@@ -127,6 +128,52 @@ std::uint32_t queryOutputChannelCount(AudioDeviceID deviceId) {
     return channelCount;
 }
 
+std::uint32_t queryCurrentBufferFrameSize(AudioDeviceID deviceId) {
+    UInt32 bufferFrames = 0;
+    UInt32 size = sizeof(bufferFrames);
+    AudioObjectPropertyAddress address{
+        kAudioDevicePropertyBufferFrameSize,
+        kAudioObjectPropertyScopeGlobal,
+        kAudioObjectPropertyElementMain
+    };
+
+    if (AudioObjectGetPropertyData(deviceId, &address, 0, nullptr, &size, &bufferFrames) != noErr) {
+        return 0;
+    }
+
+    return bufferFrames;
+}
+
+std::pair<std::uint32_t, std::uint32_t> queryBufferFrameSizeRange(AudioDeviceID deviceId) {
+    AudioObjectPropertyAddress address{
+        kAudioDevicePropertyBufferFrameSizeRange,
+        kAudioObjectPropertyScopeGlobal,
+        kAudioObjectPropertyElementMain
+    };
+
+    UInt32 size = 0;
+    if (AudioObjectGetPropertyDataSize(deviceId, &address, 0, nullptr, &size) != noErr || size == 0) {
+        return {0, 0};
+    }
+
+    std::vector<AudioValueRange> ranges(size / sizeof(AudioValueRange));
+    if (AudioObjectGetPropertyData(deviceId, &address, 0, nullptr, &size, ranges.data()) != noErr || ranges.empty()) {
+        return {0, 0};
+    }
+
+    double minFrames = ranges.front().mMinimum;
+    double maxFrames = ranges.front().mMaximum;
+    for (const auto& range : ranges) {
+        minFrames = std::min(minFrames, range.mMinimum);
+        maxFrames = std::max(maxFrames, range.mMaximum);
+    }
+
+    return {
+        static_cast<std::uint32_t>(std::max(0.0, std::round(minFrames))),
+        static_cast<std::uint32_t>(std::max(0.0, std::round(maxFrames))),
+    };
+}
+
 std::vector<OutputDeviceDescriptor> queryOutputDeviceDescriptors() {
     AudioObjectPropertyAddress address{
         kAudioHardwarePropertyDevices,
@@ -165,6 +212,10 @@ std::vector<OutputDeviceDescriptor> queryOutputDeviceDescriptors() {
             descriptor.info.name = "Output Device " + std::to_string(static_cast<unsigned int>(deviceId));
         }
         descriptor.info.outputChannels = outputChannels;
+        descriptor.info.currentBufferFrames = queryCurrentBufferFrameSize(deviceId);
+        const auto [minBufferFrames, maxBufferFrames] = queryBufferFrameSizeRange(deviceId);
+        descriptor.info.minBufferFrames = minBufferFrames;
+        descriptor.info.maxBufferFrames = maxBufferFrames;
         descriptor.info.isDefault = deviceId == defaultOutputDeviceId;
         devices.push_back(std::move(descriptor));
     }
@@ -273,6 +324,13 @@ public:
             sizeof(disableInput));
 
         AudioDeviceID deviceId = selectedDevice->deviceId;
+        const std::uint32_t previousBufferFrames = queryCurrentBufferFrameSize(deviceId);
+        const std::uint32_t minBufferFrames = selectedDevice->info.minBufferFrames;
+        const std::uint32_t maxBufferFrames = selectedDevice->info.maxBufferFrames;
+        const std::uint32_t requestedBufferFrames = maxBufferFrames > 0
+            ? std::clamp(config_.framesPerBuffer, std::max(1u, minBufferFrames), maxBufferFrames)
+            : std::max<std::uint32_t>(1, config_.framesPerBuffer);
+
         const OSStatus bindDeviceStatus = AudioUnitSetProperty(
                 audioUnit_,
                 kAudioOutputUnitProperty_CurrentDevice,
@@ -285,6 +343,47 @@ public:
             AudioComponentInstanceDispose(audioUnit_);
             audioUnit_ = nullptr;
             return false;
+        }
+
+        previousBufferFrames_ = previousBufferFrames;
+        selectedDeviceId_ = deviceId;
+        restoreBufferFramesOnStop_ = previousBufferFrames_ > 0 && previousBufferFrames_ != requestedBufferFrames;
+
+        if (restoreBufferFramesOnStop_) {
+            UInt32 nextBufferFrames = requestedBufferFrames;
+            AudioObjectPropertyAddress bufferSizeAddress{
+                kAudioDevicePropertyBufferFrameSize,
+                kAudioObjectPropertyScopeGlobal,
+                kAudioObjectPropertyElementMain
+            };
+            const OSStatus bufferSizeStatus = AudioObjectSetPropertyData(
+                deviceId,
+                &bufferSizeAddress,
+                0,
+                nullptr,
+                sizeof(nextBufferFrames),
+                &nextBufferFrames);
+            if (bufferSizeStatus != noErr) {
+                logger_.error(formatStatusMessage("CoreAudio: failed to set device buffer size", bufferSizeStatus));
+                AudioComponentInstanceDispose(audioUnit_);
+                audioUnit_ = nullptr;
+                selectedDeviceId_ = kAudioObjectUnknown;
+                previousBufferFrames_ = 0;
+                restoreBufferFramesOnStop_ = false;
+                return false;
+            }
+        }
+        config_.framesPerBuffer = requestedBufferFrames;
+
+        const OSStatus maxFramesStatus = AudioUnitSetProperty(
+            audioUnit_,
+            kAudioUnitProperty_MaximumFramesPerSlice,
+            kAudioUnitScope_Global,
+            0,
+            &config_.framesPerBuffer,
+            sizeof(config_.framesPerBuffer));
+        if (maxFramesStatus != noErr) {
+            logger_.warn(formatStatusMessage("CoreAudio: failed to set maximum frames per slice", maxFramesStatus));
         }
 
         AudioStreamBasicDescription format{};
@@ -306,6 +405,7 @@ public:
             sizeof(format));
         if (formatStatus != noErr) {
             logger_.error(formatStatusMessage("CoreAudio: failed to set stream format", formatStatus));
+            restorePreviousBufferFramesIfNeeded();
             AudioComponentInstanceDispose(audioUnit_);
             audioUnit_ = nullptr;
             return false;
@@ -325,6 +425,7 @@ public:
             sizeof(callbackStruct));
         if (callbackStatus != noErr) {
             logger_.error(formatStatusMessage("CoreAudio: failed to set render callback", callbackStatus));
+            restorePreviousBufferFramesIfNeeded();
             AudioComponentInstanceDispose(audioUnit_);
             audioUnit_ = nullptr;
             return false;
@@ -333,6 +434,7 @@ public:
         const OSStatus initializeStatus = AudioUnitInitialize(audioUnit_);
         if (initializeStatus != noErr) {
             logger_.error(formatStatusMessage("CoreAudio: failed to initialize audio unit", initializeStatus));
+            restorePreviousBufferFramesIfNeeded();
             AudioComponentInstanceDispose(audioUnit_);
             audioUnit_ = nullptr;
             return false;
@@ -344,6 +446,7 @@ public:
         if (startStatus != noErr) {
             logger_.error(formatStatusMessage("CoreAudio: failed to start output unit", startStatus));
             AudioUnitUninitialize(audioUnit_);
+            restorePreviousBufferFramesIfNeeded();
             AudioComponentInstanceDispose(audioUnit_);
             audioUnit_ = nullptr;
             return false;
@@ -365,6 +468,8 @@ public:
         audioUnit_ = nullptr;
         running_ = false;
         callback_ = nullptr;
+
+        restorePreviousBufferFramesIfNeeded();
     }
 
     bool isRunning() const override {
@@ -440,12 +545,45 @@ private:
         }
     }
 
+    void restorePreviousBufferFramesIfNeeded() {
+        if (!restoreBufferFramesOnStop_ || selectedDeviceId_ == kAudioObjectUnknown || previousBufferFrames_ == 0) {
+            selectedDeviceId_ = kAudioObjectUnknown;
+            previousBufferFrames_ = 0;
+            restoreBufferFramesOnStop_ = false;
+            return;
+        }
+
+        UInt32 restoredBufferFrames = previousBufferFrames_;
+        AudioObjectPropertyAddress bufferSizeAddress{
+            kAudioDevicePropertyBufferFrameSize,
+            kAudioObjectPropertyScopeGlobal,
+            kAudioObjectPropertyElementMain
+        };
+        const OSStatus restoreStatus = AudioObjectSetPropertyData(
+            selectedDeviceId_,
+            &bufferSizeAddress,
+            0,
+            nullptr,
+            sizeof(restoredBufferFrames),
+            &restoredBufferFrames);
+        if (restoreStatus != noErr) {
+            logger_.warn(formatStatusMessage("CoreAudio: failed to restore previous device buffer size", restoreStatus));
+        }
+
+        selectedDeviceId_ = kAudioObjectUnknown;
+        previousBufferFrames_ = 0;
+        restoreBufferFramesOnStop_ = false;
+    }
+
     core::Logger& logger_;
     AudioUnit audioUnit_ = nullptr;
     AudioCallback callback_;
     AudioConfig config_;
     bool running_ = false;
     std::vector<float> scratchBuffer_;
+    AudioDeviceID selectedDeviceId_ = kAudioObjectUnknown;
+    std::uint32_t previousBufferFrames_ = 0;
+    bool restoreBufferFramesOnStop_ = false;
 };
 
 #else

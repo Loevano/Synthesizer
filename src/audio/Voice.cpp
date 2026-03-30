@@ -13,6 +13,7 @@ constexpr float kMaxFilterCutoffHz = 20000.0f;
 constexpr float kMinFilterResonance = 0.1f;
 constexpr float kMaxFilterResonance = 10.0f;
 constexpr float kMaxFilterEnvelopeOctaves = 6.0f;
+constexpr float kFilterSmoothingTimeSeconds = 0.005f;
 
 float computeFilterEnvelopeCutoff(float baseCutoffHz, float envelopeAmount, float envelopeValue) {
     const float envelopeDepth = std::clamp(1.0f - envelopeValue, 0.0f, 1.0f);
@@ -43,8 +44,8 @@ void Voice::configure(std::uint32_t oscillatorCount) {
     envelope_.setSampleRate(sampleRate_);
     filterEnvelope_.setSampleRate(sampleRate_);
     filter_.prepare(sampleRate_);
-    filter_.setCutoffHz(filterCutoffHz_);
-    filter_.setResonance(filterResonance_);
+    updateFilterSmoothingCoefficient();
+    syncFilterParametersImmediately();
 
     if (outputEnabled_.empty()) {
         outputEnabled_.push_back(true);
@@ -60,8 +61,8 @@ void Voice::setSampleRate(double sampleRate) {
     envelope_.setSampleRate(sampleRate_);
     filterEnvelope_.setSampleRate(sampleRate_);
     filter_.prepare(sampleRate_);
-    filter_.setCutoffHz(filterCutoffHz_);
-    filter_.setResonance(filterResonance_);
+    updateFilterSmoothingCoefficient();
+    syncFilterParametersImmediately();
     for (auto& slot : oscillators_) {
         slot.oscillator.setSampleRate(sampleRate_);
         updateOscillatorFrequency(slot);
@@ -157,12 +158,16 @@ void Voice::setEnvelopeReleaseSeconds(float releaseSeconds) {
 
 void Voice::setFilterCutoffHz(float cutoffHz) {
     filterCutoffHz_ = std::clamp(cutoffHz, kMinFilterCutoffHz, kMaxFilterCutoffHz);
-    filter_.setCutoffHz(filterCutoffHz_);
+    if (!envelope_.isActive() && !filterEnvelope_.isActive()) {
+        syncFilterParametersImmediately();
+    }
 }
 
 void Voice::setFilterResonance(float resonance) {
     filterResonance_ = std::clamp(resonance, kMinFilterResonance, kMaxFilterResonance);
-    filter_.setResonance(filterResonance_);
+    if (!envelope_.isActive() && !filterEnvelope_.isActive()) {
+        syncFilterParametersImmediately();
+    }
 }
 
 void Voice::setFilterEnvelopeAttackSeconds(float attackSeconds) {
@@ -253,6 +258,26 @@ void Voice::clearNote() {
     envelope_.reset();
     filterEnvelope_.reset();
     filter_.reset();
+    syncFilterParametersImmediately();
+    for (auto& slot : oscillators_) {
+        slot.oscillator.resetPhase();
+    }
+}
+
+void Voice::updateFilterSmoothingCoefficient() {
+    if (sampleRate_ <= 0.0) {
+        filterSmoothingCoefficient_ = 1.0f;
+        return;
+    }
+
+    filterSmoothingCoefficient_ =
+        1.0f - std::exp(-1.0f / (kFilterSmoothingTimeSeconds * static_cast<float>(sampleRate_)));
+}
+
+void Voice::syncFilterParametersImmediately() {
+    filterSmoothedCutoffHz_ = filterCutoffHz_;
+    filterSmoothedResonance_ = filterResonance_;
+    filter_.setParameters(filterSmoothedCutoffHz_, filterSmoothedResonance_);
 }
 
 void Voice::updateOscillatorFrequency(OscillatorSlot& slot) {
@@ -307,10 +332,12 @@ void Voice::process(float* output,
         }
 
         const float filterEnvelopeValue = filterEnvelope_.nextValue();
+        filterSmoothedCutoffHz_ += (filterCutoffHz_ - filterSmoothedCutoffHz_) * filterSmoothingCoefficient_;
+        filterSmoothedResonance_ += (filterResonance_ - filterSmoothedResonance_) * filterSmoothingCoefficient_;
         // Treat the cutoff control as the envelope ceiling so the filter contour still reads at high cutoff settings.
         const float filterCutoffHz =
-            computeFilterEnvelopeCutoff(filterCutoffHz_, filterEnvelopeAmount_, filterEnvelopeValue);
-        filter_.setCutoffHz(filterCutoffHz);
+            computeFilterEnvelopeCutoff(filterSmoothedCutoffHz_, filterEnvelopeAmount_, filterEnvelopeValue);
+        filter_.setParameters(filterCutoffHz, filterSmoothedResonance_);
         sample = filter_.processSample(sample);
 
         const float envelopeValue = envelope_.nextValue();

@@ -25,8 +25,10 @@ void RobinSourceNode::process(float* output, std::uint32_t frames, std::uint32_t
     }
 
     const std::size_t sampleCount = static_cast<std::size_t>(frames) * channels;
-    renderBuffer_.resize(sampleCount);
-    std::fill(renderBuffer_.begin(), renderBuffer_.end(), 0.0f);
+    if (renderBuffer_.size() < sampleCount) {
+        renderBuffer_.resize(sampleCount);
+    }
+    std::fill(renderBuffer_.begin(), renderBuffer_.begin() + sampleCount, 0.0f);
     engine_.process(renderBuffer_.data(), frames, channels);
 
     const float targetGain = targetGain_.load();

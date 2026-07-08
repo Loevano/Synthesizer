@@ -119,7 +119,7 @@ public:
     bool startAudio();
     void stopAudio();
     bool isRunning() const;
-    std::string stateJson() const;
+    std::string stateJson();
     bool setParam(std::string_view path, double value, std::string* errorMessage);
     bool setParam(std::string_view path, std::string_view value, std::string* errorMessage);
 
@@ -148,6 +148,8 @@ private:
     static const interfaces::OutputDeviceInfo* findOutputDevice(
         const std::vector<interfaces::OutputDeviceInfo>& outputDevices,
         std::string_view outputDeviceId);
+    static bool outputDeviceListsEqual(const std::vector<interfaces::OutputDeviceInfo>& left,
+                                       const std::vector<interfaces::OutputDeviceInfo>& right);
     static std::string escapeJson(std::string_view value);
     static bool tryParseIndex(std::string_view value, std::uint32_t& index);
     static float midiNoteToFrequency(int noteNumber);
@@ -160,6 +162,7 @@ private:
     void applyRenderStateCommandLocked(const RealtimeCommand& command);
     std::string buildStateJsonLocked() const;
     void markStateSnapshotDirty() const;
+    bool refreshOutputDevicesLocked(std::vector<interfaces::OutputDeviceInfo> outputDevices);
     void buildLiveGraphLocked();
     void buildDefaultStateLocked();
     void resizeScaffoldStateLocked();
@@ -232,6 +235,7 @@ private:
     std::vector<MidiSourceConnectionState> midiSourceConnections_;
     std::vector<MidiSourceRouteState> midiSourceRoutes_;
     std::vector<MidiSourceRouteState> renderMidiSourceRoutes_;
+    std::vector<interfaces::OutputDeviceInfo> outputDevices_;
     std::string audioBackendName_ = "Unknown";
     std::string outputDeviceName_ = "Unknown";
     std::uint16_t oscPort_ = 9000;

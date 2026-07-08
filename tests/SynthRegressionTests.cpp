@@ -95,6 +95,10 @@ public:
         return devices_;
     }
 
+    void setDevices(std::vector<OutputDeviceInfo> devices) {
+        devices_ = std::move(devices);
+    }
+
     const AudioConfig& lastConfig() const {
         return lastConfig_;
     }
@@ -192,6 +196,32 @@ void testControllerInitializesFromInjectedDriver() {
     expect(
         stateJson.find("\"sources\":[],\"availableOutputDevices\":[") == std::string::npos,
         "output devices not nested inside midi state");
+}
+
+void testStateJsonRefreshesOutputDeviceInventoryAfterCacheHit() {
+    synth::app::RuntimeConfig config;
+    config.logDirectory = testLogDirectory();
+
+    auto driver = std::make_unique<FakeAudioDriver>(std::vector<OutputDeviceInfo>{
+        {"device-a", "Device A", 2, 256, 32, 1024, true},
+    });
+    auto* driverPtr = driver.get();
+    synth::app::SynthHost controller(config, std::move(driver));
+    expect(controller.initialize(), "controller initializes");
+
+    const std::string initialStateJson = controller.stateJson();
+    expect(initialStateJson.find("\"id\":\"device-a\"") != std::string::npos, "initial device present in state");
+    expect(initialStateJson.find("\"id\":\"device-c\"") == std::string::npos, "new device absent before driver refresh");
+
+    driverPtr->setDevices({
+        {"device-a", "Device A", 2, 256, 32, 1024, false},
+        {"device-c", "Device C", 4, 128, 64, 2048, true},
+    });
+
+    const std::string refreshedStateJson = controller.stateJson();
+    expect(refreshedStateJson.find("\"id\":\"device-a\"") != std::string::npos, "existing device remains in refreshed state");
+    expect(refreshedStateJson.find("\"id\":\"device-c\"") != std::string::npos, "new device appears after cached state refresh");
+    expect(refreshedStateJson.find("\"name\":\"Device C\"") != std::string::npos, "new device metadata appears in state");
 }
 
 void testControllerOutputDeviceSelectionClampsChannels() {
@@ -1021,6 +1051,7 @@ void testLiveGraphDryFxRenderOrder() {
 int main() {
     const std::vector<TestCase> tests{
         {"controller initializes from injected driver", testControllerInitializesFromInjectedDriver},
+        {"state json refreshes output device inventory after cache hit", testStateJsonRefreshesOutputDeviceInventoryAfterCacheHit},
         {"controller output device selection clamps channels", testControllerOutputDeviceSelectionClampsChannels},
         {"controller output channels clamp to selected device maximum", testControllerOutputChannelSelectionClampsToDeviceMaximum},
         {"controller buffer size selection clamps to device range", testControllerBufferSizeSelectionClampsToDeviceRange},

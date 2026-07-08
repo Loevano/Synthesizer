@@ -2650,9 +2650,31 @@ function syncSelectOptions(select, options, selectedValue) {
   }
 }
 
+function hasVisibleOutputDeviceName(name) {
+  const normalizedName = String(name ?? "").trim().toLowerCase();
+  return normalizedName !== ""
+    && normalizedName !== "unknown"
+    && normalizedName !== "unavailable"
+    && normalizedName !== "loading...";
+}
+
 function renderEngineOutputControls(engine) {
-  const devices = Array.isArray(engine.availableOutputDevices) ? engine.availableOutputDevices : [];
-  const selectedDeviceId = engine.selectedOutputDeviceId ?? "";
+  let devices = Array.isArray(engine.availableOutputDevices) ? engine.availableOutputDevices : [];
+  let selectedDeviceId = engine.selectedOutputDeviceId ?? "";
+  if (!devices.length && hasVisibleOutputDeviceName(engine.outputDeviceName)) {
+    selectedDeviceId = selectedDeviceId || "__current_output_device";
+    devices = [{
+      id: selectedDeviceId,
+      name: engine.outputDeviceName,
+      outputChannels: Number(engine.maxOutputChannels ?? engine.outputChannels ?? 1),
+      currentBufferFrames: Number(engine.framesPerBuffer ?? 256),
+      minBufferFrames: 16,
+      maxBufferFrames: 4096,
+      isDefault: true,
+      synthetic: true,
+    }];
+  }
+
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? null;
   const maxOutputChannels = Math.max(1, Number(selectedDevice?.outputChannels ?? engine.maxOutputChannels ?? engine.outputChannels ?? 1));
 
@@ -2700,11 +2722,11 @@ function renderEngineOutputControls(engine) {
     elements.engineOutputDevice,
     devices.map((device) => ({
       value: device.id,
-      label: `${device.name} (${device.outputChannels} outs${device.isDefault ? ", default" : ""})`,
+      label: `${device.name} (${device.outputChannels} outs${device.isDefault ? ", default" : ""}${device.synthetic ? ", current" : ""})`,
     })),
     selectedDeviceId,
   );
-  elements.engineOutputDevice.disabled = devices.length === 0;
+  elements.engineOutputDevice.disabled = devices.length === 0 || devices.every((device) => device.synthetic);
 
   syncSelectOptions(
     elements.engineOutputChannels,

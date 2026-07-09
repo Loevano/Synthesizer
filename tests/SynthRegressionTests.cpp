@@ -196,6 +196,15 @@ void testControllerInitializesFromInjectedDriver() {
     expect(
         stateJson.find("\"sources\":[],\"availableOutputDevices\":[") == std::string::npos,
         "output devices not nested inside midi state");
+    expect(
+        stateJson.find(
+            "\"sourceMixer\":{\"robin\":{\"available\":true,\"implemented\":true,\"enabled\":true,"
+            "\"level\":0.15,\"routeTarget\":\"dry\"}")
+            != std::string::npos,
+        "robin source mixer starts enabled");
+    expect(
+        stateJson.find("\"activeSourceNodes\":[\"robin\",\"test\"]") != std::string::npos,
+        "robin is active by default");
 }
 
 void testStateJsonRefreshesOutputDeviceInventoryAfterCacheHit() {

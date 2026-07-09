@@ -100,7 +100,7 @@ const ROBIN_SPREAD_TARGET_CONFIG = {
 
 const UI_RESET_DEFAULTS = {
   sourceMixer: {
-    robin: { enabled: false, level: 0.15, routeTarget: "dry" },
+    robin: { enabled: true, level: 0.15, routeTarget: "dry" },
     test: { enabled: true, level: 0.15, routeTarget: "dry" },
     decor: { enabled: false, level: 0, routeTarget: "dry" },
     pieces: { enabled: false, level: 0, routeTarget: "dry" },

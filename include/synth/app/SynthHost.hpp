@@ -217,11 +217,11 @@ private:
     graph::FxRackNode fxRackNode_;
     graph::OutputMixerNode outputMixerNode_;
     graph::LiveGraph liveGraph_;
-    SourceMixerSlotState robinMixerState_{true, true, false, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
+    SourceMixerSlotState robinMixerState_{true, true, true, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState testMixerState_{true, true, true, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState decorMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState piecesMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
-    SourceMixerSlotState renderRobinMixerState_{true, true, false, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
+    SourceMixerSlotState renderRobinMixerState_{true, true, true, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState renderTestMixerState_{true, true, true, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState renderDecorMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState renderPiecesMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};

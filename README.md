@@ -68,6 +68,15 @@ Run the macOS app:
 This launches the `.app` bundle through LaunchServices. Avoid running
 `Synthesizer.app/Contents/MacOS/Synthesizer` directly from the terminal.
 
+Build a clickable macOS app bundle from the current checkout:
+
+```bash
+./scripts/build-app.sh
+```
+
+This creates `build-app/Synthesizer.app`. By default it builds a universal
+Apple Silicon + Intel bundle and ad-hoc signs it locally.
+
 Run the CLI host:
 
 ```bash

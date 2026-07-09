@@ -11,6 +11,7 @@ Right now the repo has:
 Current branch intent:
 - `dev` is for source/integration work
 - `main` is for stable tagged releases
+- release promotion should happen through a reviewed `dev -> main` PR
 
 Release workflow intent:
 - `dev` should not be used for public downloadable app releases
@@ -76,6 +77,7 @@ git push origin v1.0.0
 ```
 
 That triggers the release workflow. The intended flow is:
+- promote tested `dev` into `main` through PR
 - verify the tagged commit is on `main`
 - build the app
 - package it into a `.zip`

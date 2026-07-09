@@ -2,6 +2,8 @@
 
 This project should normally land changes through short-lived branches into `dev`, then promote `dev` into `main`.
 
+For the strict branch and protected-path policy, read [GIT_RULES.md](GIT_RULES.md).
+
 ## Initial setup
 
 If the repo is not connected to GitHub yet:
@@ -21,8 +23,14 @@ This creates a private repo, adds `origin`, and pushes the current branch.
   Integration branch for tested ongoing work.
 - `feature/<name>`
   Short-lived work branch created from `dev`.
+- `fix/<name>`, `docs/<name>`, `ui/<name>`, `test/<name>`, `chore/<name>`, `infra/<name>`
+  Short-lived focused work branches created from `dev`.
+- `core/<name>`, `dsp/<name>`, `routing/<name>`, `architecture/<name>`
+  Explicit protected-path branches created from `dev`.
 - `hotfix/<name>`
   Urgent fix branch created from `main`.
+
+Protected branches must not receive direct local commits or direct pushes. Use PRs.
 
 ## Standard branch flow
 
@@ -48,6 +56,8 @@ git add path/to/file
 git add another/file
 git commit -m "Add crash diagnostics and bridge breadcrumbs"
 ```
+
+Do not use `git add .` for normal work. The repo hooks and helper script are designed around intentional staging.
 
 Push:
 
@@ -106,19 +116,28 @@ Important note:
 A good PR should say:
 - what changed
 - why it changed
+- whether protected core paths changed
 - how it was verified
 - any known risk or remaining gap
 
 Keep PRs focused. Avoid mixing unrelated UI polish, DSP fixes, routing changes, and docs cleanup unless they are directly tied to one issue.
 
+Install the local hooks before contributing:
+
+```bash
+./scripts/install-git-hooks.sh
+```
+
 ## If You Are Using A Coding Agent
 
 Recommended workflow:
 1. make a branch first
-2. ask for one focused change
+2. give the agent one focused scope
 3. verify the result
 4. ask for commit and push
 5. open a PR into `dev`
+
+Tell the agent which protected paths are off limits. If a protected-path change becomes necessary, stop and move to an explicit `core/`, `dsp/`, `routing/`, `architecture/`, `infra/`, or `hotfix/` branch.
 
 If the change is UI-heavy, include screenshots.
 If the change is crash-related, run:
@@ -156,3 +175,4 @@ For `dev`:
 - require pull requests before merge
 - require passing CI checks
 - block force pushes
+- block deletion

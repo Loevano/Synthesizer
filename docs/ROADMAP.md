@@ -27,10 +27,12 @@ Already in place:
 - CoreMIDI input
 - OSC control surface
 - patch save/load flow
+- Robin LFO
+- Robin spread slots and macro depth controls
 
 Still missing:
 
-- deeper modulation system
+- broader modulation destination model
 - `Decor` DSP
 - `Pieces` DSP
 - full saturator
@@ -38,6 +40,19 @@ Still missing:
 - broader automated regression coverage
 
 ## Platform roadmap
+
+### 0. Keep collaboration safe
+
+Goal:
+
+- make parallel human and agent work easier to review and less likely to collide
+
+Scope:
+
+- keep protected-path rules current
+- keep PRs small and branch-scoped
+- avoid broad rewrites while core architecture is still moving
+- update docs in the same PR when contracts change
 
 ### 1. Keep the parameter thread model tight
 
@@ -102,7 +117,7 @@ Scope:
 - keep local voice override behavior predictable
 - improve remaining edge cases around voice stealing and release tails
 
-### B. Expand modulation carefully
+### B. Harden and expand modulation carefully
 
 Goal:
 
@@ -110,10 +125,11 @@ Goal:
 
 Scope:
 
-- section-level modulators
-- voice spread algorithms
+- keep current LFO behavior stable
+- broaden spread targets only when the destination model is clear
 - routing-aware modulation
 - clearer destination naming such as `VCF ENV` and `VCA ENV`
+- regression coverage for LFO/spread state and render handoff
 
 ### C. Expand the FX rack
 
@@ -164,10 +180,11 @@ Scope:
 
 ## Recommended order
 
-1. Keep the parameter thread model explicit and tested.
-2. Expand routing and allocator regression coverage.
-3. Keep Robin stable as the reference live source.
-4. Expand modulation one coherent layer at a time.
-5. Expand the FX rack beyond chorus.
-6. Implement `Decor`.
-7. Implement `Pieces`.
+1. Keep collaboration guardrails installed and documented.
+2. Keep the parameter thread model explicit and tested.
+3. Expand routing and allocator regression coverage.
+4. Keep Robin stable as the reference live source.
+5. Expand modulation one coherent layer at a time.
+6. Expand the FX rack beyond chorus.
+7. Implement `Decor`.
+8. Implement `Pieces`.

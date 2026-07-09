@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+- Added a documentation index and a strict collaboration rulebook for branch scope, protected core paths, PRs, and agent workflow.
+- Added installable local Git hooks for branch naming, protected-path checks, direct push protection, staged-change size limits, and commit message quality.
+- Updated the commit helper so it no longer stages the whole repo by default.
+- Added a pull request template with protected-path and verification prompts.
+- Audited and refreshed user, overview, architecture, data-flow, roadmap, and product docs against the current Patch Menu, Robin LFO, spread modulation, and FX scaffold status.
+
 ## 1.1.0 - 2026-03-20
 - Added patch save/load workflow with:
   - UI temp patch state

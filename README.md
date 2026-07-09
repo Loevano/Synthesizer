@@ -44,6 +44,12 @@ cd Synthesizer
 ./scripts/build.sh
 ```
 
+If you are contributing with another person or coding agents, install the local Git hooks:
+
+```bash
+./scripts/install-git-hooks.sh
+```
+
 If you just want to try the app and a release is available, you do not need Xcode.
 Download the packaged `.zip` from GitHub Releases, unzip it, and run `Synthesizer.app`.
 
@@ -152,14 +158,14 @@ Current live signal path:
 
 - `Program`
 - `MIDI`
-- `Source Mixer`
-- `Output Mixer`
+- `Sources`
+- `Outputs`
 - `Robin`
 - `Test`
-- `Decor`
-- `Pieces`
 - `FX`
 - `LFO`
+- `Decor`
+- `Pieces`
 
 ### Main Code Areas
 
@@ -190,6 +196,8 @@ The project is working, but still clearly in active development.
 - Robin supports `Enabled` and `Linked to Master` voice states
 - one expanded local voice editor can be open at a time
 - Robin has per-voice oscillator bank, `VCF`, `VCF ENV`, and `VCA ENV`
+- Robin has live LFO controls, spread slots, and macro depth controls
+- patch save/load is live from the Patch Menu
 - source mixer supports dry vs FX path routing
 - output mixer supports per-output level, delay, and EQ
 - `Chorus` is live
@@ -201,9 +209,9 @@ The project is working, but still clearly in active development.
 
 - the app is macOS-first rather than fully cross-platform
 - `Decor` and `Pieces` are still placeholders
-- `Saturator` and `Sidechain` are scaffolded but not fully developed
-- the architecture is still being cleaned up and split into clearer instrument boundaries
-- Robin still has some older pitch-state concepts that may be simplified further
+- `Saturator` and `Sidechain` have UI/state scaffolds but no DSP yet
+- broader modulation destinations still need careful design
+- automated coverage is useful but still focused
 
 ### In One Sentence
 
@@ -211,8 +219,11 @@ This is already usable as a multichannel synth sandbox, but it is still an evolv
 
 ## Documentation
 
+- Documentation index: [docs/README.md](docs/README.md)
 - Overview: [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)
 - User manual: [docs/User Manual.md](docs/User%20Manual.md)
+- Contributing: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
+- Strict Git rules: [docs/GIT_RULES.md](docs/GIT_RULES.md)
 - Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Data flow: [docs/Data flow.md](docs/Data%20flow.md)
 - Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md)
@@ -221,19 +232,28 @@ This is already usable as a multichannel synth sandbox, but it is still an evolv
 - Feature notes: [docs/What should it do?.md](docs/What%20should%20it%20do%3F.md)
 - Changelog: [docs/CHANGELOG.md](docs/CHANGELOG.md)
 - GitHub workflow: [docs/GITHUB.md](docs/GITHUB.md)
-- Contributing: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
 
 ## Branch Workflow
 
-This repo now uses:
-- `main` for stable, shareable builds
-- `dev` for ongoing tested integration work
-- short-lived `feature/<name>` branches from `dev`
+Collaboration rule of thumb: work from `dev`, use a short-lived branch, keep each change focused, and do not touch protected core/audio/render paths unless that is the agreed scope.
+
+Branches:
+
+- `main`: stable, release-ready branch
+- `dev`: tested integration branch
+- short-lived `feature/`, `fix/`, `docs/`, `ui/`, `test/`, `chore/`, `infra/`, `core/`, `dsp/`, `routing/`, `architecture/`, or `hotfix/` branches
 
 Normal flow:
-1. create a feature branch from `dev`
+
+1. create a short-lived branch from `dev`
 2. open a PR into `dev`
-3. merge `dev` into `main` when the batch is stable
+3. promote `dev` into `main` through a reviewed PR when the batch is stable
+
+Install local hooks before contributing:
+
+```bash
+./scripts/install-git-hooks.sh
+```
 
 ## Releases
 

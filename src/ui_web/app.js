@@ -9,8 +9,10 @@ const ROUTING_LABELS = {
 
 const SOURCE_ROUTE_LABELS = {
   dry: "Dry",
-  fx: "Through FX Chain",
+  fx: "FX",
 };
+
+const FX_CHAIN_KEYS = ["saturator", "chorus", "sidechain"];
 
 const ROBIN_SPREAD_ALGORITHM_LABELS = {
   linear: "Linear",
@@ -191,6 +193,7 @@ const UI_RESET_DEFAULTS = {
     },
   },
   fx: {
+    chainOrder: FX_CHAIN_KEYS,
     saturator: {
       enabled: false,
       inputLevel: 1,
@@ -355,16 +358,18 @@ const elements = {
   fxChorusPhaseSpread: document.getElementById("fxChorusPhaseSpread"),
   fxChorusPhaseSpreadValue: document.getElementById("fxChorusPhaseSpreadValue"),
   fxSidechainEnabled: document.getElementById("fxSidechainEnabled"),
-  fxOutputGrid: document.getElementById("fxOutputGrid"),
+  fxChainList: document.getElementById("fxChainList"),
   lfoEnabled: document.getElementById("lfoEnabled"),
   lfoWaveform: document.getElementById("lfoWaveform"),
   lfoDepth: document.getElementById("lfoDepth"),
   lfoDepthValue: document.getElementById("lfoDepthValue"),
-  lfoClockLinked: document.getElementById("lfoClockLinked"),
+  lfoRateMode: document.getElementById("lfoRateMode"),
+  lfoSyncRateFields: document.getElementById("lfoSyncRateFields"),
   lfoTempo: document.getElementById("lfoTempo"),
   lfoTempoValue: document.getElementById("lfoTempoValue"),
   lfoRateMultiplier: document.getElementById("lfoRateMultiplier"),
   lfoRateMultiplierValue: document.getElementById("lfoRateMultiplierValue"),
+  lfoFixedFrequencyField: document.getElementById("lfoFixedFrequencyField"),
   lfoFixedFrequency: document.getElementById("lfoFixedFrequency"),
   lfoFixedFrequencyValue: document.getElementById("lfoFixedFrequencyValue"),
   lfoPhaseSpread: document.getElementById("lfoPhaseSpread"),
@@ -635,6 +640,7 @@ function extractPatchStateFromLiveState(liveState) {
     },
     processors: {
       fx: {
+        chainOrder: normalizeFxChainOrder(fx.chainOrder ?? patchState?.processors?.fx?.chainOrder),
         saturator: {
           enabled: Boolean(fx.saturator?.enabled),
           inputLevel: Number(fx.saturator?.inputLevel ?? 1),
@@ -671,7 +677,13 @@ function syncPatchStateFromLiveState(liveState) {
     return;
   }
 
+  const previousFxChainOrder = patchState?.processors?.fx?.chainOrder ?? liveState?.processors?.fx?.chainOrder;
   patchState = extractPatchStateFromLiveState(liveState);
+  const normalizedFxChainOrder = normalizeFxChainOrder(previousFxChainOrder);
+  patchState.processors.fx.chainOrder = normalizedFxChainOrder;
+  if (liveState.processors?.fx) {
+    liveState.processors.fx.chainOrder = normalizedFxChainOrder;
+  }
   if (!factoryPatchState) {
     factoryPatchState = cloneJsonValue(patchState);
   }
@@ -1016,6 +1028,8 @@ async function applyPatchDataToSynth(patchData, { name, fileName = "" } = {}) {
     }
 
     await refreshState({ silent: true });
+    writeFxChainOrder(patchData?.processors?.fx?.chainOrder);
+    renderFxChain();
     currentPatchFileName = fileName;
     currentPatchName = name || "Current Session";
     if (fileName) {
@@ -1150,6 +1164,16 @@ function formatSignedDb(value) {
   return `${numericValue > 0 ? "+" : ""}${numericValue.toFixed(1)} dB`;
 }
 
+function formatCompactSignedDb(value) {
+  const numericValue = Number(value);
+  const precision = Number.isInteger(numericValue) ? 0 : 1;
+  return `${numericValue > 0 ? "+" : ""}${numericValue.toFixed(precision)}`;
+}
+
+function formatCompactMs(value) {
+  return `${Math.round(Number(value))}`;
+}
+
 function findResetControl(target) {
   if (!(target instanceof Element)) {
     return null;
@@ -1222,7 +1246,7 @@ function getStaticResetValue(controlId) {
     lfoEnabled: UI_RESET_DEFAULTS.lfo.enabled,
     lfoWaveform: UI_RESET_DEFAULTS.lfo.waveform,
     lfoDepth: UI_RESET_DEFAULTS.lfo.depth,
-    lfoClockLinked: UI_RESET_DEFAULTS.lfo.clockLinked,
+    lfoRateMode: UI_RESET_DEFAULTS.lfo.clockLinked ? "sync" : "hz",
     lfoTempo: UI_RESET_DEFAULTS.lfo.tempoBpm,
     lfoRateMultiplier: UI_RESET_DEFAULTS.lfo.rateMultiplier,
     lfoFixedFrequency: UI_RESET_DEFAULTS.lfo.fixedFrequencyHz,
@@ -1460,6 +1484,53 @@ function getPieces() {
 
 function getFx() {
   return state?.processors?.fx ?? null;
+}
+
+function normalizeFxChainOrder(order) {
+  const requestedOrder = Array.isArray(order) ? order : [];
+  const seen = new Set();
+  const normalized = [];
+
+  requestedOrder.forEach((key) => {
+    if (typeof key !== "string" || !FX_CHAIN_KEYS.includes(key) || seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    normalized.push(key);
+  });
+
+  FX_CHAIN_KEYS.forEach((key) => {
+    if (!seen.has(key)) {
+      normalized.push(key);
+    }
+  });
+
+  return normalized;
+}
+
+function getFxChainOrder() {
+  return normalizeFxChainOrder(
+    getFx()?.chainOrder
+      ?? patchState?.processors?.fx?.chainOrder
+      ?? UI_RESET_DEFAULTS.fx.chainOrder,
+  );
+}
+
+function writeFxChainOrder(nextOrder) {
+  const normalizedOrder = normalizeFxChainOrder(nextOrder);
+  const fx = getFx();
+
+  if (fx) {
+    fx.chainOrder = normalizedOrder;
+  }
+
+  if (patchState?.processors?.fx) {
+    patchState.processors.fx.chainOrder = normalizedOrder;
+  }
+
+  updatePatchUi();
+  return normalizedOrder;
 }
 
 function clampValue(value, min, max) {
@@ -2892,7 +2963,7 @@ function renderWaveformOptions(selectedWaveform) {
 
 function formatOscillatorFrequencyLabel(oscillator) {
   if (oscillator.relativeToVoice) {
-    return `${Number(oscillator.frequencyValue).toFixed(2)}x voice root`;
+    return `${Number(oscillator.frequencyValue).toFixed(2)}x`;
   }
 
   return `${Math.round(Number(oscillator.frequencyValue))} Hz`;
@@ -2900,6 +2971,9 @@ function formatOscillatorFrequencyLabel(oscillator) {
 
 function syncLfoInputState(lfo) {
   const clockLinked = Boolean(lfo.clockLinked);
+  elements.lfoRateMode.value = clockLinked ? "sync" : "hz";
+  elements.lfoSyncRateFields.hidden = !clockLinked;
+  elements.lfoFixedFrequencyField.hidden = clockLinked;
   elements.lfoTempo.disabled = !clockLinked;
   elements.lfoRateMultiplier.disabled = !clockLinked;
   elements.lfoFixedFrequency.disabled = clockLinked;
@@ -2910,7 +2984,7 @@ function renderRobinLinkState() {
   if (!robin) {
     elements.robinLinkBadge.textContent = "Robin offline";
     elements.robinLinkBadge.className = "status-tag";
-    elements.robinLinkNote.textContent = "Live state unavailable.";
+    elements.robinLinkNote.textContent = "State unavailable.";
     return;
   }
 
@@ -2922,30 +2996,27 @@ function renderRobinLinkState() {
   if (voiceCount === 0) {
     elements.robinLinkBadge.textContent = "No voices";
     elements.robinLinkBadge.className = "status-tag";
-    elements.robinLinkNote.textContent = "Live state: increase the voice count to build a spatial voice bank.";
+    elements.robinLinkNote.textContent = "Increase voice count to build the bank.";
     return;
   }
 
   if (localCount === 0) {
-    elements.robinLinkBadge.textContent = "All voices linked";
+    elements.robinLinkBadge.textContent = "All linked";
     elements.robinLinkBadge.className = "status-tag status-tag--live";
-    elements.robinLinkNote.textContent =
-      `Live state: ${enabledCount} of ${voiceCount} voices are enabled. The whole instrument is currently reading as one shared spatial template.`;
+    elements.robinLinkNote.textContent = `${enabledCount}/${voiceCount} enabled. Master template only.`;
     return;
   }
 
   if (linkedCount === 0) {
-    elements.robinLinkBadge.textContent = "All voices local";
+    elements.robinLinkBadge.textContent = "All local";
     elements.robinLinkBadge.className = "status-tag status-tag--warning";
-    elements.robinLinkNote.textContent =
-      `Live state: ${enabledCount} of ${voiceCount} voices are enabled. Every voice is currently its own local override, so the synth will sound more fragmented and less master-led.`;
+    elements.robinLinkNote.textContent = `${enabledCount}/${voiceCount} enabled. Every voice overrides master.`;
     return;
   }
 
   elements.robinLinkBadge.textContent = `${linkedCount} linked / ${localCount} local`;
   elements.robinLinkBadge.className = "status-tag status-tag--warning";
-  elements.robinLinkNote.textContent =
-    `Live state: ${enabledCount} of ${voiceCount} voices are enabled, with ${linkedCount} linked and ${localCount} local. This is a good balance for keeping one coherent sound while letting a few voices break away.`;
+  elements.robinLinkNote.textContent = `${enabledCount}/${voiceCount} enabled. ${linkedCount} linked, ${localCount} local.`;
 }
 
 function renderSourceMixer() {
@@ -2964,48 +3035,48 @@ function renderSourceMixer() {
 
       const title = key[0].toUpperCase() + key.slice(1);
       const live = mix.implemented;
-      const routeTarget = mix.routeTarget ?? "dry";
-      const statusLabel = live ? "Live" : "Scaffold";
-      const routeSummary = routeTarget === "fx" ? "FX path" : "Dry path";
+      const routeTarget = mix.routeTarget === "fx" ? "fx" : "dry";
+      const levelPercent = formatLevelPercent(mix.level);
+      const levelStyle = `--level: ${levelPercent}`;
 
       return `
-        <article class="mixer-strip mixer-strip--source ${live ? "mixer-strip--live" : "mixer-strip--planned"}">
-          <div class="mixer-strip__header">
-            <div class="mixer-strip__title-row">
-              <h3>${title}</h3>
-              <span class="mixer-strip__status">${statusLabel}</span>
-            </div>
-            <span class="mixer-strip__subtitle">${mix.enabled ? routeSummary : "Muted"}</span>
+        <article class="source-mixer-row source-mixer-row--route-${routeTarget} ${live ? "" : "is-planned"}">
+          <div class="source-mixer-row__name">
+            <h3>${title}</h3>
+            ${live ? "" : `<span>Planned</span>`}
           </div>
 
-          <label class="mixer-strip__toggle">
+          <label class="source-mixer-row__toggle">
             <input type="checkbox" data-source-enabled="${key}" ${mix.enabled ? "checked" : ""}>
-            <span>Enabled</span>
+            <span>${mix.enabled ? "On" : "Off"}</span>
           </label>
 
-          <div class="mixer-strip__switcher" role="group" aria-label="${title} signal path">
+          <div class="source-mixer-row__route" role="group" aria-label="${title} signal path">
             <button
               type="button"
-              class="mixer-route-button ${routeTarget === "dry" ? "is-active" : ""}"
+              class="source-route-button ${routeTarget === "dry" ? "is-active" : ""}"
               data-source-route-button="${key}:dry"
+              aria-pressed="${routeTarget === "dry" ? "true" : "false"}"
               ${live ? "" : "disabled"}
             >
               Dry
             </button>
             <button
               type="button"
-              class="mixer-route-button ${routeTarget === "fx" ? "is-active" : ""}"
+              class="source-route-button ${routeTarget === "fx" ? "is-active" : ""}"
               data-source-route-button="${key}:fx"
+              aria-pressed="${routeTarget === "fx" ? "true" : "false"}"
               ${live ? "" : "disabled"}
             >
               FX
             </button>
           </div>
 
-          <label class="mixer-strip__fader mixer-strip__fader--main">
+          <label class="source-mixer-row__level" style="${levelStyle}">
             <span>Level</span>
-            <output>${formatLevelPercent(mix.level)}</output>
+            <output>${levelPercent}</output>
             <input
+              aria-label="${title} level"
               type="range"
               data-control-style="linear"
               min="0"
@@ -3033,7 +3104,6 @@ function renderMidiDevices() {
           <h3>No MIDI Sources</h3>
           <span>${midi.running ? "Host ready" : "Host offline"}</span>
         </div>
-        <p>Connect a MIDI device and relaunch the app host to populate the CoreMIDI source list.</p>
       </article>
     `;
     return;
@@ -3060,7 +3130,7 @@ function renderMidiDevices() {
                   ${routeEnabled ? "checked" : ""}
                   ${implemented ? "" : "disabled"}
                 >
-                <span>${implemented ? `Route to ${label}` : `${label} Pending`}</span>
+                <span>${implemented ? label : `${label} pending`}</span>
               </label>
             `;
           })
@@ -3079,15 +3149,13 @@ function renderMidiDevices() {
               data-midi-source="${source.index}"
               ${source.connected ? "checked" : ""}
             >
-            <span>${source.connected ? "Receive Input" : "Connect Input"}</span>
+            <span>${source.connected ? "Receive" : "Connect"}</span>
           </label>
 
           <div class="output-column__group">
-            <span>Synth Routes</span>
+            <span>Routes</span>
             ${targets}
           </div>
-
-          <p>CoreMIDI source ${source.index + 1}. Connection decides if the host listens; routes decide which synths respond.</p>
         </article>
       `;
       },
@@ -3107,19 +3175,19 @@ function renderOutputMixer() {
   elements.outputMixerGrid.innerHTML = outputMixer.outputs
     .map(
       (output) => `
-        <article class="mixer-strip mixer-strip--output mixer-strip--live">
-          <div class="mixer-strip__header">
-            <div class="mixer-strip__title-row">
-              <h3>Out ${output.index + 1}</h3>
-              <span class="mixer-strip__status">Live</span>
+        <article class="output-channel">
+          <div class="output-channel__head">
+            <div>
+              <span>Out</span>
+              <h3>${output.index + 1}</h3>
             </div>
-            <span class="mixer-strip__subtitle">Dry + FX sum</span>
+            <output>${formatLevelPercent(output.level)}</output>
           </div>
 
-          <label class="mixer-strip__fader mixer-strip__fader--main">
+          <label class="output-channel__level">
             <span>Level</span>
-            <output>${formatLevelPercent(output.level)}</output>
             <input
+              aria-label="Output ${output.index + 1} level"
               type="range"
               data-control-style="linear"
               min="0"
@@ -3130,11 +3198,12 @@ function renderOutputMixer() {
             >
           </label>
 
-          <div class="mixer-mini-bank">
-            <label class="mixer-mini-slider">
+          <div class="output-channel__tune">
+            <label class="output-tune-row">
               <span>Dly</span>
-              <output>${Math.round(Number(output.delayMs))} ms</output>
+              <output>${formatCompactMs(output.delayMs)}</output>
               <input
+                aria-label="Output ${output.index + 1} delay"
                 type="range"
                 data-control-style="linear"
                 min="0"
@@ -3145,10 +3214,11 @@ function renderOutputMixer() {
               >
             </label>
 
-            <label class="mixer-mini-slider">
-              <span>Low</span>
-              <output>${formatSignedDb(output.eq.lowDb)}</output>
+            <label class="output-tune-row">
+              <span>Lo</span>
+              <output>${formatCompactSignedDb(output.eq.lowDb)}</output>
               <input
+                aria-label="Output ${output.index + 1} low EQ"
                 type="range"
                 data-control-style="linear"
                 min="-24"
@@ -3159,10 +3229,11 @@ function renderOutputMixer() {
               >
             </label>
 
-            <label class="mixer-mini-slider">
+            <label class="output-tune-row">
               <span>Mid</span>
-              <output>${formatSignedDb(output.eq.midDb)}</output>
+              <output>${formatCompactSignedDb(output.eq.midDb)}</output>
               <input
+                aria-label="Output ${output.index + 1} mid EQ"
                 type="range"
                 data-control-style="linear"
                 min="-24"
@@ -3173,10 +3244,11 @@ function renderOutputMixer() {
               >
             </label>
 
-            <label class="mixer-mini-slider">
-              <span>High</span>
-              <output>${formatSignedDb(output.eq.highDb)}</output>
+            <label class="output-tune-row">
+              <span>Hi</span>
+              <output>${formatCompactSignedDb(output.eq.highDb)}</output>
               <input
+                aria-label="Output ${output.index + 1} high EQ"
                 type="range"
                 data-control-style="linear"
                 min="-24"
@@ -3220,25 +3292,25 @@ function getSelectedRobinVoice() {
 function renderVoiceOverviewTokens(voice, masterOscillatorCount) {
   if (voice.linkedToMaster) {
     return `
-      <span class="token token--ghost">Master root</span>
-      <span class="token token--ghost">Master gain</span>
-      <span class="token token--ghost">${masterOscillatorCount} master osc</span>
-      <span class="token token--ghost">VCF + ENV</span>
+      <span class="token token--ghost">Master</span>
+      <span class="token token--ghost">${masterOscillatorCount} osc</span>
+      <span class="token token--ghost">VCF</span>
+      <span class="token token--ghost">ENV</span>
     `;
   }
 
   const enabledOscillatorCount = voice.oscillators.filter((oscillator) => oscillator.enabled).length;
   return `
     <span class="token">${Math.round(Number(voice.frequency))} Hz</span>
-    <span class="token">${Number(voice.gain).toFixed(2)} gain</span>
+    <span class="token">${Number(voice.gain).toFixed(2)}</span>
     <span class="token">${enabledOscillatorCount}/${voice.oscillators.length} osc</span>
-    <span class="token">Local VCF + ENV</span>
+    <span class="token">Local</span>
   `;
 }
 
 function buildVoiceOverviewActions(voice, selected) {
   if (voice.linkedToMaster) {
-    return `<span class="voice-overview-row__hint">${voice.active ? "Using master" : "Disabled"}</span>`;
+    return `<span class="voice-overview-row__hint">${voice.active ? "Master" : "Off"}</span>`;
   }
 
   return `
@@ -3247,7 +3319,7 @@ function buildVoiceOverviewActions(voice, selected) {
       class="ghost-button ghost-button--compact ${selected ? "is-selected" : ""}"
       data-voice-select="${voice.index}"
     >
-      ${selected ? "Editing" : "Edit"}
+      ${selected ? "Open" : "Edit"}
     </button>
   `;
 }
@@ -3276,7 +3348,7 @@ function buildVoiceOverviewRowMarkup(voice, masterOscillatorCount, selectedVoice
       <div class="voice-overview-row__controls">
         <label class="toggle-pill">
           <input type="checkbox" data-voice-active="${voice.index}" ${voice.active ? "checked" : ""}>
-          <span>Enabled</span>
+          <span>On</span>
         </label>
         <label class="toggle-pill">
           <input type="checkbox" data-voice-linked="${voice.index}" ${linked ? "checked" : ""}>
@@ -3298,12 +3370,8 @@ function buildSelectedVoiceEditorEmptyMarkup() {
         <p class="section-kicker">Selected Voice</p>
         <h2>Local Voice Editor</h2>
       </div>
-      <span class="status-tag">Waiting</span>
+      <span class="status-tag">None</span>
     </div>
-    <p class="note">
-      Unlink a Robin voice to open one local editor at a time. The overview above stays dense while detailed editing
-      happens here.
-    </p>
   `;
 }
 
@@ -3318,7 +3386,7 @@ function buildSelectedVoiceOscillatorMarkup(voiceIndex, oscillator) {
             data-voice-osc-enabled="${voiceIndex}:${oscillator.index}"
             ${oscillator.enabled ? "checked" : ""}
           >
-          <span>Enabled</span>
+          <span>On</span>
         </label>
       </div>
 
@@ -3337,7 +3405,7 @@ function buildSelectedVoiceOscillatorMarkup(voiceIndex, oscillator) {
               data-voice-osc-relative="${voiceIndex}:${oscillator.index}"
               ${oscillator.relativeToVoice ? "checked" : ""}
             >
-            <span>${oscillator.relativeToVoice ? "Track Voice Root" : "Use Absolute Hz"}</span>
+            <span>${oscillator.relativeToVoice ? "Track Root" : "Absolute Hz"}</span>
           </label>
         </div>
 
@@ -3383,13 +3451,10 @@ function buildSelectedVoiceEditorMarkup(selectedVoice) {
       <div class="robin-voice-editor__actions">
         <span class="status-tag status-tag--warning">Local Override</span>
         <button type="button" class="ghost-button ghost-button--compact" data-voice-reset-master="${selectedVoice.index}">
-          Reset to Master State
+          Reset
         </button>
       </div>
     </div>
-    <p class="note">
-      This voice is unlinked from the master. Edit it here without crowding the overview above.
-    </p>
 
     <div class="robin-voice-editor__layout">
       <section class="robin-voice-module">
@@ -3409,12 +3474,12 @@ function buildSelectedVoiceEditorMarkup(selectedVoice) {
         <section class="robin-voice-module robin-voice-module--env robin-voice-module--env-vcf">
           <div class="robin-voice-module__header">
             <h3>Pitch</h3>
-            <span>Root and gain</span>
+            <span>Root</span>
           </div>
 
           <div class="robin-voice-module__grid robin-voice-module__grid--compact">
             <label class="field field--compact">
-              <span>Local Root Frequency</span>
+              <span>Root</span>
               <input
                 type="range"
                 min="20"
@@ -3427,7 +3492,7 @@ function buildSelectedVoiceEditorMarkup(selectedVoice) {
             </label>
 
             <label class="field field--compact">
-              <span>Local Voice Level</span>
+              <span>Level</span>
               <input
                 type="range"
                 min="0"
@@ -3444,7 +3509,7 @@ function buildSelectedVoiceEditorMarkup(selectedVoice) {
         <section class="robin-voice-module robin-voice-module--env robin-voice-module--amp">
           <div class="robin-voice-module__header">
             <h3>VCF</h3>
-            <span>Cutoff and resonance</span>
+            <span>Filter</span>
           </div>
 
           <div class="robin-voice-module__grid robin-voice-module__grid--compact">
@@ -3479,7 +3544,7 @@ function buildSelectedVoiceEditorMarkup(selectedVoice) {
         <section class="robin-voice-module robin-voice-module--env robin-voice-module--env-vcf">
           <div class="robin-voice-module__header">
             <h3>VCF ENV</h3>
-            <span>Filter contour</span>
+            <span>Filter</span>
           </div>
 
           <div class="robin-voice-module__grid">
@@ -3553,7 +3618,7 @@ function buildSelectedVoiceEditorMarkup(selectedVoice) {
         <section class="robin-voice-module robin-voice-module--env robin-voice-module--amp">
           <div class="robin-voice-module__header">
             <h3>VCA ENV</h3>
-            <span>Amplitude contour</span>
+            <span>Amp</span>
           </div>
 
           <div class="robin-voice-module__grid">
@@ -3731,7 +3796,7 @@ function syncSelectedVoiceEditorFields(selectedVoice) {
     syncCheckboxInput(relativeInput, oscillator.relativeToVoice);
     setTextContent(
       relativeInput?.parentElement?.querySelector("span"),
-      oscillator.relativeToVoice ? "Track Voice Root" : "Use Absolute Hz",
+      oscillator.relativeToVoice ? "Track Root" : "Absolute Hz",
     );
 
     syncRangeField(
@@ -3810,14 +3875,14 @@ function buildMasterOscillatorMarkup(oscillator) {
   return `
     <section class="robin-voice-osc robin-master-osc" data-master-osc="${oscillator.index}">
       <div class="robin-voice-module__header">
-        <h4>Master Osc ${oscillator.index + 1}</h4>
+        <h4>Osc ${oscillator.index + 1}</h4>
         <label class="toggle-pill">
           <input
             type="checkbox"
             data-osc-enabled="${oscillator.index}"
             ${oscillator.enabled ? "checked" : ""}
           >
-          <span>Enabled</span>
+          <span>On</span>
         </label>
       </div>
 
@@ -3836,7 +3901,7 @@ function buildMasterOscillatorMarkup(oscillator) {
               data-osc-relative="${oscillator.index}"
               ${oscillator.relativeToVoice ? "checked" : ""}
             >
-            <span>${oscillator.relativeToVoice ? "Track Voice Root" : "Use Absolute Hz"}</span>
+            <span>${oscillator.relativeToVoice ? "Track Root" : "Absolute Hz"}</span>
           </label>
         </div>
 
@@ -3884,7 +3949,7 @@ function syncMasterOscillatorSection(section, oscillator) {
   syncCheckboxInput(relativeInput, oscillator.relativeToVoice);
   setTextContent(
     relativeInput?.parentElement?.querySelector("span"),
-    oscillator.relativeToVoice ? "Track Voice Root" : "Use Absolute Hz",
+    oscillator.relativeToVoice ? "Track Root" : "Absolute Hz",
   );
 
   syncRangeField(
@@ -3946,7 +4011,7 @@ function renderRobinPerformanceMacros() {
     elements.robinPerformanceMacros.innerHTML = spreadSlots
       .map((_, slotIndex) => `
         <label class="field field--compact robin-performance-macro" data-robin-macro-slot="${slotIndex}">
-          <span>Macro ${slotIndex + 1}</span>
+          <span>M${slotIndex + 1}</span>
           <small data-robin-macro-target></small>
           <input
             type="range"
@@ -4055,7 +4120,7 @@ function renderRobinSpreadSlots() {
               data-robin-spread-open="${slotIndex}"
               aria-expanded="false"
             >
-              <span>Spread ${slotIndex + 1}</span>
+              <span>S${slotIndex + 1}</span>
               <small data-robin-spread-summary></small>
             </button>
             <label class="toggle-pill">
@@ -4063,7 +4128,7 @@ function renderRobinSpreadSlots() {
                 type="checkbox"
                 data-robin-spread-enabled="${slotIndex}"
               >
-              <span>Enabled</span>
+              <span>On</span>
             </label>
           </div>
 
@@ -4194,8 +4259,7 @@ function renderRobinSpreadSlots() {
       seedOutput.textContent = String(Math.round(Number(slot.seed)));
     }
     if (copy) {
-      copy.textContent =
-        `Linked voices stay on the master template, then receive ${targetConfig.label.toLowerCase()} offsets by linked voice order. Use Macro ${slotIndex + 1} above to control this slot's depth.`;
+      copy.textContent = "";
     }
   });
 
@@ -4332,16 +4396,16 @@ function renderDecorOutputGrid() {
   elements.decorOutputGrid.innerHTML = Array.from({ length: engine.outputChannels }, (_, outputIndex) => `
     <article class="output-column">
       <div class="output-column__header">
-        <h3>Decor Voice ${outputIndex + 1}</h3>
-        <span>Output ${outputIndex + 1}</span>
+        <h3>Voice ${outputIndex + 1}</h3>
+        <span>Out ${outputIndex + 1}</span>
       </div>
       <div class="output-column__group">
         <span>Route</span>
-        <div class="token-row"><span class="token">Direct speaker lock</span></div>
+        <div class="token-row"><span class="token">Direct</span></div>
       </div>
       <div class="output-column__group">
         <span>Status</span>
-        <div class="token-row"><span class="token token--ghost">DSP pending</span></div>
+        <div class="token-row"><span class="token token--ghost">Pending</span></div>
       </div>
     </article>
   `).join("");
@@ -4369,10 +4433,8 @@ function renderTestSource() {
               data-test-output="${outputIndex}"
               ${enabled ? "checked" : ""}
             >
-            <span>${enabled ? "Send Tone Here" : "Route Tone Here"}</span>
+            <span>${enabled ? "Send" : "Route"}</span>
           </label>
-
-          <p>Single debug oscillator feed for channel and speaker checks.</p>
         </article>
       `,
     )
@@ -4381,44 +4443,116 @@ function renderTestSource() {
   bindTestOutputControls();
 }
 
-function renderFxOutputGrid() {
-  const fx = getFx();
-  if (!fx) {
-    elements.fxOutputGrid.innerHTML = "";
+function renderFxChain() {
+  if (!elements.fxChainList) {
     return;
   }
 
-  elements.fxOutputGrid.innerHTML = fx.outputs
-    .map(
-      (output) => `
-        <article class="output-column">
-          <div class="output-column__header">
-            <h3>Output ${output.index + 1}</h3>
-            <span>Dry + FX paths</span>
-          </div>
+  const normalizedOrder = writeFxChainOrder(getFxChainOrder());
+  normalizedOrder.forEach((fxKey, index) => {
+    const row = elements.fxChainList.querySelector(`[data-fx-row="${fxKey}"]`);
+    if (!row) {
+      return;
+    }
 
-          <div class="output-column__group">
-            <span>Paths</span>
-            <div class="token-row">
-              <span class="token">Dry</span>
-              <span class="token">Through FX Chain</span>
-            </div>
-          </div>
+    row.dataset.fxPosition = String(index);
+    row.setAttribute("aria-posinset", String(index + 1));
+    row.setAttribute("aria-setsize", String(normalizedOrder.length));
+    elements.fxChainList.appendChild(row);
+  });
+}
 
-          <div class="output-column__group">
-            <span>Chain</span>
-            <div class="token-row">
-              <span class="token ${fx.saturator.enabled ? "" : "token--ghost"}">Saturator</span>
-              <span class="token ${fx.chorus.enabled ? "" : "token--ghost"}">Chorus</span>
-              <span class="token ${fx.sidechain.enabled ? "" : "token--ghost"}">Sidechain</span>
-            </div>
-          </div>
+function moveFxChainItem(draggedKey, targetKey, insertAfterTarget) {
+  if (!draggedKey || !FX_CHAIN_KEYS.includes(draggedKey)) {
+    return false;
+  }
 
-          <p>Source Mixer decides whether each source feeds the dry path or this output FX chain.</p>
-        </article>
-      `,
-    )
-    .join("");
+  const nextOrder = getFxChainOrder().filter((key) => key !== draggedKey);
+  if (!targetKey || !FX_CHAIN_KEYS.includes(targetKey)) {
+    nextOrder.push(draggedKey);
+    writeFxChainOrder(nextOrder);
+    renderFxChain();
+    return true;
+  }
+
+  const targetIndex = nextOrder.indexOf(targetKey);
+  if (targetIndex < 0) {
+    return false;
+  }
+
+  nextOrder.splice(targetIndex + (insertAfterTarget ? 1 : 0), 0, draggedKey);
+  writeFxChainOrder(nextOrder);
+  renderFxChain();
+  return true;
+}
+
+function bindFxChainDragDrop() {
+  if (!elements.fxChainList || elements.fxChainList.dataset.bound === "true") {
+    return;
+  }
+
+  let draggedFxKey = null;
+
+  elements.fxChainList.addEventListener("dragstart", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const handle = target?.closest("[data-fx-drag-handle]");
+    const row = handle?.closest("[data-fx-row]");
+    if (!row) {
+      event.preventDefault();
+      return;
+    }
+
+    draggedFxKey = row.dataset.fxRow;
+    row.classList.add("is-dragging");
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", draggedFxKey);
+    }
+  });
+
+  elements.fxChainList.addEventListener("dragover", (event) => {
+    if (!draggedFxKey) {
+      return;
+    }
+
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "move";
+    }
+
+    const target = event.target instanceof Element ? event.target : null;
+    const targetRow = target?.closest("[data-fx-row]");
+    const targetKey = targetRow?.dataset.fxRow ?? null;
+    if (!targetKey || targetKey === draggedFxKey) {
+      return;
+    }
+
+    const bounds = targetRow.getBoundingClientRect();
+    const insertAfterTarget = event.clientY > bounds.top + (bounds.height / 2);
+    moveFxChainItem(draggedFxKey, targetKey, insertAfterTarget);
+  });
+
+  elements.fxChainList.addEventListener("drop", (event) => {
+    if (!draggedFxKey) {
+      return;
+    }
+
+    event.preventDefault();
+    const target = event.target instanceof Element ? event.target : null;
+    const targetRow = target?.closest("[data-fx-row]");
+    if (!targetRow) {
+      moveFxChainItem(draggedFxKey, null, true);
+    }
+  });
+
+  elements.fxChainList.addEventListener("dragend", () => {
+    elements.fxChainList.querySelectorAll(".is-dragging").forEach((row) => {
+      row.classList.remove("is-dragging");
+    });
+    draggedFxKey = null;
+  });
+
+  elements.fxChainList.dataset.bound = "true";
 }
 
 function applyStateToUi(nextState) {
@@ -4504,7 +4638,6 @@ function applyStateToUi(nextState) {
   elements.lfoWaveform.value = robin.lfo.waveform;
   elements.lfoDepth.value = String(robin.lfo.depth);
   setLfoDepthLabel(robin.lfo.depth);
-  elements.lfoClockLinked.checked = robin.lfo.clockLinked;
   elements.lfoTempo.value = String(robin.lfo.tempoBpm);
   setLfoTempoLabel(robin.lfo.tempoBpm);
   elements.lfoRateMultiplier.value = String(robin.lfo.rateMultiplier);
@@ -4546,7 +4679,7 @@ function applyStateToUi(nextState) {
   applyRobinDebugVisibility();
   renderTestSource();
   renderDecorOutputGrid();
-  renderFxOutputGrid();
+  renderFxChain();
   ensureRotaryControls();
 }
 
@@ -4704,7 +4837,9 @@ function bindSourceMixerControls() {
     input.addEventListener("input", () => {
       const sourceKey = input.dataset.sourceLevel;
       const nextValue = Number(input.value);
-      output.textContent = formatLevelPercent(nextValue);
+      const nextLabel = formatLevelPercent(nextValue);
+      output.textContent = nextLabel;
+      input.parentElement.style.setProperty("--level", nextLabel);
       setParamTempLive(`sourceMixer.${sourceKey}.level`, nextValue, () => {
         applySourceMixerUpdate(sourceKey, "level", nextValue);
       });
@@ -4728,11 +4863,11 @@ function bindSourceMixerControls() {
 
 function bindOutputMixerControls() {
   document.querySelectorAll("[data-output-level]").forEach((input) => {
-    const output = input.parentElement.querySelector("output");
+    const output = input.closest(".output-channel")?.querySelector(".output-channel__head output");
     input.addEventListener("input", () => {
       const outputIndex = Number(input.dataset.outputLevel);
       const nextValue = Number(input.value);
-      output.textContent = formatLevelPercent(nextValue);
+      setTextContent(output, formatLevelPercent(nextValue));
       setParamTempLive(`outputMixer.output.${outputIndex}.level`, nextValue, () => {
         applyOutputMixerUpdate(outputIndex, "level", nextValue);
       });
@@ -4744,7 +4879,7 @@ function bindOutputMixerControls() {
     input.addEventListener("input", () => {
       const outputIndex = Number(input.dataset.outputDelay);
       const nextValue = Number(input.value);
-      output.textContent = `${Math.round(Number(input.value))} ms`;
+      output.textContent = formatCompactMs(input.value);
       setParamTempLive(`outputMixer.output.${outputIndex}.delayMs`, nextValue, () => {
         applyOutputMixerUpdate(outputIndex, "delayMs", nextValue);
       });
@@ -4755,7 +4890,7 @@ function bindOutputMixerControls() {
     const output = input.parentElement.querySelector("output");
     input.addEventListener("input", () => {
       const nextValue = Number(input.value);
-      output.textContent = formatSignedDb(nextValue);
+      output.textContent = formatCompactSignedDb(nextValue);
       const [outputIndex, band] = input.dataset.outputEq.split(":");
       setParamTempLive(`outputMixer.output.${outputIndex}.eq.${band}`, nextValue, () => {
         applyOutputEqUpdate(Number(outputIndex), band, nextValue);
@@ -4978,7 +5113,7 @@ function bindVoiceControls() {
 
         const nextValue = Number(target.value);
         setTextContent(output, oscillator.relativeToVoice
-          ? `${nextValue.toFixed(2)}x voice root`
+          ? `${nextValue.toFixed(2)}x`
           : `${Math.round(nextValue)} Hz`);
         setParamTempLive(`sources.robin.voice.${key.voiceIndex}.oscillator.${key.oscillatorIndex}.frequency`, nextValue, () => {
           applyRobinVoiceOscillatorUpdate(key.voiceIndex, key.oscillatorIndex, "frequency", nextValue);
@@ -5037,7 +5172,7 @@ function bindOscillatorControls() {
 
       const nextValue = Number(target.value);
       setTextContent(output, oscillator.relativeToVoice
-        ? `${nextValue.toFixed(2)}x voice root`
+        ? `${nextValue.toFixed(2)}x`
         : `${Math.round(nextValue)} Hz`);
       setLinkedOscillatorParamFast(target.dataset.oscFrequency, "frequency", nextValue);
     }
@@ -5096,6 +5231,7 @@ function bindTestOutputControls() {
 window.addEventListener("DOMContentLoaded", async () => {
   applyDebugUiVisibility();
   bindRobinDebugControls();
+  bindFxChainDragDrop();
   document.addEventListener(
     "pointerdown",
     (event) => {
@@ -5477,8 +5613,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
   });
 
-  elements.lfoClockLinked.addEventListener("change", () => {
-    const nextValue = elements.lfoClockLinked.checked;
+  elements.lfoRateMode.addEventListener("change", () => {
+    const nextValue = elements.lfoRateMode.value === "sync";
     setParamTemp("sources.robin.lfo.clockLinked", nextValue, {
       applyLocalState: () => {
         applyLfoUpdate("clockLinked", nextValue);
@@ -5539,7 +5675,11 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
   });
 
-  elements.refreshButton.addEventListener("click", refreshState);
+  elements.refreshButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    refreshState();
+  });
   elements.patchSelect.addEventListener("change", () => {
     selectedPatchFileName = elements.patchSelect.value;
     updatePatchUi();

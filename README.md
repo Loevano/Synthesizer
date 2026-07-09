@@ -84,7 +84,7 @@ Fetch the current branch and build a fresh app:
 ./scripts/fetch-and-build-app.sh
 ```
 
-Or double-click `Fetch and Build Synthesizer.command` in Finder. This updates
+Or double-click `Update_Synth.command` in Finder. This updates
 the current branch from its remote branch, builds `builds/app/Synthesizer.app`,
 copies the result to `builds/Synthesizer.app`, and closes the
 Terminal window after a successful build.

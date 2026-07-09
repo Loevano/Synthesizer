@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REMOTE="${REMOTE:-origin}"
-BRANCH="${BRANCH:-main}"
 APP_SOURCE="$ROOT_DIR/build-app/Synthesizer.app"
 APP_DEST="$ROOT_DIR/Synthesizer.app"
 
@@ -19,6 +18,14 @@ if [[ ! -d .git ]]; then
   exit 1
 fi
 
+current_branch="$(git branch --show-current)"
+if [[ -z "$current_branch" ]]; then
+  echo "This checkout is not on a branch. Check out a branch before fetching and building." >&2
+  exit 1
+fi
+
+BRANCH="${BRANCH:-$current_branch}"
+
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "There are local changes in this checkout." >&2
   echo "Commit, stash, or discard them before fetching and building." >&2
@@ -29,7 +36,6 @@ fi
 echo "Fetching $REMOTE/$BRANCH..."
 git fetch "$REMOTE" "$BRANCH"
 
-current_branch="$(git branch --show-current)"
 if [[ "$current_branch" != "$BRANCH" ]]; then
   echo "Switching from $current_branch to $BRANCH..."
   git checkout "$BRANCH"

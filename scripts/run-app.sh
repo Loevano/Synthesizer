@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_BUNDLE="./build/Synthesizer.app"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/builds/debug}"
+APP_BUNDLE="$BUILD_DIR/Synthesizer.app"
 APP_EXECUTABLE="$APP_BUNDLE/Contents/MacOS/Synthesizer"
 APP_BUNDLE_ID="com.loevano.synthesizer"
 
@@ -26,7 +28,7 @@ while (($# > 0)); do
   esac
 done
 
-./scripts/build.sh
+"$ROOT_DIR/scripts/build.sh"
 
 if (($# > 0)); then
   APP_ARGS+=("$@")

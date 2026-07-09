@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REMOTE="${REMOTE:-origin}"
-APP_DEST="$ROOT_DIR/Synthesizer.app"
+APP_DEST="${APP_DEST:-$ROOT_DIR/builds/Synthesizer.app}"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "This script builds a clickable macOS .app and must be run on macOS." >&2

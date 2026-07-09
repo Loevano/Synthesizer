@@ -6,6 +6,7 @@ BUILD_DIR="${BUILD_DIR:-build-app}"
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 ARCHS="${ARCHS:-arm64;x86_64}"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+APP_DEST="$ROOT_DIR/Synthesizer.app"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "The clickable .app bundle can only be built on macOS." >&2
@@ -31,5 +32,11 @@ if [[ "${SIGN_APP:-1}" != "0" ]]; then
   codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 fi
 
+if [[ "${COPY_APP_TO_ROOT:-1}" != "0" ]]; then
+  echo "Copying app to $APP_DEST..."
+  ditto "$APP_PATH" "$APP_DEST"
+fi
+
 echo "Built $APP_PATH"
-echo "Open it with: open \"$APP_PATH\""
+echo "Copied app: $APP_DEST"
+echo "Open it with: open \"$APP_DEST\""

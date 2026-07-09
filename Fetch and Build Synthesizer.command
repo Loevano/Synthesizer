@@ -6,4 +6,5 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 "$SCRIPT_DIR/scripts/fetch-and-build-app.sh"
 
 echo
-read -r -p "Press Return to close this window..."
+echo "Build complete. Closing this Terminal window..."
+osascript -e 'tell application "Terminal" to close front window' >/dev/null 2>&1 &

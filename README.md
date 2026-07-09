@@ -74,8 +74,9 @@ Build a clickable macOS app bundle from the current checkout:
 ./scripts/build-app.sh
 ```
 
-This creates `build-app/Synthesizer.app`. By default it builds a universal
-Apple Silicon + Intel bundle and ad-hoc signs it locally.
+This creates `build-app/Synthesizer.app` and copies it to `Synthesizer.app` in
+the repo folder. By default it builds a universal Apple Silicon + Intel bundle
+and ad-hoc signs it locally.
 
 Fetch the current branch and build a fresh app:
 
@@ -85,7 +86,8 @@ Fetch the current branch and build a fresh app:
 
 Or double-click `Fetch and Build Synthesizer.command` in Finder. This updates
 the current branch from its remote branch, builds `build-app/Synthesizer.app`,
-and copies the result to `Synthesizer.app` in the repo folder.
+copies the result to `Synthesizer.app` in the repo folder, and closes the
+Terminal window after a successful build.
 
 Run the CLI host:
 

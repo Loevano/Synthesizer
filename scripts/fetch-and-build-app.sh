@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REMOTE="${REMOTE:-origin}"
-APP_SOURCE="$ROOT_DIR/build-app/Synthesizer.app"
 APP_DEST="$ROOT_DIR/Synthesizer.app"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -46,14 +45,6 @@ git merge --ff-only "$REMOTE/$BRANCH"
 
 echo "Building Synthesizer.app..."
 "$ROOT_DIR/scripts/build-app.sh"
-
-if [[ ! -d "$APP_SOURCE" ]]; then
-  echo "Expected built app at $APP_SOURCE." >&2
-  exit 1
-fi
-
-echo "Copying app to $APP_DEST..."
-ditto "$APP_SOURCE" "$APP_DEST"
 
 echo
 echo "Done."

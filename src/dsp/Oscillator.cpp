@@ -186,6 +186,10 @@ void Oscillator::setWaveform(Waveform waveform) {
     updateWavetable();
 }
 
+void Oscillator::resetPhase() {
+    phase_ = 0.0;
+}
+
 void Oscillator::updateWavetable() {
     if (waveform_ == Waveform::Noise) {
         wavetableIndex_ = 0;

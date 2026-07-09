@@ -171,8 +171,14 @@
             <select id="engineOutputChannels"></select>
           </label>
 
+          <label class="field">
+            <span>Buffer Size</span>
+            <select id="engineBufferFrames"></select>
+          </label>
+
           <p class="note">
-            Changing the output device or output count restarts the audio engine and resizes the multichannel graph.
+            Changing the output device, output count, or buffer size restarts the audio engine. Buffer size changes
+            are applied through the selected CoreAudio device.
           </p>
         </article>
 

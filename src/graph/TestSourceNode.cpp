@@ -82,8 +82,10 @@ void TestSourceNode::process(float* output,
         : 0.0f;
 
     const std::size_t sampleCount = static_cast<std::size_t>(frames) * channels;
-    renderBuffer_.resize(sampleCount);
-    std::fill(renderBuffer_.begin(), renderBuffer_.end(), 0.0f);
+    if (renderBuffer_.size() < sampleCount) {
+        renderBuffer_.resize(sampleCount);
+    }
+    std::fill(renderBuffer_.begin(), renderBuffer_.begin() + sampleCount, 0.0f);
     engine_.process(renderBuffer_.data(), frames, channels, 1.0f);
 
     for (std::uint32_t frame = 0; frame < frames; ++frame) {

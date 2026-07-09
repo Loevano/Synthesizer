@@ -38,8 +38,10 @@ void LiveGraph::render(float* output, std::uint32_t frames, std::uint32_t channe
 
     const std::size_t sampleCount = static_cast<std::size_t>(frames) * channels;
     std::fill(output, output + sampleCount, 0.0f);
-    fxBusBuffer_.resize(sampleCount);
-    std::fill(fxBusBuffer_.begin(), fxBusBuffer_.end(), 0.0f);
+    if (fxBusBuffer_.size() < sampleCount) {
+        fxBusBuffer_.resize(sampleCount);
+    }
+    std::fill(fxBusBuffer_.begin(), fxBusBuffer_.begin() + sampleCount, 0.0f);
 
     for (auto& node : sourceNodes_) {
         if (node.isImplemented && !node.isImplemented()) {

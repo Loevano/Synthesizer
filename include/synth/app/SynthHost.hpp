@@ -119,7 +119,7 @@ public:
     bool startAudio();
     void stopAudio();
     bool isRunning() const;
-    std::string stateJson() const;
+    std::string stateJson();
     bool setParam(std::string_view path, double value, std::string* errorMessage);
     bool setParam(std::string_view path, std::string_view value, std::string* errorMessage);
 
@@ -148,6 +148,8 @@ private:
     static const interfaces::OutputDeviceInfo* findOutputDevice(
         const std::vector<interfaces::OutputDeviceInfo>& outputDevices,
         std::string_view outputDeviceId);
+    static bool outputDeviceListsEqual(const std::vector<interfaces::OutputDeviceInfo>& left,
+                                       const std::vector<interfaces::OutputDeviceInfo>& right);
     static std::string escapeJson(std::string_view value);
     static bool tryParseIndex(std::string_view value, std::uint32_t& index);
     static float midiNoteToFrequency(int noteNumber);
@@ -160,6 +162,7 @@ private:
     void applyRenderStateCommandLocked(const RealtimeCommand& command);
     std::string buildStateJsonLocked() const;
     void markStateSnapshotDirty() const;
+    bool refreshOutputDevicesLocked(std::vector<interfaces::OutputDeviceInfo> outputDevices);
     void buildLiveGraphLocked();
     void buildDefaultStateLocked();
     void resizeScaffoldStateLocked();
@@ -183,6 +186,7 @@ private:
     void processAudioBlockLocked(float* output, std::uint32_t frames, std::uint32_t channels);
     bool applyOutputEngineConfig(std::optional<std::string> outputDeviceId,
                                  std::optional<std::uint32_t> outputChannels,
+                                 std::optional<std::uint32_t> framesPerBuffer,
                                  std::string* errorMessage);
     void applyRobinLevelLocked(float level);
     void applyTestLevelLocked(float level);
@@ -213,11 +217,11 @@ private:
     graph::FxRackNode fxRackNode_;
     graph::OutputMixerNode outputMixerNode_;
     graph::LiveGraph liveGraph_;
-    SourceMixerSlotState robinMixerState_{true, true, false, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
+    SourceMixerSlotState robinMixerState_{true, true, true, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState testMixerState_{true, true, true, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState decorMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState piecesMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
-    SourceMixerSlotState renderRobinMixerState_{true, true, false, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
+    SourceMixerSlotState renderRobinMixerState_{true, true, true, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState renderTestMixerState_{true, true, true, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState renderDecorMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState renderPiecesMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
@@ -231,6 +235,7 @@ private:
     std::vector<MidiSourceConnectionState> midiSourceConnections_;
     std::vector<MidiSourceRouteState> midiSourceRoutes_;
     std::vector<MidiSourceRouteState> renderMidiSourceRoutes_;
+    std::vector<interfaces::OutputDeviceInfo> outputDevices_;
     std::string audioBackendName_ = "Unknown";
     std::string outputDeviceName_ = "Unknown";
     std::uint16_t oscPort_ = 9000;
@@ -244,6 +249,8 @@ private:
     mutable std::mutex mutex_;
     mutable std::mutex realtimeCommandMutex_;
     std::deque<RealtimeCommand> queuedRealtimeCommands_;
+    std::deque<RealtimeCommand> drainingRealtimeCommands_;
+    std::atomic<bool> queuedRealtimeCommandsPending_{false};
     mutable std::mutex stateSnapshotMutex_;
     mutable std::string stateJsonCache_;
     mutable std::atomic<bool> stateSnapshotDirty_{true};

@@ -100,7 +100,7 @@ const ROBIN_SPREAD_TARGET_CONFIG = {
 
 const UI_RESET_DEFAULTS = {
   sourceMixer: {
-    robin: { enabled: false, level: 0.15, routeTarget: "dry" },
+    robin: { enabled: true, level: 0.15, routeTarget: "dry" },
     test: { enabled: true, level: 0.15, routeTarget: "dry" },
     decor: { enabled: false, level: 0, routeTarget: "dry" },
     pieces: { enabled: false, level: 0, routeTarget: "dry" },
@@ -240,6 +240,7 @@ const elements = {
   outputDeviceValue: document.getElementById("outputDeviceValue"),
   engineOutputDevice: document.getElementById("engineOutputDevice"),
   engineOutputChannels: document.getElementById("engineOutputChannels"),
+  engineBufferFrames: document.getElementById("engineBufferFrames"),
   audioRunningValue: document.getElementById("audioRunningValue"),
   midiStatusValue: document.getElementById("midiStatusValue"),
   midiSourcesValue: document.getElementById("midiSourcesValue"),
@@ -2638,27 +2639,95 @@ function syncSelectOptions(select, options, selectedValue) {
     });
   }
 
-  const resolvedSelectedValue = selectedValue == null ? "" : String(selectedValue);
+  const requestedSelectedValue = selectedValue == null ? "" : String(selectedValue);
+  const hasRequestedOption = nextOptions.some((option) => option.value === requestedSelectedValue && !option.disabled);
+  const fallbackOption = nextOptions.find((option) => !option.disabled) ?? null;
+  const resolvedSelectedValue = hasRequestedOption
+    ? requestedSelectedValue
+    : (fallbackOption?.value ?? "");
+
   if (select.value !== resolvedSelectedValue) {
     select.value = resolvedSelectedValue;
   }
 }
 
+function hasVisibleOutputDeviceName(name) {
+  const normalizedName = String(name ?? "").trim().toLowerCase();
+  return normalizedName !== ""
+    && normalizedName !== "unknown"
+    && normalizedName !== "unavailable"
+    && normalizedName !== "loading...";
+}
+
 function renderEngineOutputControls(engine) {
-  const devices = Array.isArray(engine.availableOutputDevices) ? engine.availableOutputDevices : [];
-  const selectedDeviceId = engine.selectedOutputDeviceId ?? "";
+  let devices = Array.isArray(engine.availableOutputDevices) ? engine.availableOutputDevices : [];
+  let selectedDeviceId = engine.selectedOutputDeviceId ?? "";
+  if (!devices.length && hasVisibleOutputDeviceName(engine.outputDeviceName)) {
+    selectedDeviceId = selectedDeviceId || "__current_output_device";
+    devices = [{
+      id: selectedDeviceId,
+      name: engine.outputDeviceName,
+      outputChannels: Number(engine.maxOutputChannels ?? engine.outputChannels ?? 1),
+      currentBufferFrames: Number(engine.framesPerBuffer ?? 256),
+      minBufferFrames: 16,
+      maxBufferFrames: 4096,
+      isDefault: true,
+      synthetic: true,
+    }];
+  }
+
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? null;
   const maxOutputChannels = Math.max(1, Number(selectedDevice?.outputChannels ?? engine.maxOutputChannels ?? engine.outputChannels ?? 1));
+
+  if (!devices.length) {
+    syncSelectOptions(
+      elements.engineOutputDevice,
+      [{ value: "", label: "No output devices detected", disabled: true }],
+      "",
+    );
+    elements.engineOutputDevice.disabled = true;
+
+    syncSelectOptions(
+      elements.engineOutputChannels,
+      [{ value: "", label: "No device selected", disabled: true }],
+      "",
+    );
+    elements.engineOutputChannels.disabled = true;
+
+    syncSelectOptions(
+      elements.engineBufferFrames,
+      [{ value: "", label: "No device selected", disabled: true }],
+      "",
+    );
+    elements.engineBufferFrames.disabled = true;
+    return;
+  }
+
+  const minBufferFrames = Math.max(16, Number(selectedDevice?.minBufferFrames ?? 16));
+  const maxBufferFrames = Math.max(minBufferFrames, Number(selectedDevice?.maxBufferFrames ?? 4096));
+  const currentBufferFrames = Math.max(16, Number(engine.framesPerBuffer ?? selectedDevice?.currentBufferFrames ?? 256));
+  const preferredBufferFrames = [32, 64, 128, 256, 512, 1024, 2048, 4096];
+  const bufferFrameOptions = preferredBufferFrames
+    .filter((frames) => frames >= minBufferFrames && frames <= maxBufferFrames);
+
+  if (!bufferFrameOptions.includes(currentBufferFrames)) {
+    bufferFrameOptions.push(currentBufferFrames);
+    bufferFrameOptions.sort((left, right) => left - right);
+  }
+
+  if (!bufferFrameOptions.length) {
+    bufferFrameOptions.push(currentBufferFrames);
+  }
 
   syncSelectOptions(
     elements.engineOutputDevice,
     devices.map((device) => ({
       value: device.id,
-      label: `${device.name} (${device.outputChannels} outs${device.isDefault ? ", default" : ""})`,
+      label: `${device.name} (${device.outputChannels} outs${device.isDefault ? ", default" : ""}${device.synthetic ? ", current" : ""})`,
     })),
     selectedDeviceId,
   );
-  elements.engineOutputDevice.disabled = devices.length === 0;
+  elements.engineOutputDevice.disabled = devices.length === 0 || devices.every((device) => device.synthetic);
 
   syncSelectOptions(
     elements.engineOutputChannels,
@@ -2669,6 +2738,16 @@ function renderEngineOutputControls(engine) {
     String(engine.outputChannels ?? 1),
   );
   elements.engineOutputChannels.disabled = maxOutputChannels <= 0;
+
+  syncSelectOptions(
+    elements.engineBufferFrames,
+    bufferFrameOptions.map((frames) => ({
+      value: String(frames),
+      label: `${frames} frames`,
+    })),
+    String(currentBufferFrames),
+  );
+  elements.engineBufferFrames.disabled = bufferFrameOptions.length === 0;
 }
 
 function setTransposeSemitonesLabel(value) {
@@ -5092,6 +5171,10 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   elements.engineOutputChannels.addEventListener("change", () => {
     setStructuralParam("engine.outputChannels", Number(elements.engineOutputChannels.value));
+  });
+
+  elements.engineBufferFrames.addEventListener("change", () => {
+    setStructuralParam("engine.framesPerBuffer", Number(elements.engineBufferFrames.value));
   });
 
   elements.voiceCount.addEventListener("input", () => {

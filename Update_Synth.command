@@ -3,7 +3,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILT_APP="$SCRIPT_DIR/builds/Synthesizer.app"
-MAIN_APP="$SCRIPT_DIR/Synthesizer.app"
 
 "$SCRIPT_DIR/scripts/fetch-and-build-app.sh"
 
@@ -12,9 +11,8 @@ if [[ ! -d "$BUILT_APP" ]]; then
   exit 1
 fi
 
-echo "Copying app to main folder..."
-ditto "$BUILT_APP" "$MAIN_APP"
-echo "Copied app: $MAIN_APP"
+echo "Built app: $BUILT_APP"
+echo "Open it with: open \"$BUILT_APP\""
 
 echo
 echo "Build complete. Closing this Terminal window..."

@@ -36,8 +36,12 @@ fi
 if [[ "${COPY_APP:-${COPY_APP_TO_ROOT:-1}}" != "0" ]]; then
   echo "Copying app to $APP_DEST..."
   ditto "$APP_PATH" "$APP_DEST"
+  echo "Copied app: $APP_DEST"
+  OPEN_PATH="$APP_DEST"
+else
+  echo "App copy skipped."
+  OPEN_PATH="$APP_PATH"
 fi
 
 echo "Built $APP_PATH"
-echo "Copied app: $APP_DEST"
-echo "Open it with: open \"$APP_DEST\""
+echo "Open it with: open \"$OPEN_PATH\""

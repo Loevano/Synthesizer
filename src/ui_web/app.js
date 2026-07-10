@@ -1560,8 +1560,8 @@ function roundToStep(value, min, max, step) {
   return clampValue(Number(steppedValue.toFixed(6)), min, max);
 }
 
-function valueToRatio(input) {
-  const { min, max } = getRangeMetrics(input);
+function valueToRatio(input, metrics = getRangeMetrics(input)) {
+  const { min, max } = metrics;
   if (max <= min) {
     return 0;
   }
@@ -1599,27 +1599,65 @@ function dispatchRotaryInput(input, nextValue, { commit = false } = {}) {
   }
 }
 
+function setAttributeIfChanged(element, name, value) {
+  const nextValue = String(value);
+  if (element.getAttribute(name) !== nextValue) {
+    element.setAttribute(name, nextValue);
+  }
+}
+
 function syncRotaryControl(input) {
   const wrapper = input._rotaryWrapper;
   if (!(wrapper instanceof HTMLElement) || !wrapper.classList.contains("rotary")) {
     return;
   }
 
-  const ratio = valueToRatio(input);
-  const angle = (-135 + (ratio * 270)).toFixed(2);
+  const metrics = getRangeMetrics(input);
+  const ratio = valueToRatio(input, metrics);
+  const angle = `${(-135 + (ratio * 270)).toFixed(2)}deg`;
+  const ratioText = ratio.toFixed(4);
   const output = wrapper._rotaryOutput;
   const label = wrapper._rotaryLabel;
-  const metrics = getRangeMetrics(input);
+  const valueText = String(input.value);
+  const ariaValueText = output?.textContent?.trim() ?? valueText;
+  const labelText = label?.textContent?.trim() ?? "";
+  const stateKey = [
+    angle,
+    ratioText,
+    input.disabled ? "disabled" : "enabled",
+    valueText,
+    ariaValueText,
+    String(metrics.min),
+    String(metrics.max),
+    labelText,
+  ].join("|");
 
-  wrapper.style.setProperty("--rotary-angle", `${angle}deg`);
-  wrapper.style.setProperty("--rotary-ratio", ratio.toFixed(4));
-  wrapper.classList.toggle("is-disabled", input.disabled);
-  wrapper.setAttribute("aria-valuenow", String(input.value));
-  wrapper.setAttribute("aria-valuetext", output?.textContent?.trim() ?? String(input.value));
-  wrapper.setAttribute("aria-valuemin", String(metrics.min));
-  wrapper.setAttribute("aria-valuemax", String(metrics.max));
-  if (label?.textContent) {
-    wrapper.setAttribute("aria-label", label.textContent.trim());
+  if (wrapper._rotaryStateKey === stateKey) {
+    return;
+  }
+  wrapper._rotaryStateKey = stateKey;
+
+  if (wrapper.style.getPropertyValue("--rotary-angle") !== angle) {
+    wrapper.style.setProperty("--rotary-angle", angle);
+  }
+
+  const disabled = Boolean(input.disabled);
+  if (wrapper.classList.contains("is-disabled") !== disabled) {
+    wrapper.classList.toggle("is-disabled", disabled);
+  }
+  const tabIndex = disabled ? -1 : 0;
+  if (wrapper.tabIndex !== tabIndex) {
+    wrapper.tabIndex = tabIndex;
+  }
+
+  setAttributeIfChanged(wrapper, "aria-valuenow", valueText);
+  setAttributeIfChanged(wrapper, "aria-valuetext", ariaValueText);
+  setAttributeIfChanged(wrapper, "aria-valuemin", metrics.min);
+  setAttributeIfChanged(wrapper, "aria-valuemax", metrics.max);
+  if (labelText) {
+    setAttributeIfChanged(wrapper, "aria-label", labelText);
+  } else if (wrapper.hasAttribute("aria-label")) {
+    wrapper.removeAttribute("aria-label");
   }
 }
 
@@ -1632,7 +1670,6 @@ function createRotaryControl(input) {
   wrapper.className = "rotary";
   wrapper.tabIndex = input.disabled ? -1 : 0;
   wrapper.setAttribute("role", "slider");
-  wrapper.innerHTML = `<div class="rotary__indicator"></div>`;
   wrapper._rotaryOutput = input.parentElement?.querySelector("output") ?? null;
   wrapper._rotaryLabel = input.parentElement?.querySelector("span") ?? null;
   input._rotaryWrapper = wrapper;
@@ -1756,10 +1793,71 @@ function ensureRotaryControls(root = document) {
 
     const wrapper = input._rotaryWrapper;
     if (wrapper instanceof HTMLElement && wrapper.classList.contains("rotary")) {
-      wrapper.tabIndex = input.disabled ? -1 : 0;
-      wrapper._rotaryOutput = input.parentElement?.querySelector("output") ?? null;
-      wrapper._rotaryLabel = input.parentElement?.querySelector("span") ?? null;
+      const output = input.parentElement?.querySelector("output") ?? null;
+      const label = input.parentElement?.querySelector("span") ?? null;
+      if (wrapper._rotaryOutput !== output || wrapper._rotaryLabel !== label) {
+        wrapper._rotaryStateKey = "";
+        wrapper._rotaryOutput = output;
+        wrapper._rotaryLabel = label;
+      }
     }
+    syncRotaryControl(input);
+  });
+}
+
+const STATIC_ROTARY_INPUT_KEYS = [
+  "voiceCount",
+  "oscillatorsPerVoice",
+  "transposeSemitones",
+  "fineTuneCents",
+  "robinVcfCutoff",
+  "robinVcfResonance",
+  "robinEnvVcfAttack",
+  "robinEnvVcfDecay",
+  "robinEnvVcfSustain",
+  "robinEnvVcfRelease",
+  "robinEnvVcfAmount",
+  "robinAttack",
+  "robinDecay",
+  "robinSustain",
+  "robinRelease",
+  "testFrequency",
+  "testGain",
+  "testAttack",
+  "testDecay",
+  "testSustain",
+  "testRelease",
+  "fxSaturatorInputLevel",
+  "fxSaturatorOutputLevel",
+  "fxChorusDepth",
+  "fxChorusSpeed",
+  "fxChorusPhaseSpread",
+  "lfoDepth",
+  "lfoTempo",
+  "lfoRateMultiplier",
+  "lfoFixedFrequency",
+  "lfoPhaseSpread",
+];
+
+function getStaticRotaryInputs() {
+  return STATIC_ROTARY_INPUT_KEYS
+    .map((key) => elements[key])
+    .filter((input) => input instanceof HTMLInputElement
+      && input.type === "range"
+      && input.dataset.controlStyle !== "linear");
+}
+
+function ensureStaticRotaryControls() {
+  getStaticRotaryInputs().forEach((input) => {
+    if (!input.classList.contains("rotary-input")) {
+      createRotaryControl(input);
+    }
+    syncRotaryControl(input);
+  });
+}
+
+function syncStaticRotaryControls() {
+  getStaticRotaryInputs().forEach((input) => {
     syncRotaryControl(input);
   });
 }
@@ -1791,16 +1889,29 @@ function syncRangeField(input, value, outputText, { min = null, max = null, step
     setTextContent(input.parentElement?.querySelector("span"), label);
   }
   if (min != null) {
-    input.min = String(min);
+    const minText = String(min);
+    if (input.min !== minText) {
+      input.min = minText;
+    }
   }
   if (max != null) {
-    input.max = String(max);
+    const maxText = String(max);
+    if (input.max !== maxText) {
+      input.max = maxText;
+    }
   }
   if (step != null) {
-    input.step = String(step);
+    const stepText = String(step);
+    if (input.step !== stepText) {
+      input.step = stepText;
+    }
   }
-  input.value = String(value);
+  const valueText = String(value);
+  if (input.value !== valueText) {
+    input.value = valueText;
+  }
   setTextContent(input.parentElement?.querySelector("output"), outputText);
+  syncRotaryControl(input);
 }
 
 function getRobinMasterOscillators() {
@@ -4680,7 +4791,7 @@ function applyStateToUi(nextState) {
   renderTestSource();
   renderDecorOutputGrid();
   renderFxChain();
-  ensureRotaryControls();
+  syncStaticRotaryControls();
 }
 
 function renderState(nextState) {
@@ -5756,6 +5867,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  ensureStaticRotaryControls();
   await refreshState();
   await refreshPatchLibrary({ silent: true });
   updatePatchUi();

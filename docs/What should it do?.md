@@ -2,6 +2,8 @@
 
 This is the product/design note for the project. It mixes current decisions with near-future intent.
 
+This file is not the implementation contract. For current architecture and protected-path workflow, use [ARCHITECTURE.md](ARCHITECTURE.md), [Data flow.md](Data%20flow.md), and [GIT_RULES.md](GIT_RULES.md).
+
 ## Core goals
 
 - It should work on a multichannel setup.
@@ -74,9 +76,10 @@ Modulators should create interesting multichannel movement in a controlled, simp
 Current direction:
 
 - Robin already has one live LFO system
+- Robin already has live spread slots and macro depth controls
 - future modulation should sit on top of the master voice model, not replace it
 
-LFO ideas:
+Current LFO behavior:
 
 - phase spread over outputs
 - polarity flip
@@ -89,6 +92,13 @@ LFO ideas:
 - linked-to-clock mode with relative rate
 - fixed-frequency mode
 - unlinked output behavior to introduce polyrhythms
+
+Current spread behavior:
+
+- six slots
+- linear, random, and alternating algorithms
+- targets across filter, filter envelope, amp envelope, oscillator level, and oscillator detune areas
+- macro depth controls for quick performance edits
 
 ## Envelopes and filters
 
@@ -139,11 +149,22 @@ OSC:
 
 - should expose a controllable parameter map
 
+## Patch library
+
+Patch save/load should stay snapshot-driven.
+
+Current direction:
+
+- save user patch state, not continuous runtime internals
+- keep a repo-local `./Patches` flow for development
+- use Application Support storage for packaged app builds
+- keep patch load behavior going through normal parameter paths
+
 ## Framework model
 
 Current product model:
 
-`Audio Engine -> Source Mixer -> Output Mixer -> Sources -> FX -> outputs`
+`Audio Engine -> Sources -> dry/fx split -> FX Rack -> dry + fx sum -> Output Mixer -> outputs`
 
 Meanings:
 
@@ -186,9 +207,9 @@ Current working design:
 
 Next Robin layer:
 
-1. Section modulators
-   - preset algorithms that add offsets on top of the master values
-   - example: a linear ramp that gradually opens the filter from voice 1 to voice 12
+1. Broader modulation destinations
+   - add targets only when names and ranges are clear
+   - keep algorithms as offsets on top of master values
 2. Section unlink
    - unlink a section or voice when a few voices need special local behavior
 

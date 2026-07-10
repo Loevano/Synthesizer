@@ -1,15 +1,18 @@
 # Contributing
 
-This repo works best when contributors treat it like a collaboration between:
-- a human making product and sound-design decisions
-- a coding agent implementing changes quickly
-- a normal Git workflow that keeps experiments isolated
+This repo is built for collaboration between a human decision-maker, coding agents, and normal Git review.
 
-This guide is written for that style of contribution.
+Read this first:
 
-## What this project is
+- [Git rules](GIT_RULES.md)
+- [Architecture](ARCHITECTURE.md)
+- [Data flow](Data%20flow.md)
+- [Project overview](PROJECT_OVERVIEW.md)
 
-This is a macOS-first multichannel synth app with:
+## Project Shape
+
+`Synthesizer` is a macOS-first multichannel synth app with:
+
 - a native C++ audio engine
 - a controller/state layer
 - a bundled web UI inside a `WKWebView`
@@ -19,14 +22,16 @@ The current reference instrument is `Robin`, a multivoice spatial synth with a m
 ## Setup
 
 Required:
+
 - macOS
-- Xcode Command Line Tools (basically an IDE like VSCode or Cursor)
+- Xcode Command Line Tools
 - CMake 3.21+
 - Git
 
 Useful:
+
 - Node.js, for `node --check src/ui_web/app.js`
-- GitHub CLI (`gh`), for branch/PR workflow
+- GitHub CLI, for PR workflow
 
 Install Xcode Command Line Tools if needed:
 
@@ -34,149 +39,114 @@ Install Xcode Command Line Tools if needed:
 xcode-select --install
 ```
 
-To get tje project on your hard drive and start collaborating:
+Clone, build, and run:
 
 ```bash
 git clone <your-repo-url>
 cd Synthesizer
 ./scripts/build.sh
-```
-
-Run the app:
-
-```bash
 ./scripts/run-app.sh
 ```
 
-Run the CLI host:
+Install the local Git hooks once per clone:
 
 ```bash
-./scripts/run.sh
+./scripts/install-git-hooks.sh
 ```
 
 If the app is already open, relaunch it after UI changes so the rebuilt bundled assets reload.
 
-## Vibe Coding Workflow
+## Collaboration Model
 
-The most effective workflow here is:
-1. make one focused request
-2. implement it on a branch from `dev`
-3. verify it
-4. commit and push
-5. open a PR into `dev`
+Use this workflow:
 
-Do not batch unrelated UI, DSP, routing, and infrastructure changes into one vague request if you can avoid it. The tighter the slice, the better the result.
+1. start from current `dev`
+2. create one short-lived branch
+3. make one focused change
+4. verify it
+5. commit only intentional files
+6. open a PR into `dev`
 
-## How To Prompt Well
+Do not batch unrelated UI, DSP, routing, docs, and infrastructure work into one branch.
 
-Best prompts have:
-- one screen or subsystem at a time
-- the goal
-- the scope
-- the behavior rules
-- what must stay
-- what must be removed
+## Branch Workflow
 
-For UI work, screenshots help a lot. The best pattern is:
-- screenshot for visual direction
-- 3-6 bullets for interaction rules
+Do not do feature work directly on `main` or `dev`.
+
+```bash
+git checkout dev
+git pull --ff-only
+git checkout -b docs/collaboration-rules
+```
+
+Branch prefixes:
+
+- `feature/` or `feat/`
+- `fix/`
+- `docs/`
+- `ui/`
+- `test/`
+- `chore/`
+- `infra/`
+- `core/`, `dsp/`, `routing/`, or `architecture/` for agreed protected-path work
+- `hotfix/`
+
+See [GIT_RULES.md](GIT_RULES.md) for the strict version.
+
+## Protected Core Work
+
+Core audio, DSP, graph, host state, build, and CI paths are protected.
+
+Do not change these paths casually:
+
+- `src/audio/`
+- `include/synth/audio/`
+- `src/dsp/`
+- `include/synth/dsp/`
+- `src/graph/`
+- `include/synth/graph/`
+- `src/app/SynthHost.cpp`
+- `include/synth/app/SynthHost.hpp`
+- `include/synth/app/RealtimeCommands.hpp`
+- `CMakeLists.txt`
+- `.github/workflows/`
+
+If a task needs these paths, make that explicit before coding. Use a dedicated branch such as `dsp/fix-chorus-depth` or `routing/source-fx-regression`, add focused tests when behavior changes, and update architecture docs if a contract changes.
+
+## Prompting Agents
+
+Good prompts include:
+
+- the exact goal
+- the branch/scope
+- what files or subsystems are off limits
+- expected behavior
+- what must stay unchanged
+- verification requirements
 
 Good example:
+
 - Goal: make Robin voice overview denser
 - Scope: Robin page only
+- Branch: `ui/robin-voice-overview`
 - Keep: master-first workflow
-- Remove: duplicated controls
-- Behavior: linked voices stay collapsed, one unlinked voice editor open at a time
-- Reference: attached screenshot
+- Off limits: `src/audio/`, `src/dsp/`, `src/graph/`, `SynthHost`
+- Verification: build plus manual UI check
 
-For synth behavior or DSP work, say:
-- what you changed
+For DSP or synth behavior work, include:
+
+- what changed
 - what you expected
 - what actually happened
 - whether audio was playing
 - whether MIDI or OSC was active
 - exact control path if possible
 
-If you want to edit specific DSP Behaviour, discuss that first.
-
-Good example:
-- Hold a note in Robin
-- Change `FX -> Chorus -> Depth`
-- Pop happens during drag, not on release
-- Reproducible every time
-
-## Crash And Debug Workflow
-
-If the app crashes or behaves strangely, run:
-
-```bash
-./scripts/run-app.sh --debug-crash
-```
-
-Use `./scripts/run-app.sh` or `open /path/to/Synthesizer.app` for app launches.
-Do not run `Synthesizer.app/Contents/MacOS/Synthesizer` directly from the terminal.
-
-This enables:
-- bridge timing logs
-- Robin parameter logs
-- controller and bridge breadcrumbs
-- fatal signal logging
-- `std::terminate` logging
-- uncaught macOS exception logging
-
-On macOS app runs, logs are written under `~/Library/Logs/Synthesizer/` by default.
-You can override that with `SYNTH_LOG_DIR`.
-
-Log files:
-- `synth_*.log` for normal runtime logs
-- `crash_*.log` for crash diagnostics and recent breadcrumbs
-
-If you report a crash, include:
-- the exact repro steps
-- whether audio was playing
-- whether MIDI or OSC was active
-- the newest `~/Library/Logs/Synthesizer/synth_*.log`
-- the newest `~/Library/Logs/Synthesizer/crash_*.log`
-
-## Branch Workflow
-
-Do not do feature work directly on `main`.
-
-Use this branch model:
-- `main`: stable, shareable, release-ready
-- `dev`: integration branch for tested ongoing work
-- `feature/<name>`: short-lived feature or refactor branch from `dev`
-- `hotfix/<name>`: urgent fix branch from `main`
-
-Create a feature branch from `dev` for each focused change:
-
-```bash
-git checkout dev
-git pull --ff-only
-git checkout -b fix/chorus-pops
-```
-
-Examples:
-- `fix/robin-crash-logs`
-- `feat/robin-lfo-layout`
-- `docs/vibe-contributing-guide`
-
-Keep the branch scoped to one area of work. That makes review and rollback much easier.
-
-Merge flow:
-1. branch from `dev`
-2. open PR into `dev`
-3. merge into `dev` when checks are green
-4. periodically open PR `dev -> main`
-5. merge `main` hotfixes back into `dev` if needed
-
-Recommended GitHub branch protection:
-- `main`: require PRs and passing CI, block force-push and deletion
-- `dev`: require PRs and passing CI, block force-push
+If the requested change touches protected core behavior, discuss it first.
 
 ## Verification Before Commit
 
-Minimum expectation:
+Minimum:
 
 ```bash
 ./scripts/build.sh
@@ -188,32 +158,33 @@ If `src/ui_web/app.js` changed:
 node --check src/ui_web/app.js
 ```
 
-If you changed audio behavior, also do a live repro pass in the app when possible.
+For audio, routing, MIDI, OSC, or patch behavior changes, also run the app and verify the actual workflow.
 
 ## Commit Workflow
 
 Stage only the files that belong to the change:
 
 ```bash
-git add path/to/file
-git add another/file
-git commit -m "Fix chorus parameter pops"
+git add docs/GIT_RULES.md scripts/check-git-rules.sh
+git commit -m "Add strict collaboration git rules"
 ```
 
-Or use the helper:
+The helper also requires intentional staging:
 
 ```bash
-./scripts/git-commit.sh "Fix chorus parameter pops"
+./scripts/git-commit.sh "Add strict collaboration git rules" docs/GIT_RULES.md scripts/check-git-rules.sh
 ```
 
-Commit messages should describe the actual change, not the session.
+Commit messages should describe the change.
 
 Good:
+
 - `Add crash diagnostics and bridge breadcrumbs`
 - `Remove oscillator-count gain normalization`
 - `Rework Robin voice editor layout`
 
 Bad:
+
 - `misc fixes`
 - `update stuff`
 - `changes`
@@ -223,79 +194,71 @@ Bad:
 Push your branch:
 
 ```bash
-git push -u origin fix/chorus-pops
+git push -u origin docs/collaboration-rules
 ```
 
-Open a PR into `dev` for normal work.
+Open a PR into `dev`.
 
-Only open a PR into `main` when promoting a tested batch from `dev`.
+A good PR includes:
 
-A good PR description includes:
 - what changed
 - why it changed
+- whether protected paths changed
 - how to verify it
-- any known gaps or risks
+- known gaps or risks
 
-Suggested PR template:
+Only open `dev -> main` when promoting a tested integration batch.
 
-```md
-## Summary
-- what changed
+## Crash And Debug Workflow
 
-## Why
-- user-visible or technical reason
-
-## Verification
-- ./scripts/build.sh
-- node --check src/ui_web/app.js
-- manual repro steps
-
-## Risks
-- anything still uncertain
-```
-
-## GitHub CLI
-
-If you use GitHub CLI:
+If the app crashes or behaves strangely:
 
 ```bash
-gh auth login
-gh pr create --base dev --fill
+./scripts/run-app.sh --debug-crash
 ```
 
-If you are creating a fresh remote:
+Use `./scripts/run-app.sh` or `open /path/to/Synthesizer.app` for app launches. Do not run `Synthesizer.app/Contents/MacOS/Synthesizer` directly from the terminal.
+
+On macOS app runs, logs are written under:
 
 ```bash
-./scripts/github-create.sh your-github-username Synthesizer
+~/Library/Logs/Synthesizer/
 ```
 
-## What To Update When You Change Things
+Crash reports should include:
+
+- exact repro steps
+- whether audio was playing
+- whether MIDI or OSC was active
+- newest `synth_*.log`
+- newest `crash_*.log`
+
+## What To Update
 
 Update docs when behavior or workflow changes.
 
-Usually:
-- `README.md` for user-facing setup, running, or debugging changes
-- `CONTRIBUTING.md` for contributor workflow changes
-- `docs/GITHUB.md` for branch/PR workflow changes
-- `CHANGELOG.md` for notable shipped behavior changes
-
-If you change routing, DSP, or architecture meaningfully, also update:
-- `docs/ARCHITECTURE.md`
-- `docs/PROJECT_OVERVIEW.md`
+- `README.md`: user-facing setup, running, and top-level status
+- `docs/User Manual.md`: app usage
+- `docs/CONTRIBUTING.md`: contributor workflow
+- `docs/GIT_RULES.md`: branch, PR, and local hook rules
+- `docs/GITHUB.md`: GitHub-specific workflow
+- `docs/ARCHITECTURE.md`: architecture contracts
+- `docs/Data flow.md`: control/audio/patch flow
+- `docs/CHANGELOG.md`: notable shipped changes
 
 ## Project Structure
 
-- `src/app/`: controller, state model, parameter handling, bridge-facing logic
-- `src/audio/`: `Synth`, `Voice`, `TestSynth`
-- `src/dsp/`: oscillator, envelope, filter, delay, chorus, LFO, EQ
+- `src/app/`: host, source state, parameter handling, bridge-facing logic
+- `src/audio/`: render engines such as `PolySynth`, `Voice`, and `TestEngine`
+- `src/dsp/`: oscillators, envelopes, filter, delay, chorus, LFO, EQ
 - `src/graph/`: live graph, source nodes, FX rack, output mixer node
 - `src/platform/macos/`: app shell and webview bridge
 - `src/ui_web/`: bundled HTML/CSS/JS UI
-- `docs/`: overview, architecture, roadmap, implementation notes
+- `docs/`: product, architecture, workflow, release, and planning docs
 
 ## Current Areas That Need Extra Care
 
 - automated tests are still light
 - the app target is macOS-first
 - `Decor`, `Pieces`, `Saturator`, and `Sidechain` are still partly scaffolded
-- Robin still needs deeper modulation beyond the current LFO and local voice overrides
+- Robin LFO and spread modulation are live, but broader modulation destinations still need careful design

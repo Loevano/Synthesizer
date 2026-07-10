@@ -11,6 +11,7 @@ Right now the repo has:
 Current branch intent:
 - `dev` is for source/integration work
 - `main` is for stable tagged releases
+- release promotion should happen through a reviewed `dev -> main` PR
 
 Release workflow intent:
 - `dev` should not be used for public downloadable app releases
@@ -58,10 +59,10 @@ Create a packaged app zip locally with:
 ./scripts/package-app.sh
 ```
 
-That produces a zip under `dist/`, for example:
+That produces a zip under `builds/dist/`, for example:
 
 ```bash
-dist/Synthesizer-v1.0.0-macOS-arm64.zip
+builds/dist/Synthesizer-v1.0.0-macOS-arm64.zip
 ```
 
 ## Tagged Main Release Flow
@@ -76,6 +77,7 @@ git push origin v1.0.0
 ```
 
 That triggers the release workflow. The intended flow is:
+- promote tested `dev` into `main` through PR
 - verify the tagged commit is on `main`
 - build the app
 - package it into a `.zip`
@@ -106,14 +108,14 @@ Example signing command:
 ```bash
 codesign --force --deep --options runtime --timestamp \
   --sign "Developer ID Application: YOUR NAME (TEAMID)" \
-  build-release/Synthesizer.app
+  builds/release/Synthesizer.app
 ```
 
 Verify the signature:
 
 ```bash
-codesign --verify --deep --strict --verbose=2 build-release/Synthesizer.app
-spctl --assess --type execute --verbose=4 build-release/Synthesizer.app
+codesign --verify --deep --strict --verbose=2 builds/release/Synthesizer.app
+spctl --assess --type execute --verbose=4 builds/release/Synthesizer.app
 ```
 
 ## Local Notarization Example
@@ -122,14 +124,14 @@ After signing, package the app:
 
 ```bash
 ditto -c -k --sequesterRsrc --keepParent \
-  build-release/Synthesizer.app \
-  dist/Synthesizer-signed.zip
+  builds/release/Synthesizer.app \
+  builds/dist/Synthesizer-signed.zip
 ```
 
 Submit it to Apple:
 
 ```bash
-xcrun notarytool submit dist/Synthesizer-signed.zip \
+xcrun notarytool submit builds/dist/Synthesizer-signed.zip \
   --keychain-profile "AC_NOTARY_PROFILE" \
   --wait
 ```
@@ -137,15 +139,15 @@ xcrun notarytool submit dist/Synthesizer-signed.zip \
 Then staple the ticket to the `.app`:
 
 ```bash
-xcrun stapler staple build-release/Synthesizer.app
+xcrun stapler staple builds/release/Synthesizer.app
 ```
 
 After stapling, create the final zip you actually distribute:
 
 ```bash
 ditto -c -k --sequesterRsrc --keepParent \
-  build-release/Synthesizer.app \
-  dist/Synthesizer-notarized.zip
+  builds/release/Synthesizer.app \
+  builds/dist/Synthesizer-notarized.zip
 ```
 
 ## Recommended Near-Term Release Policy

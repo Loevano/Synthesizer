@@ -220,7 +220,8 @@ bool SynthHost::initialize() {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         buildLiveGraphLocked();
-        syncOutputDeviceSelectionLocked(driver_->availableOutputDevices());
+        refreshOutputDevicesLocked(driver_->availableOutputDevices());
+        syncOutputDeviceSelectionLocked(outputDevices_);
 
         buildDefaultStateLocked();
         resizeScaffoldStateLocked();
@@ -248,7 +249,8 @@ bool SynthHost::startAudio() {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         const std::uint32_t previousChannels = config_.channels;
-        syncOutputDeviceSelectionLocked(driver_->availableOutputDevices());
+        refreshOutputDevicesLocked(driver_->availableOutputDevices());
+        syncOutputDeviceSelectionLocked(outputDevices_);
         if (config_.channels != previousChannels) {
             reconfigureStructureLocked(config_.voiceCount, config_.oscillatorsPerVoice);
             syncRenderStateFromSnapshotLocked();
@@ -395,7 +397,19 @@ bool SynthHost::isRunning() const {
     return driver_ != nullptr && driver_->isRunning();
 }
 
-std::string SynthHost::stateJson() const {
+std::string SynthHost::stateJson() {
+    if (driver_ != nullptr) {
+        auto outputDevices = driver_->availableOutputDevices();
+        bool outputDevicesChanged = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            outputDevicesChanged = refreshOutputDevicesLocked(std::move(outputDevices));
+        }
+        if (outputDevicesChanged) {
+            markStateSnapshotDirty();
+        }
+    }
+
     if (!stateSnapshotDirty_.load(std::memory_order_acquire)) {
         std::lock_guard<std::mutex> cacheLock(stateSnapshotMutex_);
         return stateJsonCache_;
@@ -423,7 +437,7 @@ void SynthHost::markStateSnapshotDirty() const {
 
 std::string SynthHost::buildStateJsonLocked() const {
     std::ostringstream json;
-    const auto outputDevices = driver_ != nullptr ? driver_->availableOutputDevices() : std::vector<interfaces::OutputDeviceInfo>{};
+    const auto& outputDevices = outputDevices_;
     const interfaces::OutputDeviceInfo* selectedOutputDevice = findOutputDevice(outputDevices, config_.outputDeviceId);
     const auto midiSources = midiInput_ != nullptr ? midiInput_->sources() : std::vector<io::MidiSourceInfo>{};
     const auto midiConnectedSourceCount = midiInput_ != nullptr ? midiInput_->connectedSourceCount() : 0;
@@ -471,7 +485,8 @@ std::string SynthHost::buildStateJsonLocked() const {
              << "}";
     }
 
-    json << "],"
+    json << "]"
+         << "},"
          << "\"availableOutputDevices\":[";
 
     for (std::size_t index = 0; index < outputDevices.size(); ++index) {
@@ -483,12 +498,14 @@ std::string SynthHost::buildStateJsonLocked() const {
              << "\"id\":\"" << escapeJson(outputDevices[index].id) << "\","
              << "\"name\":\"" << escapeJson(outputDevices[index].name) << "\","
              << "\"outputChannels\":" << outputDevices[index].outputChannels << ","
+             << "\"currentBufferFrames\":" << outputDevices[index].currentBufferFrames << ","
+             << "\"minBufferFrames\":" << outputDevices[index].minBufferFrames << ","
+             << "\"maxBufferFrames\":" << outputDevices[index].maxBufferFrames << ","
              << "\"isDefault\":" << (outputDevices[index].isDefault ? "true" : "false")
              << "}";
     }
 
     json << "]"
-         << "}"
          << "},"
          << "\"graph\":{"
          << "\"sourceStageOrder\":[";
@@ -666,7 +683,12 @@ bool SynthHost::setParam(std::string_view path, double value, std::string* error
 
     if (path == "engine.outputChannels") {
         const std::uint32_t requestedChannels = static_cast<std::uint32_t>(std::clamp(value, 1.0, 64.0));
-        return applyOutputEngineConfig(std::nullopt, requestedChannels, errorMessage);
+        return applyOutputEngineConfig(std::nullopt, requestedChannels, std::nullopt, errorMessage);
+    }
+
+    if (path == "engine.framesPerBuffer") {
+        const std::uint32_t requestedFrames = static_cast<std::uint32_t>(std::clamp(value, 16.0, 4096.0));
+        return applyOutputEngineConfig(std::nullopt, std::nullopt, requestedFrames, errorMessage);
     }
 
     std::optional<RealtimeCommand> renderCommand;
@@ -846,7 +868,7 @@ bool SynthHost::setParam(std::string_view path, std::string_view value, std::str
     }
 
     if (path == "engine.outputDeviceId") {
-        return applyOutputEngineConfig(std::string(value), std::nullopt, errorMessage);
+        return applyOutputEngineConfig(std::string(value), std::nullopt, std::nullopt, errorMessage);
     }
 
     if (errorMessage != nullptr) {
@@ -1029,6 +1051,27 @@ const interfaces::OutputDeviceInfo* SynthHost::findOutputDevice(
     }
 
     return nullptr;
+}
+
+bool SynthHost::outputDeviceListsEqual(const std::vector<interfaces::OutputDeviceInfo>& left,
+                                       const std::vector<interfaces::OutputDeviceInfo>& right) {
+    if (left.size() != right.size()) {
+        return false;
+    }
+
+    for (std::size_t index = 0; index < left.size(); ++index) {
+        if (left[index].id != right[index].id
+            || left[index].name != right[index].name
+            || left[index].outputChannels != right[index].outputChannels
+            || left[index].currentBufferFrames != right[index].currentBufferFrames
+            || left[index].minBufferFrames != right[index].minBufferFrames
+            || left[index].maxBufferFrames != right[index].maxBufferFrames
+            || left[index].isDefault != right[index].isDefault) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 std::string SynthHost::escapeJson(std::string_view value) {
@@ -1316,23 +1359,35 @@ void SynthHost::submitOrApplyRealtimeCommand(RealtimeCommand command) {
 
 void SynthHost::queueRealtimeCommand(RealtimeCommand command) {
     std::lock_guard<std::mutex> lock(realtimeCommandMutex_);
-    queuedRealtimeCommands_.push_back(command);
+    queuedRealtimeCommands_.push_back(std::move(command));
+    queuedRealtimeCommandsPending_.store(true, std::memory_order_release);
 }
 
 void SynthHost::drainQueuedRealtimeCommandsLocked() {
-    std::deque<RealtimeCommand> commands;
-    {
-        std::lock_guard<std::mutex> lock(realtimeCommandMutex_);
-        if (queuedRealtimeCommands_.empty()) {
-            return;
-        }
-        commands.swap(queuedRealtimeCommands_);
+    if (!queuedRealtimeCommandsPending_.load(std::memory_order_acquire)) {
+        return;
     }
 
+    std::unique_lock<std::mutex> lock(realtimeCommandMutex_, std::try_to_lock);
+    if (!lock.owns_lock()) {
+        return;
+    }
+
+    if (queuedRealtimeCommands_.empty()) {
+        queuedRealtimeCommandsPending_.store(false, std::memory_order_release);
+        return;
+    }
+
+    drainingRealtimeCommands_.clear();
+    drainingRealtimeCommands_.swap(queuedRealtimeCommands_);
+    queuedRealtimeCommandsPending_.store(false, std::memory_order_release);
+    lock.unlock();
+
     // Apply every queued command before rendering so the block sees one consistent render-state snapshot.
-    for (const auto& command : commands) {
+    for (const auto& command : drainingRealtimeCommands_) {
         applyRenderStateCommandLocked(command);
     }
+    drainingRealtimeCommands_.clear();
 }
 
 void SynthHost::applyStateMirrorCommandLocked(const RealtimeCommand& command) {
@@ -1731,6 +1786,33 @@ void SynthHost::buildLiveGraphLocked() {
     });
 }
 
+bool SynthHost::refreshOutputDevicesLocked(std::vector<interfaces::OutputDeviceInfo> outputDevices) {
+    if (outputDeviceListsEqual(outputDevices_, outputDevices)) {
+        return false;
+    }
+
+    std::ostringstream message;
+    message << "Output device inventory refreshed: " << outputDevices.size() << " device(s)";
+    if (!outputDevices.empty()) {
+        message << " [";
+        for (std::size_t index = 0; index < outputDevices.size(); ++index) {
+            if (index > 0) {
+                message << ", ";
+            }
+            message << outputDevices[index].name << " (" << outputDevices[index].outputChannels << " outs";
+            if (outputDevices[index].isDefault) {
+                message << ", default";
+            }
+            message << ")";
+        }
+        message << "]";
+    }
+    logger_.info(message.str());
+
+    outputDevices_ = std::move(outputDevices);
+    return true;
+}
+
 void SynthHost::syncOutputDeviceSelectionLocked(
     const std::vector<interfaces::OutputDeviceInfo>& outputDevices) {
     if (outputDevices.empty()) {
@@ -1753,9 +1835,24 @@ void SynthHost::syncOutputDeviceSelectionLocked(
         selectedDevice = &outputDevices.front();
     }
 
+    const std::string previousOutputDeviceId = config_.outputDeviceId;
+    const std::string previousOutputDeviceName = outputDeviceName_;
     config_.outputDeviceId = selectedDevice->id;
     outputDeviceName_ = selectedDevice->name;
+    if (config_.outputDeviceId != previousOutputDeviceId || outputDeviceName_ != previousOutputDeviceName) {
+        logger_.info(
+            "Selected output device: " + outputDeviceName_
+            + " (" + std::to_string(selectedDevice->outputChannels) + " outs).");
+    }
     config_.channels = std::clamp(config_.channels, 1u, std::max<std::uint32_t>(1, selectedDevice->outputChannels));
+    if (selectedDevice->minBufferFrames > 0 && selectedDevice->maxBufferFrames > 0) {
+        config_.framesPerBuffer = std::clamp(
+            config_.framesPerBuffer,
+            std::max<std::uint32_t>(16, selectedDevice->minBufferFrames),
+            std::max(std::max<std::uint32_t>(16, selectedDevice->minBufferFrames), selectedDevice->maxBufferFrames));
+    } else {
+        config_.framesPerBuffer = std::clamp(config_.framesPerBuffer, 16u, 4096u);
+    }
 }
 
 void SynthHost::buildDefaultStateLocked() {
@@ -1963,11 +2060,13 @@ void SynthHost::syncOutputProcessorNodesLocked() {
 }
 
 bool SynthHost::applyOutputEngineConfig(std::optional<std::string> outputDeviceId,
-                                              std::optional<std::uint32_t> outputChannels,
-                                              std::string* errorMessage) {
+                                        std::optional<std::uint32_t> outputChannels,
+                                        std::optional<std::uint32_t> framesPerBuffer,
+                                        std::string* errorMessage) {
     RuntimeConfig previousConfig;
     bool shouldRestartAudio = false;
     bool channelLayoutChanged = false;
+    bool bufferSizeChanged = false;
     bool wasRunning = false;
 
     {
@@ -1979,8 +2078,8 @@ bool SynthHost::applyOutputEngineConfig(std::optional<std::string> outputDeviceI
             return false;
         }
 
-        const auto outputDevices = driver_->availableOutputDevices();
-        if (outputDevices.empty()) {
+        refreshOutputDevicesLocked(driver_->availableOutputDevices());
+        if (outputDevices_.empty()) {
             if (errorMessage != nullptr) {
                 *errorMessage = "No output devices are available.";
             }
@@ -1988,11 +2087,11 @@ bool SynthHost::applyOutputEngineConfig(std::optional<std::string> outputDeviceI
         }
 
         previousConfig = config_;
-        syncOutputDeviceSelectionLocked(outputDevices);
+        syncOutputDeviceSelectionLocked(outputDevices_);
 
         const std::string previousOutputDeviceId = config_.outputDeviceId;
         if (outputDeviceId.has_value()) {
-            const interfaces::OutputDeviceInfo* requestedDevice = findOutputDevice(outputDevices, *outputDeviceId);
+            const interfaces::OutputDeviceInfo* requestedDevice = findOutputDevice(outputDevices_, *outputDeviceId);
             if (requestedDevice == nullptr) {
                 if (errorMessage != nullptr) {
                     *errorMessage = "Unknown output device.";
@@ -2004,7 +2103,7 @@ bool SynthHost::applyOutputEngineConfig(std::optional<std::string> outputDeviceI
             outputDeviceName_ = requestedDevice->name;
         }
 
-        const interfaces::OutputDeviceInfo* selectedDevice = findOutputDevice(outputDevices, config_.outputDeviceId);
+        const interfaces::OutputDeviceInfo* selectedDevice = findOutputDevice(outputDevices_, config_.outputDeviceId);
         if (selectedDevice == nullptr) {
             if (errorMessage != nullptr) {
                 *errorMessage = "No valid output device is selected.";
@@ -2026,15 +2125,34 @@ bool SynthHost::applyOutputEngineConfig(std::optional<std::string> outputDeviceI
         }
 
         channelLayoutChanged = config_.channels != previousChannels;
+        const std::uint32_t previousFramesPerBuffer = config_.framesPerBuffer;
+        if (framesPerBuffer.has_value()) {
+            const std::uint32_t minBufferFrames =
+                std::max<std::uint32_t>(16, selectedDevice->minBufferFrames > 0 ? selectedDevice->minBufferFrames : 16);
+            const std::uint32_t maxBufferFrames =
+                std::max(minBufferFrames, selectedDevice->maxBufferFrames > 0 ? selectedDevice->maxBufferFrames : 4096u);
+            config_.framesPerBuffer = std::clamp(*framesPerBuffer, minBufferFrames, maxBufferFrames);
+        } else if (selectedDevice->minBufferFrames > 0 && selectedDevice->maxBufferFrames > 0) {
+            config_.framesPerBuffer = std::clamp(
+                config_.framesPerBuffer,
+                std::max<std::uint32_t>(16, selectedDevice->minBufferFrames),
+                std::max(std::max<std::uint32_t>(16, selectedDevice->minBufferFrames), selectedDevice->maxBufferFrames));
+        } else {
+            config_.framesPerBuffer = std::clamp(config_.framesPerBuffer, 16u, 4096u);
+        }
+
+        bufferSizeChanged = config_.framesPerBuffer != previousFramesPerBuffer;
         wasRunning = driver_->isRunning();
         if (channelLayoutChanged && !wasRunning) {
             reconfigureStructureLocked(config_.voiceCount, config_.oscillatorsPerVoice);
+            syncRenderStateFromSnapshotLocked();
+        } else if (bufferSizeChanged && !wasRunning) {
             syncRenderStateFromSnapshotLocked();
         }
 
         shouldRestartAudio =
             wasRunning
-            && (channelLayoutChanged || config_.outputDeviceId != previousOutputDeviceId);
+            && (channelLayoutChanged || bufferSizeChanged || config_.outputDeviceId != previousOutputDeviceId);
     }
 
     markStateSnapshotDirty();
@@ -2057,7 +2175,8 @@ bool SynthHost::applyOutputEngineConfig(std::optional<std::string> outputDeviceI
         std::lock_guard<std::mutex> lock(mutex_);
         config_ = previousConfig;
         if (driver_ != nullptr) {
-            syncOutputDeviceSelectionLocked(driver_->availableOutputDevices());
+            refreshOutputDevicesLocked(driver_->availableOutputDevices());
+            syncOutputDeviceSelectionLocked(outputDevices_);
         }
         reconfigureStructureLocked(config_.voiceCount, config_.oscillatorsPerVoice);
         syncRenderStateFromSnapshotLocked();

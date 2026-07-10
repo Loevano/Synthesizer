@@ -15,6 +15,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B builds/ci -DCMAKE_BUILD_TYPE=Release
       - name: Build
-        run: cmake --build build -j
+        run: cmake --build builds/ci -j

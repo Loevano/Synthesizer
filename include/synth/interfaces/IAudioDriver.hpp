@@ -16,6 +16,9 @@ struct OutputDeviceInfo {
     std::string id;
     std::string name;
     std::uint32_t outputChannels = 0;
+    std::uint32_t currentBufferFrames = 0;
+    std::uint32_t minBufferFrames = 0;
+    std::uint32_t maxBufferFrames = 0;
     bool isDefault = false;
 };
 

@@ -2,40 +2,27 @@
 
 ## Overview
 
-`Synthesizer` is a multichannel instrument host built for speaker-aware sound design.
+`Synthesizer` is a macOS-first multichannel instrument host for speaker-aware sound design.
 
 The app combines:
-- a native audio engine
+
+- a native C++ audio engine
 - a controller/state layer
-- a bundled web UI
+- a bundled web UI inside a macOS app
 
-The main instrument right now is `Robin`, a multivoice synth designed around a simple idea:
+The main instrument is `Robin`, a multivoice spatial synth built around one workflow:
 
-1. build one strong master sound
-2. let most voices follow it
-3. unlink only the voices that need special behavior
+1. build one strong master voice
+2. keep most voices linked to that master
+3. unlink only the voices that need local behavior
 
-This makes it easier to build wide, alive, multichannel sounds without programming every voice from scratch.
-
-## Who This Manual Is For
-
-This manual is for the end user of the app:
-- someone running the macOS app
-- someone testing the audio engine
-- someone designing sounds in Robin
-- someone routing sources to multiple outputs
-
-It is not mainly a developer setup guide. For development workflow, see:
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [GITHUB.md](GITHUB.md)
-- [ARCHITECTURE.md](ARCHITECTURE.md)
+For contributor workflow, use [CONTRIBUTING.md](CONTRIBUTING.md), [GIT_RULES.md](GIT_RULES.md), and [GITHUB.md](GITHUB.md).
 
 ## Requirements
 
-Current app target:
-- macOS
+Current target:
 
-To build and run:
+- macOS
 - Xcode Command Line Tools
 - CMake 3.21+
 
@@ -48,457 +35,330 @@ cd Synthesizer
 ./scripts/run-app.sh
 ```
 
-If the app is already open and you rebuilt it, relaunch it so the updated bundled UI is loaded.
+If the app is already open and you rebuilt it, relaunch it so the bundled UI reloads.
 
 ## First Run
 
-When you first launch the app, the most useful path is:
+1. Open `Program`.
+2. Confirm audio is running and the intended output device is selected.
+3. Open `MIDI`.
+4. Connect a MIDI source, or use macOS `IAC Driver` if you do not have a hardware keyboard.
+5. Open `Sources`.
+6. Confirm `Robin` is enabled and routed to `Dry` or `FX`.
+7. Open `Robin`.
+8. Play notes and shape the master voice.
 
-1. open `Program`
-2. confirm the audio engine is running
-3. open `MIDI`
-4. connect a MIDI source, or use an `IAC Driver` source if you do not have a hardware keyboard
-5. open `Source Mixer`
-6. make sure `Robin` is enabled
-7. open `Robin`
-8. play notes and start shaping the master voice
+If no notes reach the synth, check:
 
-If no notes are reaching the synth:
-- confirm the MIDI source is connected in the `MIDI` page
-- confirm its route to `Robin` is enabled
-- confirm `Robin` is enabled in the `Source Mixer`
+- MIDI source connection on the `MIDI` page
+- MIDI route to `Robin`
+- `Robin` enabled in `Sources`
+- source and output levels
 
-## Main Signal Flow
+## Signal Flow
 
-Current signal flow:
+Current live signal flow:
 
-`Audio Engine -> Sources -> dry/fx split -> FX Rack -> dry + fx sum -> Output Mixer -> hardware outputs`
+`Audio Engine -> LiveGraph sources -> dry/fx split -> FX Rack -> dry + fx sum -> Output Mixer -> hardware outputs`
 
-This means:
-- sources do not automatically go through FX
-- the `Source Mixer` decides whether each source feeds the dry path or the FX path
-- every output has both a dry path and an FX-chain path available
-- the `Output Mixer` is the last processing stage before hardware output
+Important routing rules:
 
-## Main Pages
+- sources choose `Dry` or `FX` in `Sources`
+- the FX bus is processed, then summed back with the dry bus
+- `Outputs` is the final per-speaker correction stage
+- only implemented sources produce audio
 
 ## Program
 
-The `Program` page is the engine-level page.
+The `Program` page is the system page.
 
-Use it for:
-- starting and stopping the audio engine
-- checking output configuration
-- checking general runtime state
+It shows:
 
-This is not the main sound-design page. Think of it as the system control page.
+- audio backend
+- output device
+- audio running state
+- sample rate
+- output channel count
+- buffer size
+- MIDI and OSC status
+- last MIDI note
+- debug nested state when debug UI is enabled
+
+Changing output device, output count, or buffer size restarts audio.
+
+## Patch Menu
+
+The `Patch Menu` on the `Program` page manages user patch state.
+
+Current actions:
+
+- `New Default`
+- `Load`
+- `Save`
+- `Save As`
+- `Set Default`
+
+Patch files store user patch state, not continuous realtime engine internals.
+
+Storage location:
+
+- development checkout with `./Patches`: repo-local `Patches/`
+- packaged app or no project patch directory: `~/Library/Application Support/Synthesizer/Patches/`
+
+Default patch file:
+
+- `default-patch.json`
+
+The dirty badge shows whether the current patch has unsaved changes.
 
 ## MIDI
 
-The `MIDI` page is where external note input is connected and routed.
+The `MIDI` page lists available MIDI sources and per-source routing.
 
 Use it to:
+
 - connect or disconnect MIDI sources
-- route MIDI input into `Robin`
-- route MIDI input into `Test`
+- route a source to `Robin`
+- route a source to `Test`
 
-Useful fallback on macOS:
-- enable `IAC Driver` in `Audio MIDI Setup`
-- send MIDI from another app into the IAC port
-- connect that source in the `MIDI` page
+Current route defaults:
 
-Current rule:
-- MIDI routing is source-based
-- each MIDI source can be routed to one or more synth sources
+- `Robin`: enabled
+- `Test`: enabled
+- `Decor`: disabled
+- `Pieces`: disabled
 
-## Source Mixer
+Useful macOS fallback:
 
-The `Source Mixer` controls whole sources, not individual voices.
+1. open `Audio MIDI Setup`
+2. enable `IAC Driver`
+3. send MIDI from another app into the IAC port
+4. connect that source in the app
+
+## Sources
+
+The `Sources` page is the source mixer.
 
 Each source strip controls:
-- `Enabled`
-- `Level`
-- `Signal Path`
 
-### Enabled
+- enabled state
+- source level
+- route target: `Dry` or `FX`
 
-Turns the source on or off at the mixer level.
+Current source status:
 
-### Level
+- `Robin`: implemented and live
+- `Test`: implemented and live
+- `Decor`: visible scaffold
+- `Pieces`: visible scaffold
 
-Sets the source’s overall contribution before final output mixing.
+Use `Sources` for whole-source performance balance and dry/FX routing. It is not the per-voice editor.
 
-For Robin, this is usually the right place to adjust overall loudness.
+## Outputs
 
-### Signal Path
+The `Outputs` page is the per-speaker correction stage.
 
-Selects whether the source feeds:
-- `Dry`
-- `FX`
+Each output currently supports:
 
-Meaning:
-- `Dry`: bypasses the FX bus and goes straight to the dry output path
-- `FX`: enters the FX chain, then gets summed back at the output stage
-
-This is one of the key routing decisions in the app.
-
-## Output Mixer
-
-The `Output Mixer` is the per-speaker correction and balancing stage.
-
-Each output strip currently supports:
 - level
 - delay
-- simple fixed-band EQ
+- three-band EQ: low, mid, high
 
-Use it for:
-- balancing speaker levels
-- compensating distance differences with delay
-- broad tonal correction
-
-It is not meant to replace source sound design. It is the system-facing output stage.
+Use it for speaker balance, distance compensation, and broad tonal correction. Source sound design belongs in `Robin`, `Test`, and the FX path.
 
 ## Robin
 
-`Robin` is the main instrument.
+`Robin` is the main playable source.
 
-It is a multivoice spatial synth with:
-- multiple voices
-- multiple oscillators per voice
-- master-first programming
-- optional local per-voice overrides
-- routing behavior across outputs
+It supports:
 
-### Core Idea
+- configurable voice count
+- configurable oscillator slots per voice
+- linked and local voice states
+- master pitch offsets
+- master oscillator bank
+- master `VCF`, `VCF ENV`, and `VCA ENV`
+- spread modulation slots and macro depth controls
+- routing presets across outputs
+- a separate Robin LFO page
 
-Robin is designed in two phases:
+### Master Voice
 
-1. dial in one strong master sound
-2. add variation only where needed
+Start in the master voice. Linked voices follow this template.
 
-That is why the master voice matters so much.
+Master sections:
 
-The linked workflow is there to prevent you from rebuilding a patch voice by voice.
+- `Setup`: voice count, oscillator slots per voice, routing preset
+- `Pitch`: transpose and fine tune
+- `Macros`: quick depth controls for spread slots
+- `OSC Bank`: oscillator enable, waveform, level, and frequency behavior
+- `VCF`: cutoff and resonance
+- `VCF ENV`: attack, decay, sustain, release, amount
+- `VCA ENV`: attack, decay, sustain, release
+- `Modulation`: detailed spread slots
 
-## Robin Layout
+### Voice Bank
 
-Robin currently has two main editing layers:
+Every Robin voice has:
 
-1. a `Master` editor
-2. a `Voices` overview plus one selected local voice editor
-
-### Master
-
-The master section is the template followed by linked voices.
-
-This is where you should start almost every patch.
-
-Current master sections include:
-- layout
-- pitch offsets
-- oscillator bank
-- VCF
-- VCF ENV
-- VCA ENV
-
-### Voices Overview
-
-The voice overview is the compact management layer.
-
-Each voice has:
 - `Enabled`
 - `Linked to Master`
 
-When a voice is linked:
-- it follows the master template
-- local controls are hidden
+Linked voices:
 
-When a voice is unlinked:
-- it can open into the selected local voice editor
-- it keeps its own local settings
+- follow the master voice template
+- stay compact in the voice overview
+- receive master edits and enabled spread modulation
 
-Current design rule:
-- relinking a voice should not wipe its local state
-- if you want to copy master settings into it again, use `Reset to Master State`
+Local voices:
 
-### Selected Voice Editor
+- can open in the selected voice editor
+- have their own oscillator bank, pitch/gain, filter, envelopes, and output targets
+- stop following master settings for the locally edited sections
 
-Only one unlinked voice is expanded at a time.
-
-This keeps the overview readable while still giving full local edit access when needed.
-
-The local editor can include:
-- local root frequency
-- local gain
-- local oscillator bank
-- local VCF
-- local VCF ENV
-- local VCA ENV
-
-## How To Program Robin
-
-Recommended workflow:
-
-1. start in the master editor
-2. build the oscillator blend
-3. shape the filter and envelopes
-4. confirm the basic sound while multiple voices are still linked
-5. only then unlink selected voices
-6. use local edits to create accents, spread, rhythmic contrast, or spatial variation
-
-This is the intended Robin mindset:
-- master first
-- local exceptions second
-
-## Robin Master Sections
-
-## Master Pitch
-
-Robin currently uses:
-- `Transpose`
-- `Fine Tune`
-
-These are master offsets, not a separate playable root-note control in the GUI.
-
-Use them to:
-- shift the whole instrument
-- tighten or loosen tuning slightly
-
-## Oscillator Bank
-
-The oscillator bank is the main tone source.
-
-Each oscillator can define:
-- enabled state
-- waveform
-- level
-- relative or absolute frequency behavior
-
-Practical use:
-- start with one oscillator enabled
-- add oscillators for thickness, detune, or layered tone
-- use relative frequency for musically related stacks
-- use absolute frequency carefully when you want more special behavior
-
-## VCF
-
-The `VCF` is the main filter stage.
-
-Current controls:
-- cutoff
-- resonance
-
-Use it to:
-- darken or open the sound
-- emphasize the cutoff region
-- shape motion together with `VCF ENV`
-
-## VCF ENV
-
-The filter envelope shapes the movement of the filter over time.
-
-Current controls:
-- attack
-- decay
-- sustain
-- release
-- amount
-
-Use it for:
-- plucks
-- swells
-- percussive filter hits
-- evolving filter motion
-
-## VCA ENV
-
-The amplitude envelope shapes the loudness contour of the voice.
-
-Current controls:
-- attack
-- decay
-- sustain
-- release
-
-Use it for:
-- sharp plucks
-- pads
-- swelling entrances
-- long release tails
-
-## Linked and Unlinked Voices
-
-This is the most important Robin behavior to understand.
-
-### Linked to Master
-
-A linked voice:
-- uses the master settings
-- stays compact in the overview
-- follows master edits
-
-Use linked voices when:
-- you want consistent tone
-- you want quick polyphony
-- you are still shaping the main sound
-
-### Unlinked
-
-An unlinked voice:
-- becomes locally editable
-- stops following the master in the same way
-- can diverge in oscillator, filter, envelope, and local pitch behavior
-
-Use unlinked voices when:
-- one voice should stand out
-- you want rhythmic or timbral contrast
-- you want custom local filtering or envelope motion
-- you want speaker-specific or voice-specific behavior
+Only one local voice editor is expanded at a time.
 
 ### Reset to Master State
 
-This explicitly copies the current master state back into the unlinked voice.
+`Reset to Master State` copies the current master settings into a local voice.
 
 Use it when:
-- you drifted too far locally
+
+- a local voice has drifted too far
 - you want to restart local editing from the current master patch
 
-## Robin Routing
+Relinking a voice does not wipe local settings by itself.
 
-Robin is speaker-aware.
+### Routing Presets
 
-Current routing presets include:
-- `Forward`
-- `Backward`
-- `Random`
-- `Round Robin`
-- `All Outputs`
-- `Custom`
+Current routing presets:
 
-### What these mean
+- `Forward`: advance through outputs in ascending order
+- `Backward`: advance through outputs in descending order
+- `Random`: choose output targets randomly
+- `Round Robin`: rotate through a shuffled output pool
+- `All Outputs`: route a voice to every output
+- `Custom`: use manually edited per-voice output assignments
 
-- `Forward`
-  advance through outputs in ascending order
-- `Backward`
-  advance through outputs in descending order
-- `Random`
-  choose outputs unpredictably
-- `Round Robin`
-  distribute triggers across outputs in a rotating pool
-- `All Outputs`
-  send the voice to every output
-- `Custom`
-  use manually edited output assignments
+Editing voice output targets switches Robin to `Custom`.
 
-`All Outputs` is useful when:
-- you want a very wide distributed sound
-- the voice should exist everywhere at once
+### Spread Modulation
 
-`Custom` is useful when:
-- you want exact speaker assignment
-- you are designing very intentional output behavior
+Robin has six live spread slots.
 
-## Robin LFO
+Each slot can set:
 
-Robin already has an LFO system.
-
-Current LFO ideas supported by the UI/state model include:
-- waveform
+- enabled state
+- target
+- algorithm
 - depth
+- start value
+- end value
+- random seed
+
+Current algorithms:
+
+- `Linear`
+- `Random`
+- `Alternating`
+
+Current targets include filter, filter envelope, amp envelope, oscillator level, and oscillator detune parameters.
+
+Spread modulation applies to active linked voices as offsets around the master template. The `Macros` section gives quick depth access for the same slots.
+
+## LFO
+
+The `LFO` page controls Robin's output-aware LFO.
+
+Current controls:
+
+- enable
+- waveform: sine, triangle, saw down, saw up, random
+- rate mode: Hz or sync
+- tempo and multiplier in sync mode
+- fixed frequency in Hz mode
+- amount
 - phase spread
 - polarity flip
-- linked-to-clock behavior
-- fixed-frequency behavior
-- unlinked output behavior
+- unlinked outputs
 
-Important note:
-- there is still dedicated LFO work ahead
-- some LFO presentation areas are still scaffolded for future expansion
+The current LFO renders per-output modulation multipliers for Robin voices. Use it for output-aware amplitude movement and phase-spread motion across the speaker layout.
 
-## TestSynth
+## Test
 
-`TestSynth` is the simpler debug and verification source.
+`Test` is a small debug source.
 
-It is useful when you want to test:
-- MIDI routing
-- output routing
-- speaker wiring
-- output balance
-- simple synth behavior without the full Robin complexity
+It supports:
 
-Use `TestSynth` when:
-- you are troubleshooting a routing problem
-- you want to isolate whether the issue is Robin-specific
-- you want a simpler audio source while checking levels and outputs
+- continuous tone
+- MIDI response
+- frequency
+- gain
+- waveform
+- `VCA ENV`
+- manual output targets
+
+Use it to verify MIDI, routing, output wiring, and output mixer behavior without Robin complexity.
 
 ## FX
 
-The FX section currently focuses on multichannel output-aware processing.
+The `FX` page shows the current FX chain.
 
-### Chorus
+Current processor status:
 
-`Chorus` is the most developed live effect right now.
+- `Chorus`: live audio processor
+- `Saturator`: UI/state scaffold only
+- `Sidechain`: UI/state scaffold only
 
-Current controls include:
-- enable
+Chorus controls:
+
+- enabled state
 - depth
 - speed
 - phase spread
 
-Phase spread is distributed across outputs rather than being treated like a simple stereo parameter.
+The chain rows can be reordered in the UI/state, but only implemented processors affect audio. At the moment, the live FX audio behavior is chorus.
 
-### Saturator
+## Decor
 
-Current controls:
-- enable
-- input level
-- output level
+`Decor` is visible as a scaffold for a future immersive source.
 
-This is still more scaffold-like than finalized.
+Current intent:
 
-### Sidechain
+- one voice per output
+- speaker-locked behavior
+- decorrelated spatial sound
 
-Sidechain exists in the UI/controller model, but still needs a fuller design pass.
+It does not currently produce its own DSP output.
+
+## Pieces
+
+`Pieces` is visible as a scaffold for a future granular or algorithmic source.
+
+Current intent:
+
+- granular or algorithmic playback
+- movement across outputs
+- voice count follows Robin for now
+
+It does not currently produce its own DSP output.
 
 ## Double-Click Reset
 
-Many UI controls support reset by double-clicking.
+Many controls can be reset by double-clicking. Use this to return a slider or control to its default value quickly.
 
-This is useful when:
-- you want to return to the default value quickly
-- you overshot during tweaking
-- you want to compare against the base/default setting
+## Debug And Logs
 
-## Troubleshooting
-
-## No Sound
-
-Check:
-- the audio engine is running
-- the correct output configuration is selected
-- the source is enabled in `Source Mixer`
-- source level is up
-- output level is up
-- the MIDI source is connected
-- MIDI routing to the source is enabled
-
-## MIDI Is Not Reaching Robin
-
-Check:
-- the MIDI source is connected on the `MIDI` page
-- the route to `Robin` is enabled
-- `Robin` is enabled in the `Source Mixer`
-
-If no keyboard is available:
-- use macOS `IAC Driver`
-- send MIDI from another app into that virtual port
-
-## App Crash Or Strange Runtime Behavior
-
-Run:
+Crash-oriented launch:
 
 ```bash
 ./scripts/run-app.sh --debug-crash
+```
+
+Bridge and Robin tracing:
+
+```bash
+./scripts/run-app.sh --debug-bridge --debug-robin
 ```
 
 Launch the app through `./scripts/run-app.sh` or `open /path/to/Synthesizer.app`.
@@ -511,56 +371,76 @@ Logs are written under:
 ```
 
 Useful files:
+
 - `synth_*.log`
 - `crash_*.log`
 
-## Downloaded App Says It Is Damaged
+## Troubleshooting
 
-Official tagged `main` releases are packaged for download, but currently unsigned.
+### No Sound
 
-If macOS says the app is "damaged", you are most likely hitting Gatekeeper/quarantine rather than an actually broken app bundle.
+Check:
 
-Try one of these:
+- audio is running
+- the correct output device is selected
+- the source is enabled in `Sources`
+- source level is up
+- output level is up
+- MIDI source is connected
+- MIDI route to the source is enabled
+- the source is routed to the intended `Dry` or `FX` path
+
+### MIDI Is Not Reaching Robin
+
+Check:
+
+- MIDI source connection on the `MIDI` page
+- route to `Robin`
+- `Robin` enabled in `Sources`
+- `Respond to MIDI` only matters for `Test`, not Robin's normal MIDI route
+
+### Downloaded App Says It Is Damaged
+
+Current packaged releases are unsigned. If macOS says the app is damaged, it is usually Gatekeeper quarantine.
+
+Try:
+
 - right-click `Synthesizer.app` and choose `Open`
-- remove quarantine manually:
+- or remove quarantine manually:
 
 ```bash
 xattr -dr com.apple.quarantine /path/to/Synthesizer.app
 open /path/to/Synthesizer.app
 ```
 
-For the full release explanation, see [RELEASING.md](RELEASING.md).
+See [RELEASING.md](RELEASING.md) for release and signing details.
 
-## Pops While Adjusting Sound
+### Pops While Adjusting Sound
 
-A lot of the live control path has already been hardened, but if you still hear a pop:
-- note which control caused it
+If you hear a pop during live control:
+
+- note the exact control
 - note whether it happened during drag or on release
-- note whether a note was playing
-- note whether the source was Robin, TestSynth, or FX
+- note whether notes were playing
+- note whether MIDI or OSC was active
+- note whether the source was Robin, Test, or FX
 
-That is the most useful repro information.
+That repro detail is more useful than a broad "it popped" report.
 
 ## Current Limitations
 
-This app is usable, but it is still under active development.
-
-Current limitations:
 - macOS-first app target
-- `Decor` and `Pieces` are still placeholders
-- some modulation areas are scaffolded rather than finished
-- not every concept in Robin is fully simplified yet
-- architecture cleanup is still ongoing behind the scenes
+- `Decor` and `Pieces` are placeholders
+- `Saturator` and `Sidechain` have UI/state but no DSP yet
+- modulation is useful now, but not a full modulation matrix
+- automated coverage is growing but still focused
 
 ## Recommended Mindset
 
-The best way to use the app right now is:
-
 - treat `Robin` as the main instrument
-- use `TestSynth` to verify routing and system behavior
-- use `Source Mixer` for source-level balance and dry/FX routing
-- use `Output Mixer` for speaker correction
-- use linked voices by default
-- unlink only the voices that truly need special behavior
-
-That workflow matches the app’s current strengths.
+- use `Test` for routing and system checks
+- use `Sources` for source-level balance and dry/FX routing
+- use `Outputs` for speaker correction
+- keep most Robin voices linked
+- use spread slots and LFO for broad movement
+- unlink voices only when they need local behavior

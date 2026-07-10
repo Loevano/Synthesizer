@@ -17,6 +17,7 @@ public:
     void setSampleRate(double sampleRate);
     void setFrequency(float frequencyHz);
     void setWaveform(Waveform waveform);
+    void resetPhase();
 
     float nextSample();
 

@@ -4,6 +4,8 @@ This document answers one question:
 
 **What is this project, and what does each major part do?**
 
+For contributor workflow and protected-path rules, see [CONTRIBUTING.md](CONTRIBUTING.md) and [GIT_RULES.md](GIT_RULES.md).
+
 ## What the project is
 
 This project is a multichannel instrument framework, not a normal stereo synth.
@@ -23,7 +25,7 @@ Two views of the app are useful:
 
 Product model:
 
-`Audio Engine -> Source Mixer -> FX -> Output Mixer -> outputs`
+`Audio Engine -> Sources -> dry/fx split -> FX Rack -> dry + fx sum -> Output Mixer -> outputs`
 
 Current live render path:
 
@@ -115,6 +117,8 @@ Current Robin model:
 - linked voices follow the master voice template
 - unlinked voices open a full local editor
 - master pitch is `Transpose` plus `Fine Tune`
+- spread slots and macro depth controls apply offsets to linked voices
+- the Robin LFO provides output-aware amplitude movement
 - master and local sections currently include:
   - oscillator bank
   - `VCF`
@@ -167,8 +171,8 @@ Current routing rule:
 Current processor status:
 
 - `Chorus`: live
-- `Saturator`: scaffolded
-- `Sidechain`: scaffolded
+- `Saturator`: UI/state scaffold
+- `Sidechain`: UI/state scaffold
 
 At the DSP layer, output effects now share a small `Effects` base so future processors follow one lifecycle.
 
@@ -179,6 +183,18 @@ Current control surfaces:
 - CoreMIDI input on macOS
 - OSC server on UDP port `9000`
 - native bridge between the macOS app shell and the web UI
+
+## 7. Patch library
+
+Patch save/load is live in the macOS app.
+
+Current behavior:
+
+- the UI keeps a user patch snapshot
+- patch files save persistent user state, not realtime engine internals
+- development checkouts use repo-local `./Patches` when available
+- packaged builds use Application Support storage
+- `default-patch.json` can be set from the Patch Menu
 
 ## Current implementation shape
 

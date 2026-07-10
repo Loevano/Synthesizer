@@ -6,6 +6,7 @@ class LowPassFilter {
 public:
     void prepare(double sampleRate);
     void reset();
+    void setParameters(float cutoffHz, float resonance);
     void setCutoffHz(float cutoffHz);
     void setResonance(float resonance);
 

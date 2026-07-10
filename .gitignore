@@ -1,5 +1,8 @@
+/builds/
 /build/
+/build-app/
 /build-release/
+/build-universal-release/
 /dist/
 /logs/
 /Patches/

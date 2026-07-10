@@ -1,6 +1,8 @@
 # Data Flow
 
-This document describes how control data and audio data move through the app after the host/snapshot rename cleanup.
+This document describes how control data, patch data, and audio data move through the app.
+
+The snapshot/render split is a protected contract. Changes to it should use the protected-path workflow in [GIT_RULES.md](GIT_RULES.md).
 
 ## High-level view
 
@@ -30,7 +32,9 @@ The bridge surface currently exposes:
 - `getState()`
 - `setParam(path, value)`
 - `setParamFast(path, value)`
-- patch list/load/save helpers
+- `listPatches()`
+- `loadPatch(fileName)`
+- `savePatch(payload)`
 
 Bridge requests arrive in `AppMain.mm`, call into `SynthHost`, and return through `window.__synthNativeReceive(...)`.
 
@@ -98,6 +102,8 @@ The important consequence is:
 - the audio-visible state updates at the next block boundary
 
 That is the current threading contract.
+
+Do not bypass this flow for convenience. UI changes should not mutate render-side DSP state directly, and render-side code should not depend on live UI objects.
 
 ## 4a. Industry reference point
 
@@ -192,5 +198,10 @@ Patch save/load is intentionally snapshot-driven.
 
 - the UI keeps a temp patch state for editing
 - `SynthHost::stateJson()` exposes the snapshot form
-- native patch save/load serializes only the persistent state groups
+- the web UI extracts persistent groups from live state
+- native patch save/load serializes JSON patch documents
+- development checkouts prefer repo-local `./Patches`
+- packaged app runs use Application Support storage
 - runtime-only engine details are rebuilt, not stored continuously
+
+Patch loading does not mutate DSP structures directly. The UI turns the patch into normal parameter operations, then sends those operations through the same bridge and `SynthHost` paths used by live edits.

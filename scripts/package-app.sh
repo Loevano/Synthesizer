@@ -2,9 +2,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="${BUILD_DIR:-build-release}"
+BUILD_ROOT="${BUILD_ROOT:-$ROOT_DIR/builds}"
+BUILD_DIR="${BUILD_DIR:-$BUILD_ROOT/release}"
 BUILD_TYPE="${BUILD_TYPE:-Release}"
-DIST_DIR="${DIST_DIR:-dist}"
+DIST_DIR="${DIST_DIR:-$BUILD_ROOT/dist}"
 VERSION_LABEL="${1:-}"
 
 cd "$ROOT_DIR"

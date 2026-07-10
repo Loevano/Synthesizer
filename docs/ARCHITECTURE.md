@@ -1,6 +1,8 @@
 # Architecture
 
-This document describes the current code structure after the naming cleanup.
+This document describes the current code structure and the protected runtime boundaries.
+
+Architecture docs are part of the collaboration contract. If a change alters render flow, state ownership, routing, or build structure, update this file or [Data flow.md](Data%20flow.md) in the same PR.
 
 ## Live render path
 
@@ -13,13 +15,15 @@ Current live pieces:
 - source enable, source level, and dry/fx routing
 - `Chorus` in the FX rack
 - output mixer level, delay, and EQ
+- Robin LFO and spread modulation
+- patch save/load through the macOS bridge
 
 Current scaffold-only pieces:
 
 - `Decor`
 - `Pieces`
-- `Saturator`
-- `Sidechain`
+- `Saturator` DSP
+- `Sidechain` DSP
 
 ## Main layers
 
@@ -65,7 +69,7 @@ That split keeps product-facing behavior such as routing presets and linked/loca
 
 The shared DSP effect base is `synth::dsp::Effects`.
 
-Right now only `Chorus` derives from it, but it gives future output effects one consistent lifecycle:
+Right now only `Chorus` derives from it. `Saturator` and `Sidechain` have UI/state scaffolds but no DSP implementation yet. The base gives future output effects one consistent lifecycle:
 
 - `prepare(sampleRate)`
 - `reset()`
@@ -109,6 +113,18 @@ This is the core rule:
 
 That split is the current answer to the earlier parameter-thread churn. The naming now reflects that intent directly.
 
+## Protected architecture boundaries
+
+The following areas are protected collaboration boundaries:
+
+- audio render engines: `src/audio/` and `include/synth/audio/`
+- DSP primitives and effects: `src/dsp/` and `include/synth/dsp/`
+- render graph and routing: `src/graph/` and `include/synth/graph/`
+- host state and realtime command contracts: `SynthHost` and `RealtimeCommands`
+- build and CI definitions: `CMakeLists.txt` and `.github/workflows/`
+
+Normal UI, docs, and small feature branches should not edit these areas. Use a dedicated `core/`, `dsp/`, `routing/`, `architecture/`, `infra/`, or `hotfix/` branch when this boundary must change, and include focused verification.
+
 ## Graph and routing model
 
 Each source has two routing decisions:
@@ -130,10 +146,24 @@ Current model:
 - configurable oscillator count per voice
 - linked vs local voice editing
 - master `VCF`, `VCF ENV`, and `VCA ENV`
+- spread modulation slots with macro depth controls
+- output-aware LFO modulation
 - routing presets across outputs
 - note allocator that avoids immediate reuse of voices still in release
 
 `Robin` owns the musical/product-facing rules. `audio::PolySynth` owns the actual per-voice DSP.
+
+## Patch library
+
+Patch persistence is snapshot-driven.
+
+- the web UI extracts a persistent patch snapshot from live state
+- the native bridge lists, loads, and saves JSON patch files
+- development checkouts use repo-local `./Patches` when it exists
+- packaged builds use Application Support storage
+- loading a patch sends normal parameter operations back through `SynthHost`
+
+Runtime-only engine details are rebuilt rather than stored continuously in patch files.
 
 ## TestSynth
 
@@ -152,5 +182,5 @@ It is the simplest useful source for regression tests and routing checks.
 - `SynthHost` is still large and should shrink over time
 - `Decor` and `Pieces` are still placeholders
 - saturator and sidechain still need real DSP designs
-- modulation can grow beyond the current Robin LFO/spread system
+- modulation can grow beyond the current Robin LFO/spread system into a clearer destination model
 - more routing and thread-behavior regression coverage is still worth adding

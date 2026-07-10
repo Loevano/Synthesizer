@@ -9,6 +9,7 @@ This file is the practical implementation order for the current multichannel fra
 - Keep the controller-side snapshot state and render-side state separate.
 - Do not hide unfinished areas; scaffold them clearly.
 - Prefer concrete graph modules until abstraction pressure is real.
+- Keep collaboration rules strict enough that agents do not make accidental core changes.
 
 ## Current status
 
@@ -30,6 +31,8 @@ Already in place:
 - source dry/fx routing
 - live output mixer level/delay/EQ
 - live chorus
+- live Robin LFO
+- live Robin spread slots and macro controls
 - scaffolded `Decor`
 - scaffolded `Pieces`
 - scaffolded saturator and sidechain
@@ -50,6 +53,19 @@ Keep the repo conceptually split into:
 It does not need a major folder rewrite right now.
 
 ## Implementation order
+
+## Step 0. Keep collaboration guardrails in place
+
+Goal:
+
+- make parallel work reviewable and avoid broad merge conflicts
+
+Deliverables:
+
+- keep local Git hooks installable with `./scripts/install-git-hooks.sh`
+- keep protected-path rules in [GIT_RULES.md](GIT_RULES.md)
+- keep branch scopes narrow
+- do not mix protected core changes with UI or docs cleanup
 
 ## Step 1. Keep the host/render boundary explicit
 
@@ -92,17 +108,19 @@ Deliverables:
 - refine overlap / steal behavior where needed
 - keep the web UI and snapshot state aligned
 
-## Step 4. Add section-level modulation to Robin
+## Step 4. Harden and extend Robin modulation
 
 Goal:
 
-- add movement and spread without discarding the master-template model
+- keep the current LFO/spread layer useful without discarding the master-template model
 
 Deliverables:
 
-- section spread algorithms
-- offset-based modulators
+- preserve the existing spread slot algorithms
+- keep macro depth controls aligned with spread slots
+- expand destinations only when names and ranges are clear
 - routing-aware voice variation
+- focused tests for modulation state and render handoff
 
 Rule:
 
@@ -161,7 +179,7 @@ Deliverables:
 - reduce aliasing on non-sine waveforms
 - keep the current voice/oscillator model intact while upgrading internals
 
-## Step 9. Keep preset/state persistence clean
+## Step 9. Keep patch/state persistence clean
 
 Goal:
 
@@ -170,7 +188,7 @@ Goal:
 Deliverables:
 
 - stable serialization
-- preset load/save flow
+- patch load/save flow
 - clear distinction between persistent state and runtime-only state
 
 ## Step 10. Keep docs and contributor setup current

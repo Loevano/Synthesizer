@@ -398,8 +398,6 @@ let currentPatchFileName = "";
 let currentPatchName = "Current Session";
 let lastSavedPatchJson = "";
 let patchActionInProgress = false;
-const openRobinSpreadSlotIndexes = new Set();
-let robinSpreadSlotOpenStateInitialized = false;
 const robinDebugModuleVisibility = {
   macros: true,
   osc: true,
@@ -1192,6 +1190,14 @@ function findResetControl(target) {
     }
   }
 
+  const dragValue = target.closest(".drag-value-control");
+  if (dragValue instanceof HTMLElement) {
+    const input = dragValue.previousElementSibling;
+    if (input instanceof HTMLInputElement) {
+      return input;
+    }
+  }
+
   const directControl = target.closest("input, select");
   if (directControl instanceof HTMLInputElement || directControl instanceof HTMLSelectElement) {
     return directControl;
@@ -1455,8 +1461,12 @@ function resetControlToDefault(control) {
       control.value = nextValue;
       if (changed) {
         control.dispatchEvent(new Event("input", { bubbles: true }));
+        syncRotaryControl(control);
+        syncDragValueControl(control);
       }
       control.dispatchEvent(new Event("change", { bubbles: true }));
+      syncRotaryControl(control);
+      syncDragValueControl(control);
       return true;
     }
   }
@@ -1596,6 +1606,89 @@ function dispatchRotaryInput(input, nextValue, { commit = false } = {}) {
 
   if (commit) {
     input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+}
+
+function dragValueDelta(input, startValue, startEvent, moveEvent) {
+  const { min, max, step } = getRangeMetrics(input);
+  if (max <= min) {
+    return min;
+  }
+
+  const range = max - min;
+  const deltaPixels = (moveEvent.clientX - startEvent.clientX) + ((startEvent.clientY - moveEvent.clientY) * 0.55);
+  const pixelsForFullRange = moveEvent.shiftKey ? 860 : 260;
+  const nextValue = startValue + ((deltaPixels / pixelsForFullRange) * range);
+  return roundToStep(nextValue, min, max, step);
+}
+
+function syncDragValueControl(input) {
+  const wrapper = input._dragValueWrapper;
+  if (!(wrapper instanceof HTMLElement) || !wrapper.classList.contains("drag-value-control")) {
+    return;
+  }
+
+  const metrics = getRangeMetrics(input);
+  const ratio = valueToRatio(input, metrics);
+  const ratioText = ratio.toFixed(4);
+  const label = wrapper._dragValueLabel;
+  const value = wrapper._dragValueValue;
+  const sourceOutput = wrapper._dragValueOutput;
+  const valueText = String(input.value);
+  const outputText = sourceOutput?.textContent?.trim() || valueText;
+  const labelText = label?.textContent?.trim() ?? "";
+  const displayLabel = input.dataset.controlLabel || labelText;
+  const stateKey = [
+    ratioText,
+    input.disabled ? "disabled" : "enabled",
+    valueText,
+    outputText,
+    String(metrics.min),
+    String(metrics.max),
+    labelText,
+    displayLabel,
+  ].join("|");
+
+  if (wrapper._dragValueStateKey === stateKey) {
+    return;
+  }
+  wrapper._dragValueStateKey = stateKey;
+
+  wrapper.style.setProperty("--drag-value-fill", `${(ratio * 100).toFixed(2)}%`);
+  setTextContent(wrapper._dragValueDisplayLabel, displayLabel);
+  setTextContent(value, outputText);
+
+  const disabled = Boolean(input.disabled);
+  wrapper.classList.toggle("is-disabled", disabled);
+  wrapper.tabIndex = disabled ? -1 : 0;
+
+  setAttributeIfChanged(wrapper, "aria-valuenow", valueText);
+  setAttributeIfChanged(wrapper, "aria-valuetext", outputText);
+  setAttributeIfChanged(wrapper, "aria-valuemin", metrics.min);
+  setAttributeIfChanged(wrapper, "aria-valuemax", metrics.max);
+  if (labelText) {
+    setAttributeIfChanged(wrapper, "aria-label", labelText);
+  } else if (wrapper.hasAttribute("aria-label")) {
+    wrapper.removeAttribute("aria-label");
+  }
+}
+
+function dispatchDragValueInput(input, nextValue, { commit = false } = {}) {
+  const { min, max, step } = getRangeMetrics(input);
+  const roundedValue = roundToStep(nextValue, min, max, step);
+  const nextValueText = String(roundedValue);
+  const changed = input.value !== nextValueText;
+  input.value = nextValueText;
+  syncDragValueControl(input);
+
+  if (changed) {
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    syncDragValueControl(input);
+  }
+
+  if (commit) {
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    syncDragValueControl(input);
   }
 }
 
@@ -1776,6 +1869,159 @@ function createRotaryControl(input) {
   return wrapper;
 }
 
+function createDragValueControl(input) {
+  input.classList.add("drag-value-input");
+  input.tabIndex = -1;
+  input.parentElement?.classList.add("field--drag-value");
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "drag-value-control";
+  wrapper.tabIndex = input.disabled ? -1 : 0;
+  wrapper.setAttribute("role", "slider");
+  wrapper._dragValueOutput = input.parentElement?.querySelector("output") ?? null;
+  wrapper._dragValueLabel = input.parentElement?.querySelector("span") ?? null;
+
+  const label = document.createElement("span");
+  label.className = "drag-value-control__label";
+  label.textContent = input.dataset.controlLabel || wrapper._dragValueLabel?.textContent?.trim() || "";
+
+  const value = document.createElement("span");
+  value.className = "drag-value-control__value";
+
+  wrapper._dragValueDisplayLabel = label;
+  wrapper._dragValueValue = value;
+  input._dragValueWrapper = wrapper;
+
+  wrapper.append(label, value);
+  input.insertAdjacentElement("afterend", wrapper);
+
+  input.addEventListener("input", () => {
+    syncDragValueControl(input);
+  });
+
+  input.addEventListener("change", () => {
+    syncDragValueControl(input);
+  });
+
+  wrapper.addEventListener("pointerdown", (event) => {
+    if (input.disabled) {
+      return;
+    }
+
+    event.preventDefault();
+    wrapper.focus();
+    beginRangeInteraction(input);
+    wrapper.setPointerCapture(event.pointerId);
+    const startValue = Number(input.value);
+    const startEvent = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+    };
+
+    const handleMove = (moveEvent) => {
+      if (moveEvent.pointerId !== event.pointerId) {
+        return;
+      }
+      dispatchDragValueInput(input, dragValueDelta(input, startValue, startEvent, moveEvent));
+    };
+
+    const handleFinish = (finishEvent) => {
+      if (finishEvent.pointerId !== event.pointerId) {
+        return;
+      }
+
+      wrapper.removeEventListener("pointermove", handleMove);
+      wrapper.removeEventListener("pointerup", handleFinish);
+      wrapper.removeEventListener("pointercancel", handleFinish);
+      endRangeInteraction(input);
+      dispatchDragValueInput(input, Number(input.value), { commit: true });
+    };
+
+    wrapper.addEventListener("pointermove", handleMove);
+    wrapper.addEventListener("pointerup", handleFinish);
+    wrapper.addEventListener("pointercancel", handleFinish);
+  });
+
+  wrapper.addEventListener("wheel", (event) => {
+    if (input.disabled) {
+      return;
+    }
+
+    event.preventDefault();
+    const { min, max, step } = getRangeMetrics(input);
+    const delta = event.deltaY < 0 ? 1 : -1;
+    const stepAmount = step > 0 ? step : (max - min) / 100;
+    beginRangeInteraction(input);
+    dispatchDragValueInput(input, Number(input.value) + (delta * stepAmount), { commit: true });
+    endRangeInteraction(input);
+  }, { passive: false });
+
+  wrapper.addEventListener("keydown", (event) => {
+    if (input.disabled) {
+      return;
+    }
+
+    const { min, max, step } = getRangeMetrics(input);
+    const stepAmount = step > 0 ? step : (max - min) / 100;
+    let nextValue = Number(input.value);
+    let handled = true;
+
+    if (event.key === "ArrowUp" || event.key === "ArrowRight") {
+      nextValue += stepAmount;
+    } else if (event.key === "ArrowDown" || event.key === "ArrowLeft") {
+      nextValue -= stepAmount;
+    } else if (event.key === "PageUp") {
+      nextValue += stepAmount * 10;
+    } else if (event.key === "PageDown") {
+      nextValue -= stepAmount * 10;
+    } else if (event.key === "Home") {
+      nextValue = min;
+    } else if (event.key === "End") {
+      nextValue = max;
+    } else {
+      handled = false;
+    }
+
+    if (!handled) {
+      return;
+    }
+
+    event.preventDefault();
+    beginRangeInteraction(input);
+    dispatchDragValueInput(input, nextValue, { commit: true });
+    endRangeInteraction(input);
+  });
+
+  syncDragValueControl(input);
+  return wrapper;
+}
+
+function ensureDragValueControls(root = document) {
+  const scope = root && typeof root.querySelectorAll === "function" ? root : document;
+  scope.querySelectorAll('input[type="range"][data-control-style="drag-value"]').forEach((input) => {
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
+
+    if (!input.classList.contains("drag-value-input")) {
+      createDragValueControl(input);
+    }
+
+    const wrapper = input._dragValueWrapper;
+    if (wrapper instanceof HTMLElement && wrapper.classList.contains("drag-value-control")) {
+      const output = input.parentElement?.querySelector("output") ?? null;
+      const label = input.parentElement?.querySelector("span") ?? null;
+      if (wrapper._dragValueOutput !== output || wrapper._dragValueLabel !== label) {
+        wrapper._dragValueStateKey = "";
+        wrapper._dragValueOutput = output;
+        wrapper._dragValueLabel = label;
+        setTextContent(wrapper._dragValueDisplayLabel, input.dataset.controlLabel || label?.textContent?.trim() || "");
+      }
+    }
+    syncDragValueControl(input);
+  });
+}
+
 function ensureRotaryControls(root = document) {
   const scope = root && typeof root.querySelectorAll === "function" ? root : document;
   scope.querySelectorAll('input[type="range"]').forEach((input) => {
@@ -1783,7 +2029,7 @@ function ensureRotaryControls(root = document) {
       return;
     }
 
-    if (input.dataset.controlStyle === "linear") {
+    if (input.dataset.controlStyle === "linear" || input.dataset.controlStyle === "drag-value") {
       return;
     }
 
@@ -1844,7 +2090,16 @@ function getStaticRotaryInputs() {
     .map((key) => elements[key])
     .filter((input) => input instanceof HTMLInputElement
       && input.type === "range"
-      && input.dataset.controlStyle !== "linear");
+      && input.dataset.controlStyle !== "linear"
+      && input.dataset.controlStyle !== "drag-value");
+}
+
+function getStaticDragValueInputs() {
+  return STATIC_ROTARY_INPUT_KEYS
+    .map((key) => elements[key])
+    .filter((input) => input instanceof HTMLInputElement
+      && input.type === "range"
+      && input.dataset.controlStyle === "drag-value");
 }
 
 function ensureStaticRotaryControls() {
@@ -1859,6 +2114,21 @@ function ensureStaticRotaryControls() {
 function syncStaticRotaryControls() {
   getStaticRotaryInputs().forEach((input) => {
     syncRotaryControl(input);
+  });
+}
+
+function ensureStaticDragValueControls() {
+  getStaticDragValueInputs().forEach((input) => {
+    if (!input.classList.contains("drag-value-input")) {
+      createDragValueControl(input);
+    }
+    syncDragValueControl(input);
+  });
+}
+
+function syncStaticDragValueControls() {
+  getStaticDragValueInputs().forEach((input) => {
+    syncDragValueControl(input);
   });
 }
 
@@ -1880,13 +2150,16 @@ function syncSelectInput(select, value) {
   }
 }
 
-function syncRangeField(input, value, outputText, { min = null, max = null, step = null, label = null } = {}) {
+function syncRangeField(input, value, outputText, { min = null, max = null, step = null, label = null, controlLabel = null } = {}) {
   if (!(input instanceof HTMLInputElement)) {
     return;
   }
 
   if (label != null) {
     setTextContent(input.parentElement?.querySelector("span"), label);
+  }
+  if (controlLabel != null && input.dataset.controlLabel !== controlLabel) {
+    input.dataset.controlLabel = controlLabel;
   }
   if (min != null) {
     const minText = String(min);
@@ -1912,6 +2185,7 @@ function syncRangeField(input, value, outputText, { min = null, max = null, step
   }
   setTextContent(input.parentElement?.querySelector("output"), outputText);
   syncRotaryControl(input);
+  syncDragValueControl(input);
 }
 
 function getRobinMasterOscillators() {
@@ -3405,17 +3679,13 @@ function renderVoiceOverviewTokens(voice, masterOscillatorCount) {
     return `
       <span class="token token--ghost">Master</span>
       <span class="token token--ghost">${masterOscillatorCount} osc</span>
-      <span class="token token--ghost">VCF</span>
-      <span class="token token--ghost">ENV</span>
     `;
   }
 
   const enabledOscillatorCount = voice.oscillators.filter((oscillator) => oscillator.enabled).length;
   return `
-    <span class="token">${Math.round(Number(voice.frequency))} Hz</span>
-    <span class="token">${Number(voice.gain).toFixed(2)}</span>
     <span class="token">${enabledOscillatorCount}/${voice.oscillators.length} osc</span>
-    <span class="token">Local</span>
+    <span class="token">${Math.round(Number(voice.frequency))} Hz</span>
   `;
 }
 
@@ -3430,8 +3700,21 @@ function buildVoiceOverviewActions(voice, selected) {
       class="ghost-button ghost-button--compact ${selected ? "is-selected" : ""}"
       data-voice-select="${voice.index}"
     >
-      ${selected ? "Open" : "Edit"}
+      ${selected ? "Selected" : "Edit"}
     </button>
+  `;
+}
+
+function buildVoiceBankHeaderMarkup() {
+  return `
+    <div class="voice-overview-row__header" aria-hidden="true">
+      <span>Voice</span>
+      <span>On</span>
+      <span>Linked</span>
+      <span>State</span>
+      <span>Details</span>
+      <span>Edit</span>
+    </div>
   `;
 }
 
@@ -3449,11 +3732,6 @@ function buildVoiceOverviewRowMarkup(voice, masterOscillatorCount, selectedVoice
     <article class="${rowClasses}" data-voice-row="${voice.index}">
       <div class="voice-overview-row__identity">
         <strong>Voice ${voice.index + 1}</strong>
-        <span class="voice-overview-row__state" data-voice-state>${linked ? "Linked" : "Local"}</span>
-      </div>
-
-      <div class="voice-overview-row__summary token-row" data-voice-summary>
-        ${renderVoiceOverviewTokens(voice, masterOscillatorCount)}
       </div>
 
       <div class="voice-overview-row__controls">
@@ -3465,6 +3743,14 @@ function buildVoiceOverviewRowMarkup(voice, masterOscillatorCount, selectedVoice
           <input type="checkbox" data-voice-linked="${voice.index}" ${linked ? "checked" : ""}>
           <span>Linked</span>
         </label>
+      </div>
+
+      <span class="voice-overview-row__state" data-voice-state>
+        ${voice.active ? (selected ? "Local editor" : (linked ? "Linked" : "Local")) : "Off"}
+      </span>
+
+      <div class="voice-overview-row__summary token-row" data-voice-summary>
+        ${renderVoiceOverviewTokens(voice, masterOscillatorCount)}
       </div>
 
       <div class="voice-overview-row__actions" data-voice-actions>
@@ -3486,68 +3772,81 @@ function buildSelectedVoiceEditorEmptyMarkup() {
   `;
 }
 
+function buildOscillatorMenuHeaderMarkup() {
+  return `
+    <div class="robin-voice-osc-grid__header" aria-hidden="true">
+      <span>Osc</span>
+      <span>On</span>
+      <span>Shape</span>
+      <span>Relative</span>
+      <span>Level</span>
+      <span>Tune</span>
+    </div>
+  `;
+}
+
 function buildSelectedVoiceOscillatorMarkup(voiceIndex, oscillator) {
   return `
-    <section class="robin-voice-osc" data-voice-editor-osc="${oscillator.index}">
-      <div class="robin-voice-module__header">
-        <h4>Osc ${oscillator.index + 1}</h4>
-        <label class="toggle-pill">
-          <input
-            type="checkbox"
-            data-voice-osc-enabled="${voiceIndex}:${oscillator.index}"
-            ${oscillator.enabled ? "checked" : ""}
-          >
-          <span>On</span>
-        </label>
+    <section class="robin-voice-osc ${oscillator.enabled ? "is-active" : "is-muted"}" data-voice-editor-osc="${oscillator.index}">
+      <div class="robin-voice-osc__target">
+        <strong>Osc ${oscillator.index + 1}</strong>
+        <span>Local</span>
       </div>
 
-      <div class="robin-voice-osc__fields">
-        <div class="robin-voice-osc__config">
-          <label class="field field--compact">
-            <span>Shape</span>
-            <select data-voice-osc-waveform="${voiceIndex}:${oscillator.index}">
-              ${renderWaveformOptions(oscillator.waveform)}
-            </select>
-          </label>
+      <label class="toggle-pill robin-voice-osc__cell robin-voice-osc__cell--toggle">
+        <input
+          type="checkbox"
+          data-voice-osc-enabled="${voiceIndex}:${oscillator.index}"
+          ${oscillator.enabled ? "checked" : ""}
+        >
+        <span>On</span>
+      </label>
 
-          <label class="toggle-pill toggle-pill--block robin-voice-osc__toggle">
-            <input
-              type="checkbox"
-              data-voice-osc-relative="${voiceIndex}:${oscillator.index}"
-              ${oscillator.relativeToVoice ? "checked" : ""}
-            >
-            <span>${oscillator.relativeToVoice ? "Track Root" : "Absolute Hz"}</span>
-          </label>
-        </div>
+      <label class="field field--compact robin-voice-osc__cell robin-voice-osc__cell--shape">
+        <span>Shape</span>
+        <select data-voice-osc-waveform="${voiceIndex}:${oscillator.index}">
+          ${renderWaveformOptions(oscillator.waveform)}
+        </select>
+      </label>
 
-        <div class="robin-voice-osc__knobs">
-          <label class="field field--compact">
-            <span>Level</span>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value="${oscillator.gain}"
-              data-voice-osc-gain="${voiceIndex}:${oscillator.index}"
-            >
-            <output>${Number(oscillator.gain).toFixed(2)}</output>
-          </label>
+      <label class="toggle-pill robin-voice-osc__cell robin-voice-osc__cell--mode">
+        <input
+          type="checkbox"
+          data-voice-osc-relative="${voiceIndex}:${oscillator.index}"
+          ${oscillator.relativeToVoice ? "checked" : ""}
+        >
+        <span>${oscillator.relativeToVoice ? "Relative" : "Absolute"}</span>
+      </label>
 
-          <label class="field field--compact">
-            <span>${oscillator.relativeToVoice ? "Ratio" : "Frequency"}</span>
-            <input
-              type="range"
-              min="${oscillator.relativeToVoice ? "0.01" : "20"}"
-              max="${oscillator.relativeToVoice ? "8" : "20000"}"
-              step="${oscillator.relativeToVoice ? "0.01" : "1"}"
-              value="${oscillator.frequencyValue}"
-              data-voice-osc-frequency="${voiceIndex}:${oscillator.index}"
-            >
-            <output>${formatOscillatorFrequencyLabel(oscillator)}</output>
-          </label>
-        </div>
-      </div>
+      <label class="field field--compact robin-voice-osc__cell robin-voice-osc__cell--drag">
+        <span>Level</span>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value="${oscillator.gain}"
+          data-control-style="drag-value"
+          data-control-label="Lvl"
+          data-voice-osc-gain="${voiceIndex}:${oscillator.index}"
+        >
+        <output>${Number(oscillator.gain).toFixed(2)}</output>
+      </label>
+
+      <label class="field field--compact robin-voice-osc__cell robin-voice-osc__cell--drag">
+        <span>${oscillator.relativeToVoice ? "Ratio" : "Frequency"}</span>
+        <input
+          type="range"
+          min="${oscillator.relativeToVoice ? "0.01" : "20"}"
+          max="${oscillator.relativeToVoice ? "8" : "20000"}"
+          step="${oscillator.relativeToVoice ? "0.01" : "1"}"
+          value="${oscillator.frequencyValue}"
+          data-control-style="drag-value"
+          data-control-label="${oscillator.relativeToVoice ? "Ratio" : "Freq"}"
+          data-voice-osc-frequency="${voiceIndex}:${oscillator.index}"
+        >
+        <output>${formatOscillatorFrequencyLabel(oscillator)}</output>
+      </label>
     </section>
   `;
 }
@@ -3575,6 +3874,7 @@ function buildSelectedVoiceEditorMarkup(selectedVoice) {
         </div>
 
         <div class="robin-voice-osc-grid">
+          ${buildOscillatorMenuHeaderMarkup()}
           ${selectedVoice.oscillators
             .map((oscillator) => buildSelectedVoiceOscillatorMarkup(selectedVoice.index, oscillator))
             .join("")}
@@ -3809,7 +4109,7 @@ function syncVoiceOverviewRow(row, voice, masterOscillatorCount, selectedVoice) 
     selected ? "is-selected" : "",
   ].join(" ");
 
-  setTextContent(row.querySelector("[data-voice-state]"), linked ? "Linked" : "Local");
+  setTextContent(row.querySelector("[data-voice-state]"), voice.active ? (selected ? "Local editor" : (linked ? "Linked" : "Local")) : "Off");
   const summaryMarkup = renderVoiceOverviewTokens(voice, masterOscillatorCount);
   const summary = row.querySelector("[data-voice-summary]");
   if (summary && summary.innerHTML !== summaryMarkup) {
@@ -3900,6 +4200,8 @@ function syncSelectedVoiceEditorFields(selectedVoice) {
       return;
     }
 
+    section.classList.toggle("is-active", oscillator.enabled);
+    section.classList.toggle("is-muted", !oscillator.enabled);
     syncCheckboxInput(section.querySelector(`[data-voice-osc-enabled="${oscillatorKey}"]`), oscillator.enabled);
     syncSelectInput(section.querySelector(`[data-voice-osc-waveform="${oscillatorKey}"]`), oscillator.waveform);
 
@@ -3907,7 +4209,7 @@ function syncSelectedVoiceEditorFields(selectedVoice) {
     syncCheckboxInput(relativeInput, oscillator.relativeToVoice);
     setTextContent(
       relativeInput?.parentElement?.querySelector("span"),
-      oscillator.relativeToVoice ? "Track Root" : "Absolute Hz",
+      oscillator.relativeToVoice ? "Relative" : "Absolute",
     );
 
     syncRangeField(
@@ -3924,6 +4226,7 @@ function syncSelectedVoiceEditorFields(selectedVoice) {
         max: oscillator.relativeToVoice ? 8 : 20000,
         step: oscillator.relativeToVoice ? 0.01 : 1,
         label: oscillator.relativeToVoice ? "Ratio" : "Frequency",
+        controlLabel: oscillator.relativeToVoice ? "Ratio" : "Freq",
       },
     );
   });
@@ -3947,6 +4250,7 @@ function renderSelectedVoiceEditor(selectedVoice) {
   }
 
   syncSelectedVoiceEditorFields(selectedVoice);
+  ensureDragValueControls(elements.selectedVoiceEditor);
   ensureRotaryControls(elements.selectedVoiceEditor);
 }
 
@@ -3968,9 +4272,10 @@ function renderVoices() {
     || rows.some((row, index) => Number(row.dataset.voiceRow) !== robin.voices[index].index);
 
   if (needsRebuild) {
-    elements.voicesGrid.innerHTML = robin.voices
-      .map((voice) => buildVoiceOverviewRowMarkup(voice, masterOscillatorCount, selectedVoice))
-      .join("");
+    elements.voicesGrid.innerHTML = `
+      ${buildVoiceBankHeaderMarkup()}
+      ${robin.voices.map((voice) => buildVoiceOverviewRowMarkup(voice, masterOscillatorCount, selectedVoice)).join("")}
+    `;
     rows = Array.from(elements.voicesGrid.querySelectorAll("[data-voice-row]"));
   }
 
@@ -3984,66 +4289,66 @@ function renderVoices() {
 
 function buildMasterOscillatorMarkup(oscillator) {
   return `
-    <section class="robin-voice-osc robin-master-osc" data-master-osc="${oscillator.index}">
-      <div class="robin-voice-module__header">
-        <h4>Osc ${oscillator.index + 1}</h4>
-        <label class="toggle-pill">
-          <input
-            type="checkbox"
-            data-osc-enabled="${oscillator.index}"
-            ${oscillator.enabled ? "checked" : ""}
-          >
-          <span>On</span>
-        </label>
+    <section class="robin-voice-osc robin-master-osc ${oscillator.enabled ? "is-active" : "is-muted"}" data-master-osc="${oscillator.index}">
+      <div class="robin-voice-osc__target">
+        <strong>Osc ${oscillator.index + 1}</strong>
+        <span>Master</span>
       </div>
 
-      <div class="robin-voice-osc__fields">
-        <div class="robin-voice-osc__config">
-          <label class="field field--compact">
-            <span>Shape</span>
-            <select data-osc-waveform="${oscillator.index}">
-              ${renderWaveformOptions(oscillator.waveform)}
-            </select>
-          </label>
+      <label class="toggle-pill robin-voice-osc__cell robin-voice-osc__cell--toggle">
+        <input
+          type="checkbox"
+          data-osc-enabled="${oscillator.index}"
+          ${oscillator.enabled ? "checked" : ""}
+        >
+        <span>On</span>
+      </label>
 
-          <label class="toggle-pill toggle-pill--block robin-voice-osc__toggle">
-            <input
-              type="checkbox"
-              data-osc-relative="${oscillator.index}"
-              ${oscillator.relativeToVoice ? "checked" : ""}
-            >
-            <span>${oscillator.relativeToVoice ? "Track Root" : "Absolute Hz"}</span>
-          </label>
-        </div>
+      <label class="field field--compact robin-voice-osc__cell robin-voice-osc__cell--shape">
+        <span>Shape</span>
+        <select data-osc-waveform="${oscillator.index}">
+          ${renderWaveformOptions(oscillator.waveform)}
+        </select>
+      </label>
 
-        <div class="robin-voice-osc__knobs">
-          <label class="field field--compact">
-            <span>Level</span>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value="${oscillator.gain}"
-              data-osc-gain="${oscillator.index}"
-            >
-            <output>${Number(oscillator.gain).toFixed(2)}</output>
-          </label>
+      <label class="toggle-pill robin-voice-osc__cell robin-voice-osc__cell--mode">
+        <input
+          type="checkbox"
+          data-osc-relative="${oscillator.index}"
+          ${oscillator.relativeToVoice ? "checked" : ""}
+        >
+        <span>${oscillator.relativeToVoice ? "Relative" : "Absolute"}</span>
+      </label>
 
-          <label class="field field--compact">
-            <span>${oscillator.relativeToVoice ? "Ratio" : "Frequency"}</span>
-            <input
-              type="range"
-              min="${oscillator.relativeToVoice ? "0.01" : "20"}"
-              max="${oscillator.relativeToVoice ? "8" : "20000"}"
-              step="${oscillator.relativeToVoice ? "0.01" : "1"}"
-              value="${oscillator.frequencyValue}"
-              data-osc-frequency="${oscillator.index}"
-            >
-            <output>${formatOscillatorFrequencyLabel(oscillator)}</output>
-          </label>
-        </div>
-      </div>
+      <label class="field field--compact robin-voice-osc__cell robin-voice-osc__cell--drag">
+        <span>Level</span>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value="${oscillator.gain}"
+          data-control-style="drag-value"
+          data-control-label="Lvl"
+          data-osc-gain="${oscillator.index}"
+        >
+        <output>${Number(oscillator.gain).toFixed(2)}</output>
+      </label>
+
+      <label class="field field--compact robin-voice-osc__cell robin-voice-osc__cell--drag">
+        <span>${oscillator.relativeToVoice ? "Ratio" : "Frequency"}</span>
+        <input
+          type="range"
+          min="${oscillator.relativeToVoice ? "0.01" : "20"}"
+          max="${oscillator.relativeToVoice ? "8" : "20000"}"
+          step="${oscillator.relativeToVoice ? "0.01" : "1"}"
+          value="${oscillator.frequencyValue}"
+          data-control-style="drag-value"
+          data-control-label="${oscillator.relativeToVoice ? "Ratio" : "Freq"}"
+          data-osc-frequency="${oscillator.index}"
+        >
+        <output>${formatOscillatorFrequencyLabel(oscillator)}</output>
+      </label>
     </section>
   `;
 }
@@ -4053,6 +4358,8 @@ function syncMasterOscillatorSection(section, oscillator) {
     return;
   }
 
+  section.classList.toggle("is-active", oscillator.enabled);
+  section.classList.toggle("is-muted", !oscillator.enabled);
   syncCheckboxInput(section.querySelector(`[data-osc-enabled="${oscillator.index}"]`), oscillator.enabled);
   syncSelectInput(section.querySelector(`[data-osc-waveform="${oscillator.index}"]`), oscillator.waveform);
 
@@ -4060,7 +4367,7 @@ function syncMasterOscillatorSection(section, oscillator) {
   syncCheckboxInput(relativeInput, oscillator.relativeToVoice);
   setTextContent(
     relativeInput?.parentElement?.querySelector("span"),
-    oscillator.relativeToVoice ? "Track Root" : "Absolute Hz",
+    oscillator.relativeToVoice ? "Relative" : "Absolute",
   );
 
   syncRangeField(
@@ -4077,6 +4384,7 @@ function syncMasterOscillatorSection(section, oscillator) {
       max: oscillator.relativeToVoice ? 8 : 20000,
       step: oscillator.relativeToVoice ? 0.01 : 1,
       label: oscillator.relativeToVoice ? "Ratio" : "Frequency",
+      controlLabel: oscillator.relativeToVoice ? "Ratio" : "Freq",
     },
   );
 }
@@ -4093,9 +4401,10 @@ function renderOscillators() {
     || sections.some((section, index) => Number(section.dataset.masterOsc) !== oscillators[index].index);
 
   if (needsRebuild) {
-    elements.oscillatorRows.innerHTML = oscillators
-      .map((oscillator) => buildMasterOscillatorMarkup(oscillator))
-      .join("");
+    elements.oscillatorRows.innerHTML = `
+      ${buildOscillatorMenuHeaderMarkup()}
+      ${oscillators.map((oscillator) => buildMasterOscillatorMarkup(oscillator)).join("")}
+    `;
     sections = Array.from(elements.oscillatorRows.querySelectorAll("[data-master-osc]"));
   }
 
@@ -4104,6 +4413,7 @@ function renderOscillators() {
   });
 
   bindOscillatorControls();
+  ensureDragValueControls(elements.oscillatorRows);
   ensureRotaryControls(elements.oscillatorRows);
 }
 
@@ -4119,14 +4429,21 @@ function renderRobinPerformanceMacros() {
   }
   let macroCards = Array.from(elements.robinPerformanceMacros.querySelectorAll("[data-robin-macro-slot]"));
   if (macroCards.length !== spreadSlots.length) {
-    elements.robinPerformanceMacros.innerHTML = spreadSlots
-      .map((_, slotIndex) => `
+    elements.robinPerformanceMacros.innerHTML = `
+      <div class="robin-performance-macro__header" aria-hidden="true">
+        <span>Macro</span>
+        <span>Target</span>
+        <span>Depth</span>
+      </div>
+      ${spreadSlots
+        .map((_, slotIndex) => `
         <label class="field field--compact robin-performance-macro" data-robin-macro-slot="${slotIndex}">
           <span>M${slotIndex + 1}</span>
           <small data-robin-macro-target></small>
           <input
             type="range"
-            data-control-style="linear"
+            data-control-style="drag-value"
+            data-control-label="Depth"
             min="0"
             max="1"
             step="0.01"
@@ -4135,7 +4452,8 @@ function renderRobinPerformanceMacros() {
           <output data-robin-macro-output></output>
         </label>
       `)
-      .join("");
+        .join("")}
+    `;
     macroCards = Array.from(elements.robinPerformanceMacros.querySelectorAll("[data-robin-macro-slot]"));
   }
 
@@ -4157,6 +4475,7 @@ function renderRobinPerformanceMacros() {
   });
 
   bindRobinPerformanceMacros();
+  ensureDragValueControls(elements.robinPerformanceMacros);
 }
 
 function bindRobinPerformanceMacros() {
@@ -4195,23 +4514,6 @@ function renderRobinSpreadSlots() {
     return;
   }
 
-  for (const slotIndex of Array.from(openRobinSpreadSlotIndexes)) {
-    if (slotIndex < 0 || slotIndex >= spreadSlots.length) {
-      openRobinSpreadSlotIndexes.delete(slotIndex);
-    }
-  }
-
-  if (!robinSpreadSlotOpenStateInitialized) {
-    spreadSlots.forEach((slot, slotIndex) => {
-      if (slot.enabled) {
-        openRobinSpreadSlotIndexes.add(slotIndex);
-      }
-    });
-    if (!openRobinSpreadSlotIndexes.size) {
-      openRobinSpreadSlotIndexes.add(0);
-    }
-    robinSpreadSlotOpenStateInitialized = true;
-  }
   let slotSections = Array.from(elements.robinSpreadSlots.querySelectorAll("[data-robin-spread-slot]"));
   if (slotSections.length !== spreadSlots.length) {
     const targetOptions = Object.entries(ROBIN_SPREAD_TARGET_CONFIG)
@@ -4221,120 +4523,126 @@ function renderRobinSpreadSlots() {
       .map(([value, label]) => `<option value="${value}">${label}</option>`)
       .join("");
 
-    elements.robinSpreadSlots.innerHTML = spreadSlots
-      .map((_, slotIndex) => `
+    elements.robinSpreadSlots.innerHTML = `
+      <div class="robin-spread-slot__header" aria-hidden="true">
+        <span>Slot</span>
+        <span>On</span>
+        <span>Target</span>
+        <span>Algorithm</span>
+        <span>Start</span>
+        <span>End</span>
+        <span>Depth</span>
+        <span>Seed</span>
+      </div>
+      ${spreadSlots
+        .map((_, slotIndex) => `
         <section class="robin-spread-slot" data-robin-spread-slot="${slotIndex}">
-          <div class="robin-spread-slot__topline">
-            <button
-              type="button"
-              class="robin-spread-slot__toggle"
-              data-robin-spread-open="${slotIndex}"
-              aria-expanded="false"
+          <div class="robin-spread-slot__target">
+            <strong>S${slotIndex + 1}</strong>
+            <span data-robin-spread-summary></span>
+          </div>
+
+          <label class="toggle-pill robin-spread-slot__cell robin-spread-slot__cell--toggle">
+            <input
+              type="checkbox"
+              data-robin-spread-enabled="${slotIndex}"
             >
-              <span>S${slotIndex + 1}</span>
-              <small data-robin-spread-summary></small>
-            </button>
-            <label class="toggle-pill">
-              <input
-                type="checkbox"
-                data-robin-spread-enabled="${slotIndex}"
-              >
-              <span>On</span>
-            </label>
-          </div>
+            <span>On</span>
+          </label>
 
-          <div class="robin-spread-slot__body" data-robin-spread-body hidden>
-            <div class="robin-spread-slot__selectors">
-              <label class="field field--compact">
-                <span>Target</span>
-                <select data-robin-spread-target="${slotIndex}">
-                  ${targetOptions}
-                </select>
-              </label>
+          <label class="field field--compact robin-spread-slot__cell robin-spread-slot__cell--select">
+            <span>Target</span>
+            <select data-robin-spread-target="${slotIndex}">
+              ${targetOptions}
+            </select>
+          </label>
 
-              <label class="field field--compact">
-                <span>Algorithm</span>
-                <select data-robin-spread-algorithm="${slotIndex}">
-                  ${algorithmOptions}
-                </select>
-              </label>
-            </div>
+          <label class="field field--compact robin-spread-slot__cell robin-spread-slot__cell--select">
+            <span>Algorithm</span>
+            <select data-robin-spread-algorithm="${slotIndex}">
+              ${algorithmOptions}
+            </select>
+          </label>
 
-            <div class="robin-spread-slot__range-grid">
-              <label class="field field--compact robin-spread-slot__field">
-                <span>Start</span>
-                <input
-                  type="range"
-                  data-control-style="linear"
-                  data-robin-spread-start="${slotIndex}"
-                >
-                <output data-robin-spread-start-output></output>
-              </label>
+          <label class="field field--compact robin-spread-slot__cell robin-spread-slot__cell--drag">
+            <span>Start</span>
+            <input
+              type="range"
+              data-control-style="drag-value"
+              data-control-label="Start"
+              data-robin-spread-start="${slotIndex}"
+            >
+            <output data-robin-spread-start-output></output>
+          </label>
 
-              <label class="field field--compact robin-spread-slot__field">
-                <span>End</span>
-                <input
-                  type="range"
-                  data-control-style="linear"
-                  data-robin-spread-end="${slotIndex}"
-                >
-                <output data-robin-spread-end-output></output>
-              </label>
+          <label class="field field--compact robin-spread-slot__cell robin-spread-slot__cell--drag">
+            <span>End</span>
+            <input
+              type="range"
+              data-control-style="drag-value"
+              data-control-label="End"
+              data-robin-spread-end="${slotIndex}"
+            >
+            <output data-robin-spread-end-output></output>
+          </label>
 
-              <label class="field field--compact robin-spread-slot__field robin-spread-slot__field--seed" data-robin-spread-seed-field>
-                <span>Seed</span>
-                <input
-                  type="range"
-                  data-control-style="linear"
-                  min="1"
-                  max="9999"
-                  step="1"
-                  data-robin-spread-seed="${slotIndex}"
-                >
-                <output data-robin-spread-seed-output></output>
-              </label>
-            </div>
+          <label class="field field--compact robin-spread-slot__cell robin-spread-slot__cell--drag">
+            <span>Depth</span>
+            <input
+              type="range"
+              data-control-style="drag-value"
+              data-control-label="Depth"
+              min="0"
+              max="1"
+              step="0.01"
+              data-robin-spread-depth="${slotIndex}"
+            >
+            <output data-robin-spread-depth-output></output>
+          </label>
 
-            <p class="robin-spread-slot__copy" data-robin-spread-copy></p>
-          </div>
+          <label class="field field--compact robin-spread-slot__cell robin-spread-slot__cell--drag robin-spread-slot__cell--seed" data-robin-spread-seed-field>
+            <span>Seed</span>
+            <input
+              type="range"
+              data-control-style="drag-value"
+              data-control-label="Seed"
+              min="1"
+              max="9999"
+              step="1"
+              data-robin-spread-seed="${slotIndex}"
+            >
+            <output data-robin-spread-seed-output></output>
+          </label>
         </section>
       `)
-      .join("");
+        .join("")}
+    `;
     slotSections = Array.from(elements.robinSpreadSlots.querySelectorAll("[data-robin-spread-slot]"));
   }
 
   slotSections.forEach((section, slotIndex) => {
     const slot = spreadSlots[slotIndex];
-    const isOpen = openRobinSpreadSlotIndexes.has(slotIndex);
     const targetConfig = getRobinSpreadTargetConfig(slot.target);
     const summary = section.querySelector("[data-robin-spread-summary]");
-    const toggle = section.querySelector("[data-robin-spread-open]");
     const enabled = section.querySelector("[data-robin-spread-enabled]");
-    const body = section.querySelector("[data-robin-spread-body]");
     const target = section.querySelector("[data-robin-spread-target]");
     const algorithm = section.querySelector("[data-robin-spread-algorithm]");
     const start = section.querySelector("[data-robin-spread-start]");
     const startOutput = section.querySelector("[data-robin-spread-start-output]");
     const end = section.querySelector("[data-robin-spread-end]");
     const endOutput = section.querySelector("[data-robin-spread-end-output]");
+    const depth = section.querySelector("[data-robin-spread-depth]");
+    const depthOutput = section.querySelector("[data-robin-spread-depth-output]");
     const seedField = section.querySelector("[data-robin-spread-seed-field]");
     const seed = section.querySelector("[data-robin-spread-seed]");
     const seedOutput = section.querySelector("[data-robin-spread-seed-output]");
-    const copy = section.querySelector("[data-robin-spread-copy]");
 
     section.classList.toggle("is-enabled", slot.enabled);
-    section.classList.toggle("is-open", isOpen);
     if (summary) {
-      summary.textContent = `${targetConfig.label} · ${ROBIN_SPREAD_ALGORITHM_LABELS[slot.algorithm]}`;
-    }
-    if (toggle instanceof HTMLButtonElement) {
-      toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      summary.textContent = `M${slotIndex + 1}`;
     }
     if (enabled instanceof HTMLInputElement) {
       enabled.checked = slot.enabled;
-    }
-    if (body instanceof HTMLElement) {
-      body.hidden = !isOpen;
     }
     if (target instanceof HTMLSelectElement) {
       target.value = slot.target;
@@ -4360,6 +4668,12 @@ function renderRobinSpreadSlots() {
     if (endOutput) {
       endOutput.textContent = formatRobinSpreadValue(slot.target, slot.end);
     }
+    if (depth instanceof HTMLInputElement) {
+      depth.value = String(slot.depth);
+    }
+    if (depthOutput) {
+      depthOutput.textContent = `${Math.round(Number(slot.depth) * 100)}%`;
+    }
     if (seedField instanceof HTMLElement) {
       seedField.hidden = slot.algorithm !== "random";
     }
@@ -4369,33 +4683,16 @@ function renderRobinSpreadSlots() {
     if (seedOutput) {
       seedOutput.textContent = String(Math.round(Number(slot.seed)));
     }
-    if (copy) {
-      copy.textContent = "";
-    }
   });
 
   bindRobinSpreadControls();
+  ensureDragValueControls(elements.robinSpreadSlots);
 }
 
 function bindRobinSpreadControls() {
   if (!elements.robinSpreadSlots || elements.robinSpreadSlots.dataset.bound === "true") {
     return;
   }
-
-  elements.robinSpreadSlots.addEventListener("click", (event) => {
-    const button = event.target instanceof Element ? event.target.closest("[data-robin-spread-open]") : null;
-    if (!(button instanceof HTMLButtonElement)) {
-      return;
-    }
-
-    const slotIndex = Number(button.dataset.robinSpreadOpen);
-    if (openRobinSpreadSlotIndexes.has(slotIndex)) {
-      openRobinSpreadSlotIndexes.delete(slotIndex);
-    } else {
-      openRobinSpreadSlotIndexes.add(slotIndex);
-    }
-    renderRobinSpreadSlots();
-  });
 
   elements.robinSpreadSlots.addEventListener("change", (event) => {
     const target = event.target;
@@ -4404,11 +4701,6 @@ function bindRobinSpreadControls() {
       const slotIndex = Number(target.dataset.robinSpreadEnabled);
       setParamTemp(`sources.robin.spread.${slotIndex}.enabled`, target.checked, {
         applyLocalState: () => {
-          if (target.checked) {
-            openRobinSpreadSlotIndexes.add(slotIndex);
-          } else {
-            openRobinSpreadSlotIndexes.delete(slotIndex);
-          }
           applyRobinSpreadSlotUpdate(slotIndex, "enabled", target.checked);
         },
         rerender: () => {
@@ -4475,6 +4767,19 @@ function bindRobinSpreadControls() {
       }
       setParamTempLive(`sources.robin.spread.${slotIndex}.end`, nextValue, () => {
         applyRobinSpreadSlotUpdate(slotIndex, "end", nextValue);
+      });
+      return;
+    }
+
+    if (input.dataset.robinSpreadDepth != null) {
+      const slotIndex = Number(input.dataset.robinSpreadDepth);
+      const nextValue = Number(input.value);
+      const output = input.parentElement?.querySelector("[data-robin-spread-depth-output]");
+      if (output) {
+        output.textContent = `${Math.round(nextValue * 100)}%`;
+      }
+      setParamTempLive(`sources.robin.spread.${slotIndex}.depth`, nextValue, () => {
+        applyRobinSpreadSlotUpdate(slotIndex, "depth", nextValue);
       });
       return;
     }
@@ -4792,6 +5097,7 @@ function applyStateToUi(nextState) {
   renderDecorOutputGrid();
   renderFxChain();
   syncStaticRotaryControls();
+  syncStaticDragValueControls();
 }
 
 function renderState(nextState) {
@@ -5868,6 +6174,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   ensureStaticRotaryControls();
+  ensureStaticDragValueControls();
   await refreshState();
   await refreshPatchLibrary({ silent: true });
   updatePatchUi();

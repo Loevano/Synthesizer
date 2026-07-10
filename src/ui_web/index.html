@@ -317,13 +317,13 @@
             <div class="robin-master-layout__meta-grid">
               <label class="field field--compact">
                 <span>Voice Count</span>
-                <input id="voiceCount" type="range" min="1" max="32" step="1">
+                <input id="voiceCount" type="range" min="1" max="32" step="1" data-control-style="drag-value" data-control-label="Voices">
                 <output id="voiceCountValue">16</output>
               </label>
 
               <label class="field field--compact">
                 <span>Osc / Voice</span>
-                <input id="oscillatorsPerVoice" type="range" min="1" max="8" step="1">
+                <input id="oscillatorsPerVoice" type="range" min="1" max="8" step="1" data-control-style="drag-value" data-control-label="Osc">
                 <output id="oscillatorsPerVoiceValue">6</output>
               </label>
 
@@ -350,13 +350,13 @@
             <div class="robin-voice-module__grid robin-voice-module__grid--compact">
               <label class="field field--compact">
                 <span>Transpose</span>
-                <input id="transposeSemitones" type="range" min="-12" max="12" step="1">
+                <input id="transposeSemitones" type="range" min="-12" max="12" step="1" data-control-style="drag-value" data-control-label="Trans">
                 <output id="transposeSemitonesValue">0 st</output>
               </label>
 
               <label class="field field--compact">
                 <span>Fine Tune</span>
-                <input id="fineTuneCents" type="range" min="-100" max="100" step="1">
+                <input id="fineTuneCents" type="range" min="-100" max="100" step="1" data-control-style="drag-value" data-control-label="Fine">
                 <output id="fineTuneCentsValue">0 ct</output>
               </label>
             </div>
@@ -387,12 +387,12 @@
             <div class="robin-voice-module__grid robin-voice-module__grid--compact">
               <label class="field field--compact">
                 <span>Cutoff</span>
-                <input id="robinVcfCutoff" type="range" min="20" max="20000" step="1">
+                <input id="robinVcfCutoff" type="range" min="20" max="20000" step="1" data-control-style="drag-value" data-control-label="Cut">
                 <output id="robinVcfCutoffValue">18000 Hz</output>
               </label>
               <label class="field field--compact">
                 <span>Resonance</span>
-                <input id="robinVcfResonance" type="range" min="0.1" max="10" step="0.01">
+                <input id="robinVcfResonance" type="range" min="0.1" max="10" step="0.01" data-control-style="drag-value" data-control-label="Q">
                 <output id="robinVcfResonanceValue">0.71</output>
               </label>
             </div>
@@ -407,31 +407,31 @@
             <div class="robin-voice-module__grid">
               <label class="field field--compact">
                 <span>Attack</span>
-                <input id="robinEnvVcfAttack" type="range" min="0" max="5000" step="1">
+                <input id="robinEnvVcfAttack" type="range" min="0" max="5000" step="1" data-control-style="drag-value" data-control-label="A">
                 <output id="robinEnvVcfAttackValue">20 ms</output>
               </label>
 
               <label class="field field--compact">
                 <span>Decay</span>
-                <input id="robinEnvVcfDecay" type="range" min="0" max="5000" step="1">
+                <input id="robinEnvVcfDecay" type="range" min="0" max="5000" step="1" data-control-style="drag-value" data-control-label="D">
                 <output id="robinEnvVcfDecayValue">250 ms</output>
               </label>
 
               <label class="field field--compact">
                 <span>Sustain</span>
-                <input id="robinEnvVcfSustain" type="range" min="0" max="1" step="0.01">
+                <input id="robinEnvVcfSustain" type="range" min="0" max="1" step="0.01" data-control-style="drag-value" data-control-label="S">
                 <output id="robinEnvVcfSustainValue">0.00</output>
               </label>
 
               <label class="field field--compact">
                 <span>Release</span>
-                <input id="robinEnvVcfRelease" type="range" min="0" max="5000" step="1">
+                <input id="robinEnvVcfRelease" type="range" min="0" max="5000" step="1" data-control-style="drag-value" data-control-label="R">
                 <output id="robinEnvVcfReleaseValue">220 ms</output>
               </label>
 
               <label class="field field--compact">
                 <span>Amount</span>
-                <input id="robinEnvVcfAmount" type="range" min="0" max="1" step="0.01">
+                <input id="robinEnvVcfAmount" type="range" min="0" max="1" step="0.01" data-control-style="drag-value" data-control-label="Amt">
                 <output id="robinEnvVcfAmountValue">0.00</output>
               </label>
             </div>
@@ -446,25 +446,25 @@
             <div class="robin-voice-module__grid">
               <label class="field field--compact">
                 <span>Attack</span>
-                <input id="robinAttack" type="range" min="0" max="5000" step="1">
+                <input id="robinAttack" type="range" min="0" max="5000" step="1" data-control-style="drag-value" data-control-label="A">
                 <output id="robinAttackValue">10 ms</output>
               </label>
 
               <label class="field field--compact">
                 <span>Decay</span>
-                <input id="robinDecay" type="range" min="0" max="5000" step="1">
+                <input id="robinDecay" type="range" min="0" max="5000" step="1" data-control-style="drag-value" data-control-label="D">
                 <output id="robinDecayValue">80 ms</output>
               </label>
 
               <label class="field field--compact">
                 <span>Sustain</span>
-                <input id="robinSustain" type="range" min="0" max="1" step="0.01">
+                <input id="robinSustain" type="range" min="0" max="1" step="0.01" data-control-style="drag-value" data-control-label="S">
                 <output id="robinSustainValue">0.80</output>
               </label>
 
               <label class="field field--compact">
                 <span>Release</span>
-                <input id="robinRelease" type="range" min="0" max="5000" step="1">
+                <input id="robinRelease" type="range" min="0" max="5000" step="1" data-control-style="drag-value" data-control-label="R">
                 <output id="robinReleaseValue">200 ms</output>
               </label>
             </div>
@@ -492,69 +492,6 @@
           </section>
         </div>
       </article>
-
-      <details class="panel panel--wide robin-model-panel">
-        <summary class="robin-disclosure__summary">
-          <div>
-            <p class="section-kicker">Control Model</p>
-            <h2>Master, Modulate, Override</h2>
-          </div>
-          <span class="status-tag">Reference</span>
-        </summary>
-        <div class="robin-section-grid">
-          <article class="robin-section-card robin-section-card--live">
-            <div class="robin-section-card__header">
-              <h3>Master Voice Live Now</h3>
-              <span class="status-tag status-tag--live">Current</span>
-            </div>
-            <p>
-              Dial in one complete voice template once, then let linked voices mirror it exactly.
-            </p>
-            <div class="token-row">
-              <span class="token">Root</span>
-              <span class="token">Voice Level</span>
-              <span class="token">Pitch Offsets</span>
-              <span class="token">VCF</span>
-              <span class="token">VCF ENV</span>
-              <span class="token">VCA ENV</span>
-              <span class="token">Oscillator Bank</span>
-              <span class="token">Output Routing</span>
-            </div>
-          </article>
-
-          <article class="robin-section-card robin-section-card--planned">
-            <div class="robin-section-card__header">
-              <h3>Modulators Next</h3>
-              <span class="status-tag status-tag--planned">Planned</span>
-            </div>
-            <p>
-              Spread algorithms should add offsets on top of the master values so big master moves still read
-              musically.
-            </p>
-            <div class="token-row">
-              <span class="token">Linear Ramps</span>
-              <span class="token">Section Spread</span>
-              <span class="token">Offset Modulation</span>
-            </div>
-          </article>
-
-          <article class="robin-section-card robin-section-card--live">
-            <div class="robin-section-card__header">
-              <h3>Voice Link State</h3>
-              <span class="status-tag status-tag--live">Current</span>
-            </div>
-            <p>
-              Each voice either stays linked to the master template or becomes a full local override with its own
-              root, level, filters, envelopes, and oscillator bank.
-            </p>
-            <div class="token-row">
-              <span class="token">Voice Enable</span>
-              <span class="token">Linked To Master</span>
-              <span class="token">Full Local Voice</span>
-            </div>
-          </article>
-        </div>
-      </details>
 
       <div class="panel panel-intro page-title-panel">
         <div class="panel-header">

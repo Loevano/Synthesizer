@@ -35,6 +35,7 @@ The bridge surface currently exposes:
 - `listPatches()`
 - `loadPatch(fileName)`
 - `savePatch(payload)`
+- `chooseSample()`
 
 Bridge requests arrive in `AppMain.mm`, call into `SynthHost`, and return through `window.__synthNativeReceive(...)`.
 
@@ -155,10 +156,24 @@ Current live sources:
 
 - `RobinSourceNode`
 - `TestSourceNode`
+- `PiecesSourceNode`
 
-`RobinSourceNode` owns the `audio::PolySynth` engine used by Robin. `TestSourceNode` owns `audio::TestEngine`.
+`RobinSourceNode` owns the `audio::PolySynth` engine used by Robin. `TestSourceNode` owns `audio::TestEngine`. `PiecesSourceNode` owns `audio::SamplePlayerEngine`.
 
-Both source nodes apply source-level gain smoothing before adding audio into the graph buffer so mixer drags do not click.
+Source nodes apply source-level gain smoothing before adding audio into the graph buffer so mixer drags do not click.
+
+## 7a. Pieces sample flow
+
+`Pieces` sample loading is control-side work:
+
+1. the UI asks the macOS bridge to choose a sample file
+2. the UI sends `sources.pieces.samplePath`
+3. `SynthHost` decodes the file before queuing a realtime command
+4. the controller snapshot stores sample metadata and the prepared sample buffer
+5. the render copy receives the prepared buffer at a block boundary
+6. `PiecesSourceNode` renders MIDI-triggered sample voices from that buffer
+
+The render side does not open files or decode audio during the audio callback.
 
 ## 8. Robin flow
 

@@ -150,7 +150,7 @@ Current source status:
 - `Robin`: implemented and live
 - `Test`: implemented and live
 - `Decor`: visible scaffold
-- `Pieces`: visible scaffold
+- `Pieces`: implemented sampler
 
 Use `Sources` for whole-source performance balance and dry/FX routing. It is not the per-voice editor.
 
@@ -333,15 +333,20 @@ It does not currently produce its own DSP output.
 
 ## Pieces
 
-`Pieces` is visible as a scaffold for a future granular or algorithmic source.
+`Pieces` is the sampler source and the planned base for granulator mode.
 
-Current intent:
+Current controls:
 
-- granular or algorithmic playback
-- movement across outputs
-- voice count follows Robin for now
+- sample loading
+- MIDI response
+- root note, transpose, and fine tune
+- gain
+- loop
+- start and end
+- `VCA ENV`
+- manual output targets
 
-It does not currently produce its own DSP output.
+It plays one decoded sample across MIDI pitches. Multisample zones, velocity sample ranges, waveform editing, and granulator mode are planned next.
 
 ## Double-Click Reset
 
@@ -430,7 +435,8 @@ That repro detail is more useful than a broad "it popped" report.
 ## Current Limitations
 
 - macOS-first app target
-- `Decor` and `Pieces` are placeholders
+- `Decor` is a placeholder
+- `Pieces` is currently a basic one-sample sampler
 - `Saturator` and `Sidechain` have UI/state but no DSP yet
 - modulation is useful now, but not a full modulation matrix
 - automated coverage is growing but still focused

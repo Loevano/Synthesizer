@@ -260,5 +260,6 @@ Update docs when behavior or workflow changes.
 
 - automated tests are still light
 - the app target is macOS-first
-- `Decor`, `Pieces`, `Saturator`, and `Sidechain` are still partly scaffolded
+- `Decor`, `Saturator`, and `Sidechain` are still partly scaffolded
+- `Pieces` has a basic sampler engine; multisample and granulator work still need careful design
 - Robin LFO and spread modulation are live, but broader modulation destinations still need careful design

@@ -1,12 +1,18 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
+
+namespace synth::audio {
+struct SampleBuffer;
+}
 
 namespace synth::app {
 
 enum class RealtimeCommandType : std::uint8_t {
     SourceLevelRobin,
     SourceLevelTest,
+    SourceLevelPieces,
     SourceMixerEnabled,
     SourceMixerRouteTarget,
     OutputLevel,
@@ -65,6 +71,20 @@ enum class RealtimeCommandType : std::uint8_t {
     TestEnvelopeReleaseMs,
     TestOutputEnabled,
     TestWaveform,
+    PiecesSampleBuffer,
+    PiecesMidiEnabled,
+    PiecesGain,
+    PiecesRootNote,
+    PiecesTransposeSemitones,
+    PiecesFineTuneCents,
+    PiecesStart,
+    PiecesEnd,
+    PiecesLoopEnabled,
+    PiecesEnvelopeAttackMs,
+    PiecesEnvelopeDecayMs,
+    PiecesEnvelopeSustain,
+    PiecesEnvelopeReleaseMs,
+    PiecesOutputEnabled,
     RobinVoiceActive,
     RobinVoiceLinkedToMaster,
     RobinVoiceResetToMasterState,
@@ -94,6 +114,7 @@ enum class RealtimeCommandType : std::uint8_t {
     RobinVoiceOscillatorWaveform,
     MidiRouteRobin,
     MidiRouteTest,
+    MidiRoutePieces,
     GlobalNoteOn,
     GlobalNoteOff,
     MidiNoteOn,
@@ -108,6 +129,7 @@ struct RealtimeCommand {
     float value = 0.0f;
     std::uint32_t subIndex = 0;
     std::uint32_t code = 0;
+    std::shared_ptr<const audio::SampleBuffer> sampleBuffer;
 };
 
 enum class RealtimeParamResult : std::uint8_t {

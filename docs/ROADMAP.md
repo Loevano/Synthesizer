@@ -29,12 +29,13 @@ Already in place:
 - patch save/load flow
 - Robin LFO
 - Robin spread slots and macro depth controls
+- Pieces sampler MVP
 
 Still missing:
 
 - broader modulation destination model
 - `Decor` DSP
-- `Pieces` DSP
+- Pieces multisample and granulator modes
 - full saturator
 - sidechain design
 - broader automated regression coverage
@@ -159,11 +160,15 @@ Scope:
 
 Goal:
 
-- add a granular or algorithmic source once the graph and routing model are more stable
+- grow the current sampler into the planned sample/granular source
 
 Scope:
 
-- playable grain triggering
+- multisample zones by note range
+- velocity sample ranges
+- waveform/source-window editing
+- granulator mode where one grain behaves like the sampler
+- grain amount, length, tune, position, random amounts, and divergence
 - spatial grain or voice distribution
 
 ### F. Improve oscillator quality
@@ -187,4 +192,4 @@ Scope:
 5. Expand modulation one coherent layer at a time.
 6. Expand the FX rack beyond chorus.
 7. Implement `Decor`.
-8. Implement `Pieces`.
+8. Extend `Pieces` from sampler MVP into multisample and granulator modes.

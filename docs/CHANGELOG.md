@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- Started the `Pieces` sampler source:
+  - added sample-file loading through the macOS bridge
+  - added a mono sample playback engine with MIDI-triggered pitch shifting, ADSR, loop, start/end, pitch, output targets, and source mixer routing
+  - replaced the `Pieces` placeholder UI with sampler controls
+  - added regression coverage for sample playback transposition
 - Added a documentation index and a strict collaboration rulebook for branch scope, protected core paths, PRs, and agent workflow.
 - Added installable local Git hooks for branch naming, protected-path checks, direct push protection, staged-change size limits, and commit message quality.
 - Updated the commit helper so it no longer stages the whole repo by default.

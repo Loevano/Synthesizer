@@ -27,14 +27,18 @@ add_library(synth_core
     src/dsp/Lfo.cpp
     src/audio/Voice.cpp
     src/audio/TestEngine.cpp
+    src/audio/SampleLoader.cpp
+    src/audio/SamplePlayerEngine.cpp
     src/audio/PolySynth.cpp
     src/graph/RobinSourceNode.cpp
     src/graph/TestSourceNode.cpp
+    src/graph/PiecesSourceNode.cpp
     src/graph/FxRackNode.cpp
     src/graph/OutputMixerNode.cpp
     src/graph/LiveGraph.cpp
     src/app/Robin.cpp
     src/app/TestSynth.cpp
+    src/app/PiecesSynth.cpp
     src/app/SynthHost.cpp
     src/io/MidiInput.cpp
     src/io/OscServer.cpp

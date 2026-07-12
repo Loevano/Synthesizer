@@ -34,7 +34,7 @@ Already in place:
 - live Robin LFO
 - live Robin spread slots and macro controls
 - scaffolded `Decor`
-- scaffolded `Pieces`
+- Pieces sampler MVP
 - scaffolded saturator and sidechain
 - patch save/load flow
 
@@ -160,12 +160,16 @@ Deliverables:
 
 Goal:
 
-- add a more experimental source after graph behavior is already proven
+- grow the current sampler into the sample/granular source described in the product notes
 
 Deliverables:
 
-- granular playback
-- algorithmic routing across outputs
+- keep the one-sample sampler stable
+- add multisample note zones
+- add velocity sample ranges
+- add waveform/source-window editing
+- add granulator mode with grain amount, length, tune, position, random amounts, and divergence
+- algorithmic routing across outputs for future grains
 
 ## Step 8. Improve oscillator scalability
 

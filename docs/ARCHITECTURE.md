@@ -11,17 +11,17 @@ Architecture docs are part of the collaboration contract. If a change alters ren
 Current live pieces:
 
 - CoreAudio backend on macOS
-- `Robin` and `TestSynth` as active sources
+- `Robin`, `TestSynth`, and `Pieces` as implemented sources
 - source enable, source level, and dry/fx routing
 - `Chorus` in the FX rack
 - output mixer level, delay, and EQ
 - Robin LFO and spread modulation
+- Pieces sample loading and pitch-shifted sampler playback
 - patch save/load through the macOS bridge
 
 Current scaffold-only pieces:
 
 - `Decor`
-- `Pieces`
 - `Saturator` DSP
 - `Sidechain` DSP
 
@@ -53,6 +53,7 @@ Current implementations:
 
 - `Robin`
 - `TestSynth`
+- `PiecesSynth`
 
 `SourceState.hpp` exists so small controller-facing structs such as `EnvelopeState` and `TestSourceState` can be reused without dragging full synth classes into unrelated headers.
 
@@ -62,6 +63,7 @@ App-level synths do not render samples directly. They delegate to concrete audio
 
 - `audio::PolySynth` for Robin
 - `audio::TestEngine` for TestSynth
+- `audio::SamplePlayerEngine` for Pieces
 
 That split keeps product-facing behavior such as routing presets and linked/local voice rules out of the raw DSP layer.
 
@@ -177,10 +179,26 @@ Runtime-only engine details are rebuilt rather than stored continuously in patch
 
 It is the simplest useful source for regression tests and routing checks.
 
+## Pieces
+
+`Pieces` is the sampler source and the planned base for granulator mode.
+
+Current model:
+
+- one decoded mono sample buffer
+- MIDI-triggered polyphonic sample voices
+- root note, transpose, fine tune, gain, loop, start, and end controls
+- `VCA ENV`
+- manual output targets
+- source mixer dry/FX routing
+
+Sample file decoding happens on the control side before a realtime command is queued. The render side receives a prepared shared sample buffer and swaps it at a block boundary, so the audio callback does not open or decode files.
+
 ## What still needs work
 
 - `SynthHost` is still large and should shrink over time
-- `Decor` and `Pieces` are still placeholders
+- `Decor` is still a placeholder
+- Pieces still needs multisample, velocity zones, waveform editing, and granulator mode
 - saturator and sidechain still need real DSP designs
 - modulation can grow beyond the current Robin LFO/spread system into a clearer destination model
 - more routing and thread-behavior regression coverage is still worth adding

@@ -1,7 +1,11 @@
 #pragma once
 
+#include <cstdint>
+#include <memory>
+#include <string>
 #include <vector>
 
+#include "synth/audio/SampleBuffer.hpp"
 #include "synth/dsp/Oscillator.hpp"
 
 namespace synth::app {
@@ -24,6 +28,28 @@ struct TestSourceState {
     dsp::Waveform waveform = dsp::Waveform::Sine;
     EnvelopeState envelope;
     std::vector<bool> outputs;
+};
+
+struct PiecesSourceState {
+    bool implemented = true;
+    bool playable = true;
+    bool midiEnabled = true;
+    bool loopEnabled = false;
+    bool sampleLoaded = false;
+    std::uint32_t voiceCount = 8;
+    int rootNote = 60;
+    float gain = 0.8f;
+    float transposeSemitones = 0.0f;
+    float fineTuneCents = 0.0f;
+    float start = 0.0f;
+    float end = 1.0f;
+    double sampleRate = 0.0;
+    std::uint64_t sampleFrames = 0;
+    std::string samplePath;
+    std::string sampleName;
+    EnvelopeState envelope;
+    std::vector<bool> outputs;
+    std::shared_ptr<const audio::SampleBuffer> sampleBuffer;
 };
 
 }  // namespace synth::app

@@ -82,9 +82,9 @@
             <article class="stack-card stack-card--live">
               <div class="stack-card__header">
                 <h3>4. Sound Sources</h3>
-                <span class="status-tag status-tag--live">Robin + Test Live</span>
+                <span class="status-tag status-tag--live">Robin + Test + Pieces Live</span>
               </div>
-              <p>`Robin` is the main source, `Test` is a simplified debug tone, and `Decor` / `Pieces` stay visible as placeholders.</p>
+              <p>`Robin` is the main source, `Test` is a simplified debug tone, `Pieces` is a sampler, and `Decor` stays visible as a placeholder.</p>
             </article>
 
             <article class="stack-card stack-card--planned">
@@ -710,25 +710,130 @@
               <p class="section-kicker">Sound Source</p>
               <h2>Pieces</h2>
             </div>
-            <span class="status-tag status-tag--planned">Scaffold Only</span>
+            <span class="status-tag status-tag--live">Sampler</span>
           </div>
         </article>
 
         <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Sample</p>
+              <h2>Source</h2>
+            </div>
+            <button id="piecesLoadSample" class="ghost-button ghost-button--compact" type="button">Load</button>
+          </div>
           <div class="kv-list">
             <div class="kv-row">
-              <span>Voice Count</span>
-              <strong id="piecesVoiceCountValue">Follows Robin for now</strong>
+              <span>Loaded</span>
+              <strong id="piecesSampleNameValue">None</strong>
             </div>
             <div class="kv-row">
-              <span>Routing</span>
-              <strong>Algorithmic</strong>
+              <span>Length</span>
+              <strong id="piecesSampleMetaValue">0 frames</strong>
             </div>
             <div class="kv-row">
-              <span>Status</span>
-              <strong>Granular engine pending</strong>
+              <span>Voices</span>
+              <strong id="piecesVoiceCountValue">0 voices</strong>
             </div>
           </div>
+        </article>
+
+        <article class="panel controls">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Sampler</p>
+              <h2>Playback</h2>
+            </div>
+          </div>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input id="piecesMidiEnabled" type="checkbox">
+            <span>Respond to MIDI</span>
+          </label>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input id="piecesLoopEnabled" type="checkbox">
+            <span>Loop</span>
+          </label>
+
+          <label class="field">
+            <span>Gain</span>
+            <input id="piecesGain" type="range" min="0" max="1" step="0.01">
+            <output id="piecesGainValue">0.80</output>
+          </label>
+
+          <label class="field">
+            <span>Root Note</span>
+            <input id="piecesRootNote" type="range" min="0" max="127" step="1">
+            <output id="piecesRootNoteValue">60</output>
+          </label>
+
+          <label class="field">
+            <span>Transpose</span>
+            <input id="piecesTransposeSemitones" type="range" min="-48" max="48" step="1">
+            <output id="piecesTransposeSemitonesValue">0 st</output>
+          </label>
+
+          <label class="field">
+            <span>Fine Tune</span>
+            <input id="piecesFineTuneCents" type="range" min="-100" max="100" step="1">
+            <output id="piecesFineTuneCentsValue">0 ct</output>
+          </label>
+
+          <label class="field">
+            <span>Start</span>
+            <input id="piecesStart" type="range" min="0" max="0.999" step="0.001">
+            <output id="piecesStartValue">0%</output>
+          </label>
+
+          <label class="field">
+            <span>End</span>
+            <input id="piecesEnd" type="range" min="0.001" max="1" step="0.001">
+            <output id="piecesEndValue">100%</output>
+          </label>
+        </article>
+
+        <article class="panel controls">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">VCA ENV</p>
+              <h2>Envelope</h2>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Attack</span>
+            <input id="piecesAttack" type="range" min="0" max="5000" step="1">
+            <output id="piecesAttackValue">10 ms</output>
+          </label>
+
+          <label class="field">
+            <span>Decay</span>
+            <input id="piecesDecay" type="range" min="0" max="5000" step="1">
+            <output id="piecesDecayValue">80 ms</output>
+          </label>
+
+          <label class="field">
+            <span>Sustain</span>
+            <input id="piecesSustain" type="range" min="0" max="1" step="0.01">
+            <output id="piecesSustainValue">0.80</output>
+          </label>
+
+          <label class="field">
+            <span>Release</span>
+            <input id="piecesRelease" type="range" min="0" max="5000" step="1">
+            <output id="piecesReleaseValue">200 ms</output>
+          </label>
+        </article>
+
+        <article class="panel panel--wide">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Manual Routing</p>
+              <h2>Output Targets</h2>
+            </div>
+          </div>
+          <div id="piecesOutputGrid" class="output-overview-grid"></div>
         </article>
       </div>
     </section>

@@ -15,6 +15,7 @@
 
 #include "synth/app/RealtimeCommands.hpp"
 #include "synth/app/SourceState.hpp"
+#include "synth/app/PiecesSynth.hpp"
 #include "synth/app/Robin.hpp"
 #include "synth/app/TestSynth.hpp"
 #include "synth/core/Logger.hpp"
@@ -167,6 +168,7 @@ private:
     void buildDefaultStateLocked();
     void resizeScaffoldStateLocked();
     void syncTestSourceLocked();
+    void syncPiecesSourceLocked();
     void syncRenderStateFromSnapshotLocked();
     void syncOutputDeviceSelectionLocked(const std::vector<interfaces::OutputDeviceInfo>& outputDevices);
     void captureMidiSourceConnectionsLocked();
@@ -190,6 +192,7 @@ private:
                                  std::string* errorMessage);
     void applyRobinLevelLocked(float level);
     void applyTestLevelLocked(float level);
+    void applyPiecesLevelLocked(float level);
     void reconfigureStructureLocked(std::uint32_t voiceCount, std::uint32_t oscillatorsPerVoice);
     void handleNoteOnLocked(int noteNumber, float velocity);
     void handleNoteOffLocked(int noteNumber);
@@ -198,6 +201,8 @@ private:
     void handleMidiAllNotesOffLocked(std::uint32_t sourceIndex);
     void handleTestNoteOnLocked(int noteNumber, float velocity);
     void handleTestNoteOffLocked(int noteNumber);
+    void handlePiecesNoteOnLocked(int noteNumber, float velocity);
+    void handlePiecesNoteOffLocked(int noteNumber);
     void trackHeldMidiNoteLocked(int noteNumber, bool fromMidiSource, std::uint32_t sourceIndex = 0);
     bool releaseHeldMidiNoteLocked(int noteNumber, bool fromMidiSource, std::uint32_t sourceIndex = 0);
     std::vector<int> releaseHeldMidiSourceNotesLocked(std::uint32_t sourceIndex);
@@ -212,23 +217,24 @@ private:
     std::unique_ptr<io::OscServer> oscServer_;
     Robin robin_;
     TestSynth test_;
+    PiecesSynth pieces_;
     Robin renderRobin_;
     TestSynth renderTest_;
+    PiecesSynth renderPieces_;
     graph::FxRackNode fxRackNode_;
     graph::OutputMixerNode outputMixerNode_;
     graph::LiveGraph liveGraph_;
     SourceMixerSlotState robinMixerState_{true, true, true, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState testMixerState_{true, true, true, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState decorMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
-    SourceMixerSlotState piecesMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
+    SourceMixerSlotState piecesMixerState_{true, true, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState renderRobinMixerState_{true, true, true, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState renderTestMixerState_{true, true, true, 0.15f, SourceMixerSlotState::RouteTarget::Dry};
     SourceMixerSlotState renderDecorMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
-    SourceMixerSlotState renderPiecesMixerState_{true, false, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
+    SourceMixerSlotState renderPiecesMixerState_{true, true, false, 0.0f, SourceMixerSlotState::RouteTarget::Dry};
     std::vector<OutputMixerChannelState> outputMixerChannels_;
     std::vector<OutputMixerChannelState> renderOutputMixerChannels_;
     PlaceholderSourceState decorState_{false, true, 0};
-    PlaceholderSourceState piecesState_{false, true, 0};
     SaturatorState saturatorState_;
     ChorusState chorusState_;
     SidechainState sidechainState_;

@@ -63,6 +63,9 @@ constexpr const char* kBridgeScript = R"JS(
     },
     savePatch(payload) {
       return request("savePatch", payload);
+    },
+    chooseSample() {
+      return request("chooseSample");
     }
   };
 
@@ -725,6 +728,39 @@ static void handleUncaughtNsException(NSException* exception) {
 
         NSDictionary* metadata = [self patchMetadataForPath:*patchPath];
         [self sendResponse:requestId ok:YES payload:jsonStringFromFoundationObject(metadata) error:""];
+        return;
+    }
+
+    if ([type isEqualToString:@"chooseSample"]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSOpenPanel* panel = [NSOpenPanel openPanel];
+            [panel setAllowsMultipleSelection:NO];
+            [panel setCanChooseDirectories:NO];
+            [panel setCanChooseFiles:YES];
+            [panel setAllowedFileTypes:@[@"wav", @"wave", @"aif", @"aiff", @"caf", @"mp3", @"m4a"]];
+
+            void (^handleSelection)(NSModalResponse) = ^(NSModalResponse result) {
+                if (result != NSModalResponseOK || panel.URL == nil) {
+                    [self sendResponse:requestId ok:YES payload:"null" error:""];
+                    return;
+                }
+
+                NSString* path = [panel.URL path];
+                NSString* name = [[panel.URL lastPathComponent] stringByDeletingPathExtension];
+                NSDictionary* payload = @{
+                    @"path": path ?: @"",
+                    @"name": name ?: @"",
+                };
+                [self sendResponse:requestId ok:YES payload:jsonStringFromFoundationObject(payload) error:""];
+            };
+
+            if (window_ != nil) {
+                [panel beginSheetModalForWindow:window_ completionHandler:handleSelection];
+                return;
+            }
+
+            handleSelection([panel runModal]);
+        });
         return;
     }
 

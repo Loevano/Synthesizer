@@ -66,7 +66,7 @@ Current sources shown there:
 - `Decor`
 - `Pieces`
 
-`Robin` and `Test` are live today. `Decor` and `Pieces` are scaffolded.
+`Robin`, `Test`, and `Pieces` are live today. `Decor` is scaffolded.
 
 ## 3. Output Mixer
 
@@ -148,14 +148,16 @@ It is still scaffolded.
 
 ## Pieces
 
-`Pieces` is the future granular source.
+`Pieces` is the sampler source and the future granulator source.
 
 Its intended role is:
 
-- granular or algorithmic playback
-- voice or grain movement across the outputs
+- pitched sample playback
+- simple one-sample sampler workflow first
+- future granular playback
+- future voice or grain movement across the outputs
 
-It is still scaffolded.
+Current live Pieces controls include sample loading, MIDI response, root note, transpose, fine tune, gain, loop, start/end, `VCA ENV`, and manual output targets.
 
 ## 5. Sound Processors
 

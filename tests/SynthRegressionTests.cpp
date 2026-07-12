@@ -1,5 +1,7 @@
 #include "synth/app/SynthHost.hpp"
 #include "synth/app/Robin.hpp"
+#include "synth/audio/SampleBuffer.hpp"
+#include "synth/audio/SamplePlayerEngine.hpp"
 #include "synth/audio/Voice.hpp"
 #include "synth/core/Logger.hpp"
 #include "synth/dsp/Chorus.hpp"
@@ -205,6 +207,9 @@ void testControllerInitializesFromInjectedDriver() {
     expect(
         stateJson.find("\"activeSourceNodes\":[\"robin\",\"test\"]") != std::string::npos,
         "robin is active by default");
+    expect(
+        stateJson.find("\"pieces\":{\"available\":true,\"implemented\":true,\"enabled\":false") != std::string::npos,
+        "pieces sampler is implemented but disabled by default");
 }
 
 void testStateJsonRefreshesOutputDeviceInventoryAfterCacheHit() {
@@ -456,6 +461,44 @@ void testRobinVoiceStealRestartsFromSilence() {
 
     const float stolenLevel = meanAbsoluteLevel(stolenBuffer, 0, 32);
     expect(stolenLevel < sustainedLevel * 0.25f, "voice steal restarts from near silence");
+}
+
+void testSamplePlayerTransposesPlaybackRate() {
+    auto sampleBuffer = std::make_shared<synth::audio::SampleBuffer>();
+    sampleBuffer->sampleRate = 48000.0;
+    sampleBuffer->displayName = "Ramp";
+    sampleBuffer->sourcePath = "/tmp/ramp.wav";
+    sampleBuffer->samples.resize(32);
+    for (std::size_t index = 0; index < sampleBuffer->samples.size(); ++index) {
+        sampleBuffer->samples[index] = static_cast<float>(index);
+    }
+
+    synth::audio::SamplePlayerEngine engine;
+    engine.setSampleRate(48000.0);
+    engine.setOutputChannelCount(1);
+    engine.setVoiceCount(1);
+    engine.setSampleBuffer(sampleBuffer);
+    engine.setGain(1.0f);
+    engine.setRootNote(60);
+    engine.setEnvelopeAttackSeconds(0.0f);
+    engine.setEnvelopeDecaySeconds(0.0f);
+    engine.setEnvelopeSustainLevel(1.0f);
+    engine.setEnvelopeReleaseSeconds(0.0f);
+
+    std::vector<float> rootOutput(4, 0.0f);
+    engine.noteOn(60, 1.0f);
+    engine.process(rootOutput.data(), static_cast<std::uint32_t>(rootOutput.size()), 1, 1.0f);
+    engine.noteOff(60);
+
+    engine.clearNotes();
+    std::vector<float> octaveOutput(4, 0.0f);
+    engine.noteOn(72, 1.0f);
+    engine.process(octaveOutput.data(), static_cast<std::uint32_t>(octaveOutput.size()), 1, 1.0f);
+
+    expectNear(rootOutput[1], 1.0f, 0.0001f, "root note advances one sample per frame");
+    expectNear(rootOutput[2], 2.0f, 0.0001f, "root note second playback frame");
+    expectNear(octaveOutput[1], 2.0f, 0.0001f, "octave note advances two samples per frame");
+    expectNear(octaveOutput[2], 4.0f, 0.0001f, "octave note second playback frame");
 }
 
 void testMidiInputParsesMultipleMessagesPerPacketAndTransportStop() {
@@ -1070,6 +1113,7 @@ int main() {
         {"repeated same-pitch global notes retain later instance", testQueuedRepeatedGlobalNoteRetainsLaterSamePitchInstance},
         {"robin keeps independent assignments for repeated same-pitch notes", testRobinRetainsIndependentAssignmentsForRepeatedSamePitchNotes},
         {"robin voice steal restarts from silence", testRobinVoiceStealRestartsFromSilence},
+        {"sample player transposes playback rate", testSamplePlayerTransposesPlaybackRate},
         {"midi input parses multi-message packets and transport stop", testMidiInputParsesMultipleMessagesPerPacketAndTransportStop},
         {"midi source connections preserve user choices across structure restart", testMidiSourceConnectionsPreserveUserChoicesAcrossStructureRestart},
         {"midi source routes preserve user choices across structure restart", testMidiSourceRoutesPreserveUserChoicesAcrossStructureRestart},

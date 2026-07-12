@@ -189,6 +189,7 @@ Meanings:
   - future immersive source
   - one voice per output
 - `Pieces`
+  - sampler first
   - future granular / algorithmic source
 
 ## Robin
@@ -223,5 +224,5 @@ Rules:
 
 - how broad the future modulation system should be before it becomes a real matrix
 - what the exact `Decor` synthesis model should be
-- what the exact `Pieces` granular model should be
+- how far `Pieces` multisample and granulator editing should go before it becomes too complex
 - how sidechain should work in a multichannel speaker-aware context

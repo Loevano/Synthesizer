@@ -192,6 +192,22 @@ const UI_RESET_DEFAULTS = {
       releaseMs: 200,
     },
   },
+  pieces: {
+    midiEnabled: true,
+    gain: 0.8,
+    rootNote: 60,
+    transposeSemitones: 0,
+    fineTuneCents: 0,
+    start: 0,
+    end: 1,
+    loopEnabled: false,
+    envelope: {
+      attackMs: 10,
+      decayMs: 80,
+      sustain: 0.8,
+      releaseMs: 200,
+    },
+  },
   fx: {
     chainOrder: FX_CHAIN_KEYS,
     saturator: {
@@ -344,7 +360,33 @@ const elements = {
   testOutputGrid: document.getElementById("testOutputGrid"),
   decorVoiceCountValue: document.getElementById("decorVoiceCountValue"),
   decorOutputGrid: document.getElementById("decorOutputGrid"),
+  piecesLoadSample: document.getElementById("piecesLoadSample"),
+  piecesSampleNameValue: document.getElementById("piecesSampleNameValue"),
+  piecesSampleMetaValue: document.getElementById("piecesSampleMetaValue"),
   piecesVoiceCountValue: document.getElementById("piecesVoiceCountValue"),
+  piecesMidiEnabled: document.getElementById("piecesMidiEnabled"),
+  piecesLoopEnabled: document.getElementById("piecesLoopEnabled"),
+  piecesGain: document.getElementById("piecesGain"),
+  piecesGainValue: document.getElementById("piecesGainValue"),
+  piecesRootNote: document.getElementById("piecesRootNote"),
+  piecesRootNoteValue: document.getElementById("piecesRootNoteValue"),
+  piecesTransposeSemitones: document.getElementById("piecesTransposeSemitones"),
+  piecesTransposeSemitonesValue: document.getElementById("piecesTransposeSemitonesValue"),
+  piecesFineTuneCents: document.getElementById("piecesFineTuneCents"),
+  piecesFineTuneCentsValue: document.getElementById("piecesFineTuneCentsValue"),
+  piecesStart: document.getElementById("piecesStart"),
+  piecesStartValue: document.getElementById("piecesStartValue"),
+  piecesEnd: document.getElementById("piecesEnd"),
+  piecesEndValue: document.getElementById("piecesEndValue"),
+  piecesAttack: document.getElementById("piecesAttack"),
+  piecesAttackValue: document.getElementById("piecesAttackValue"),
+  piecesDecay: document.getElementById("piecesDecay"),
+  piecesDecayValue: document.getElementById("piecesDecayValue"),
+  piecesSustain: document.getElementById("piecesSustain"),
+  piecesSustainValue: document.getElementById("piecesSustainValue"),
+  piecesRelease: document.getElementById("piecesRelease"),
+  piecesReleaseValue: document.getElementById("piecesReleaseValue"),
+  piecesOutputGrid: document.getElementById("piecesOutputGrid"),
   fxSaturatorEnabled: document.getElementById("fxSaturatorEnabled"),
   fxSaturatorInputLevel: document.getElementById("fxSaturatorInputLevel"),
   fxSaturatorInputLevelValue: document.getElementById("fxSaturatorInputLevelValue"),
@@ -520,11 +562,13 @@ function extractSourceMixerSlotPatch(slot) {
 function extractPatchStateFromLiveState(liveState) {
   const robin = liveState?.sources?.robin ?? {};
   const test = liveState?.sources?.test ?? {};
+  const pieces = liveState?.sources?.pieces ?? {};
   const fx = liveState?.processors?.fx ?? {};
   const outputMixer = Array.isArray(liveState?.outputMixer?.outputs) ? liveState.outputMixer.outputs : [];
   const robinVoices = Array.isArray(robin.voices) ? robin.voices : [];
   const masterOscillators = Array.isArray(robin.masterOscillators) ? robin.masterOscillators : [];
   const testOutputs = Array.isArray(test.outputs) ? test.outputs : [];
+  const piecesOutputs = Array.isArray(pieces.outputs) ? pieces.outputs : [];
 
   return {
     sourceMixer: {
@@ -636,6 +680,24 @@ function extractPatchStateFromLiveState(liveState) {
           releaseMs: Number(test.envelope?.releaseMs ?? 200),
         },
         outputs: testOutputs.map((enabled) => Boolean(enabled)),
+      },
+      pieces: {
+        samplePath: String(pieces.sample?.path ?? ""),
+        midiEnabled: Boolean(pieces.midiEnabled ?? true),
+        gain: Number(pieces.gain ?? 0.8),
+        rootNote: Number(pieces.rootNote ?? 60),
+        transposeSemitones: Number(pieces.transposeSemitones ?? 0),
+        fineTuneCents: Number(pieces.fineTuneCents ?? 0),
+        start: Number(pieces.start ?? 0),
+        end: Number(pieces.end ?? 1),
+        loopEnabled: Boolean(pieces.loopEnabled),
+        envelope: {
+          attackMs: Number(pieces.envelope?.attackMs ?? 10),
+          decayMs: Number(pieces.envelope?.decayMs ?? 80),
+          sustain: Number(pieces.envelope?.sustain ?? 0.8),
+          releaseMs: Number(pieces.envelope?.releaseMs ?? 200),
+        },
+        outputs: piecesOutputs.map((enabled) => Boolean(enabled)),
       },
     },
     processors: {
@@ -982,6 +1044,23 @@ function buildPatchOperations(patchData) {
     });
   }
 
+  const pieces = patchData?.sources?.pieces ?? {};
+  pushPatchParam(operations, "sources.pieces.samplePath", pieces.samplePath ?? "");
+  pushPatchParam(operations, "sources.pieces.midiEnabled", pieces.midiEnabled);
+  pushPatchParam(operations, "sources.pieces.gain", pieces.gain);
+  pushPatchParam(operations, "sources.pieces.rootNote", pieces.rootNote);
+  pushPatchParam(operations, "sources.pieces.transposeSemitones", pieces.transposeSemitones);
+  pushPatchParam(operations, "sources.pieces.fineTuneCents", pieces.fineTuneCents);
+  pushPatchParam(operations, "sources.pieces.start", pieces.start);
+  pushPatchParam(operations, "sources.pieces.end", pieces.end);
+  pushPatchParam(operations, "sources.pieces.loopEnabled", pieces.loopEnabled);
+  pushEnvelopePatchParams(operations, "sources.pieces.envelope", pieces.envelope);
+  if (Array.isArray(pieces.outputs)) {
+    pieces.outputs.slice(0, outputCount).forEach((enabled, outputIndex) => {
+      pushPatchParam(operations, `sources.pieces.output.${outputIndex}`, enabled);
+    });
+  }
+
   const fx = patchData?.processors?.fx ?? {};
   pushPatchParam(operations, "processors.fx.saturator.enabled", fx.saturator?.enabled);
   pushPatchParam(operations, "processors.fx.saturator.inputLevel", fx.saturator?.inputLevel);
@@ -1235,6 +1314,18 @@ function getStaticResetValue(controlId) {
     testDecay: UI_RESET_DEFAULTS.test.envelope.decayMs,
     testSustain: UI_RESET_DEFAULTS.test.envelope.sustain,
     testRelease: UI_RESET_DEFAULTS.test.envelope.releaseMs,
+    piecesMidiEnabled: UI_RESET_DEFAULTS.pieces.midiEnabled,
+    piecesLoopEnabled: UI_RESET_DEFAULTS.pieces.loopEnabled,
+    piecesGain: UI_RESET_DEFAULTS.pieces.gain,
+    piecesRootNote: UI_RESET_DEFAULTS.pieces.rootNote,
+    piecesTransposeSemitones: UI_RESET_DEFAULTS.pieces.transposeSemitones,
+    piecesFineTuneCents: UI_RESET_DEFAULTS.pieces.fineTuneCents,
+    piecesStart: UI_RESET_DEFAULTS.pieces.start,
+    piecesEnd: UI_RESET_DEFAULTS.pieces.end,
+    piecesAttack: UI_RESET_DEFAULTS.pieces.envelope.attackMs,
+    piecesDecay: UI_RESET_DEFAULTS.pieces.envelope.decayMs,
+    piecesSustain: UI_RESET_DEFAULTS.pieces.envelope.sustain,
+    piecesRelease: UI_RESET_DEFAULTS.pieces.envelope.releaseMs,
     fxSaturatorEnabled: UI_RESET_DEFAULTS.fx.saturator.enabled,
     fxSaturatorInputLevel: UI_RESET_DEFAULTS.fx.saturator.inputLevel,
     fxSaturatorOutputLevel: UI_RESET_DEFAULTS.fx.saturator.outputLevel,
@@ -1412,6 +1503,10 @@ function getResetValueForControl(control) {
 
   if (control.dataset.testOutput) {
     return Number(control.dataset.testOutput) < 2;
+  }
+
+  if (control.dataset.piecesOutput) {
+    return Number(control.dataset.piecesOutput) < 2;
   }
 
   if (control.dataset.midiRoute) {
@@ -2466,6 +2561,76 @@ function applyTestOutputUpdate(outputIndex, rawValue) {
   outputs[outputIndex] = Boolean(rawValue);
 }
 
+function applyPiecesStateUpdate(field, rawValue) {
+  const pieces = getPieces();
+  if (!pieces) {
+    return;
+  }
+
+  if (field === "midiEnabled" || field === "loopEnabled") {
+    pieces[field] = Boolean(rawValue);
+    return;
+  }
+
+  if (field === "gain") {
+    pieces.gain = clampValue(rawValue, 0, 1);
+    return;
+  }
+
+  if (field === "rootNote") {
+    pieces.rootNote = clampIntegerValue(rawValue, 0, 127);
+    return;
+  }
+
+  if (field === "transposeSemitones") {
+    pieces.transposeSemitones = clampValue(rawValue, -48, 48);
+    return;
+  }
+
+  if (field === "fineTuneCents") {
+    pieces.fineTuneCents = clampValue(rawValue, -100, 100);
+    return;
+  }
+
+  if (field === "start") {
+    pieces.start = clampValue(rawValue, 0, 0.999);
+    if (Number(pieces.end ?? 1) <= pieces.start) {
+      pieces.end = Math.min(1, pieces.start + 0.001);
+    }
+    return;
+  }
+
+  if (field === "end") {
+    pieces.end = clampValue(rawValue, 0.001, 1);
+    if (pieces.end <= Number(pieces.start ?? 0)) {
+      pieces.start = Math.max(0, pieces.end - 0.001);
+    }
+  }
+}
+
+function applyPiecesEnvelopeUpdate(field, rawValue) {
+  const envelope = getPieces()?.envelope;
+  if (!envelope) {
+    return;
+  }
+
+  if (field === "sustain") {
+    envelope.sustain = clampValue(rawValue, 0, 1);
+    return;
+  }
+
+  envelope[field] = clampValue(rawValue, 0, 5000);
+}
+
+function applyPiecesOutputUpdate(outputIndex, rawValue) {
+  const outputs = getPieces()?.outputs;
+  if (!outputs || outputIndex >= outputs.length) {
+    return;
+  }
+
+  outputs[outputIndex] = Boolean(rawValue);
+}
+
 function applyLfoUpdate(field, rawValue) {
   const lfo = getRobin()?.lfo;
   if (!lfo) {
@@ -2899,6 +3064,50 @@ function setTestSustainLabel(value) {
 
 function setTestReleaseLabel(value) {
   elements.testReleaseValue.textContent = `${Math.round(Number(value))} ms`;
+}
+
+function setPiecesGainLabel(value) {
+  elements.piecesGainValue.textContent = Number(value).toFixed(2);
+}
+
+function setPiecesRootNoteLabel(value) {
+  elements.piecesRootNoteValue.textContent = `${Math.round(Number(value))}`;
+}
+
+function setPiecesTransposeLabel(value) {
+  const numericValue = Math.round(Number(value));
+  const prefix = numericValue > 0 ? "+" : "";
+  elements.piecesTransposeSemitonesValue.textContent = `${prefix}${numericValue} st`;
+}
+
+function setPiecesFineTuneLabel(value) {
+  const numericValue = Math.round(Number(value));
+  const prefix = numericValue > 0 ? "+" : "";
+  elements.piecesFineTuneCentsValue.textContent = `${prefix}${numericValue} ct`;
+}
+
+function setPiecesStartLabel(value) {
+  elements.piecesStartValue.textContent = `${Math.round(Number(value) * 100)}%`;
+}
+
+function setPiecesEndLabel(value) {
+  elements.piecesEndValue.textContent = `${Math.round(Number(value) * 100)}%`;
+}
+
+function setPiecesAttackLabel(value) {
+  elements.piecesAttackValue.textContent = `${Math.round(Number(value))} ms`;
+}
+
+function setPiecesDecayLabel(value) {
+  elements.piecesDecayValue.textContent = `${Math.round(Number(value))} ms`;
+}
+
+function setPiecesSustainLabel(value) {
+  elements.piecesSustainValue.textContent = Number(value).toFixed(2);
+}
+
+function setPiecesReleaseLabel(value) {
+  elements.piecesReleaseValue.textContent = `${Math.round(Number(value))} ms`;
 }
 
 function setVoiceCountLabel(value) {
@@ -4443,6 +4652,47 @@ function renderTestSource() {
   bindTestOutputControls();
 }
 
+function renderPiecesSource() {
+  const pieces = getPieces();
+  if (!pieces) {
+    elements.piecesOutputGrid.innerHTML = "";
+    return;
+  }
+
+  const sample = pieces.sample ?? {};
+  elements.piecesSampleNameValue.textContent = sample.loaded ? (sample.name || "Loaded") : "None";
+  const frames = Number(sample.frames ?? 0);
+  const sampleRate = Number(sample.sampleRate ?? 0);
+  elements.piecesSampleMetaValue.textContent = sample.loaded
+    ? `${frames} frames${sampleRate > 0 ? ` / ${Math.round(sampleRate)} Hz` : ""}`
+    : "0 frames";
+  elements.piecesVoiceCountValue.textContent = `${pieces.voiceCount} voices`;
+
+  elements.piecesOutputGrid.innerHTML = (pieces.outputs ?? [])
+    .map(
+      (enabled, outputIndex) => `
+        <article class="output-column">
+          <div class="output-column__header">
+            <h3>Output ${outputIndex + 1}</h3>
+            <span>${enabled ? "Routed" : "Off"}</span>
+          </div>
+
+          <label class="toggle-pill toggle-pill--block">
+            <input
+              type="checkbox"
+              data-pieces-output="${outputIndex}"
+              ${enabled ? "checked" : ""}
+            >
+            <span>${enabled ? "Send" : "Route"}</span>
+          </label>
+        </article>
+      `,
+    )
+    .join("");
+
+  bindPiecesOutputControls();
+}
+
 function renderFxChain() {
   if (!elements.fxChainList) {
     return;
@@ -4634,6 +4884,29 @@ function applyStateToUi(nextState) {
   elements.testRelease.value = String(test.envelope.releaseMs);
   setTestReleaseLabel(test.envelope.releaseMs);
 
+  elements.piecesMidiEnabled.checked = pieces.midiEnabled;
+  elements.piecesLoopEnabled.checked = pieces.loopEnabled;
+  elements.piecesGain.value = String(pieces.gain);
+  setPiecesGainLabel(pieces.gain);
+  elements.piecesRootNote.value = String(pieces.rootNote);
+  setPiecesRootNoteLabel(pieces.rootNote);
+  elements.piecesTransposeSemitones.value = String(pieces.transposeSemitones);
+  setPiecesTransposeLabel(pieces.transposeSemitones);
+  elements.piecesFineTuneCents.value = String(pieces.fineTuneCents);
+  setPiecesFineTuneLabel(pieces.fineTuneCents);
+  elements.piecesStart.value = String(pieces.start);
+  setPiecesStartLabel(pieces.start);
+  elements.piecesEnd.value = String(pieces.end);
+  setPiecesEndLabel(pieces.end);
+  elements.piecesAttack.value = String(pieces.envelope.attackMs);
+  setPiecesAttackLabel(pieces.envelope.attackMs);
+  elements.piecesDecay.value = String(pieces.envelope.decayMs);
+  setPiecesDecayLabel(pieces.envelope.decayMs);
+  elements.piecesSustain.value = String(pieces.envelope.sustain);
+  setPiecesSustainLabel(pieces.envelope.sustain);
+  elements.piecesRelease.value = String(pieces.envelope.releaseMs);
+  setPiecesReleaseLabel(pieces.envelope.releaseMs);
+
   elements.lfoEnabled.checked = robin.lfo.enabled;
   elements.lfoWaveform.value = robin.lfo.waveform;
   elements.lfoDepth.value = String(robin.lfo.depth);
@@ -4664,8 +4937,6 @@ function applyStateToUi(nextState) {
   setChorusPhaseLabel(fx.chorus.phaseSpreadDegrees);
   elements.fxSidechainEnabled.checked = fx.sidechain.enabled;
 
-  elements.piecesVoiceCountValue.textContent = `${pieces.voiceCount} voices`;
-
   updateStateView();
 
   renderRobinLinkState();
@@ -4678,6 +4949,7 @@ function applyStateToUi(nextState) {
   renderRobinSpreadSlots();
   applyRobinDebugVisibility();
   renderTestSource();
+  renderPiecesSource();
   renderDecorOutputGrid();
   renderFxChain();
   ensureRotaryControls();
@@ -5228,6 +5500,44 @@ function bindTestOutputControls() {
   });
 }
 
+function bindPiecesOutputControls() {
+  document.querySelectorAll("[data-pieces-output]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const outputIndex = Number(input.dataset.piecesOutput);
+      setParamTemp(`sources.pieces.output.${outputIndex}`, input.checked, {
+        applyLocalState: () => {
+          applyPiecesOutputUpdate(outputIndex, input.checked);
+        },
+        rerender: () => {
+          renderPiecesSource();
+        },
+      });
+    });
+  });
+}
+
+async function choosePiecesSample() {
+  if (!window.synth?.chooseSample) {
+    setStatus("Sample picker unavailable.");
+    return;
+  }
+
+  try {
+    const selectedSample = await window.synth.chooseSample();
+    if (!selectedSample?.path) {
+      return;
+    }
+
+    setStatus(`Loading sample ${selectedSample.name || "file"}...`);
+    const nextState = await window.synth.setParam("sources.pieces.samplePath", selectedSample.path);
+    latestRenderedSequence = nextMutationSequence++;
+    renderState(nextState);
+    setStatus(`Loaded sample ${selectedSample.name || "file"}.`);
+  } catch (error) {
+    setStatus(`Sample load failed: ${error.message}`);
+  }
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
   applyDebugUiVisibility();
   bindRobinDebugControls();
@@ -5517,6 +5827,108 @@ window.addEventListener("DOMContentLoaded", async () => {
     setTestReleaseLabel(nextValue);
     setParamTempLive("sources.test.envelope.releaseMs", nextValue, () => {
       applyTestEnvelopeUpdate("releaseMs", nextValue);
+    });
+  });
+
+  elements.piecesLoadSample.addEventListener("click", () => {
+    void choosePiecesSample();
+  });
+
+  elements.piecesMidiEnabled.addEventListener("change", () => {
+    const nextValue = elements.piecesMidiEnabled.checked;
+    setParamTemp("sources.pieces.midiEnabled", nextValue, {
+      applyLocalState: () => {
+        applyPiecesStateUpdate("midiEnabled", nextValue);
+      },
+    });
+  });
+
+  elements.piecesLoopEnabled.addEventListener("change", () => {
+    const nextValue = elements.piecesLoopEnabled.checked;
+    setParamTemp("sources.pieces.loopEnabled", nextValue, {
+      applyLocalState: () => {
+        applyPiecesStateUpdate("loopEnabled", nextValue);
+      },
+    });
+  });
+
+  elements.piecesGain.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesGain.value);
+    setPiecesGainLabel(nextValue);
+    setParamTempLive("sources.pieces.gain", nextValue, () => {
+      applyPiecesStateUpdate("gain", nextValue);
+    });
+  });
+
+  elements.piecesRootNote.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesRootNote.value);
+    setPiecesRootNoteLabel(nextValue);
+    setParamTempLive("sources.pieces.rootNote", nextValue, () => {
+      applyPiecesStateUpdate("rootNote", nextValue);
+    });
+  });
+
+  elements.piecesTransposeSemitones.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesTransposeSemitones.value);
+    setPiecesTransposeLabel(nextValue);
+    setParamTempLive("sources.pieces.transposeSemitones", nextValue, () => {
+      applyPiecesStateUpdate("transposeSemitones", nextValue);
+    });
+  });
+
+  elements.piecesFineTuneCents.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesFineTuneCents.value);
+    setPiecesFineTuneLabel(nextValue);
+    setParamTempLive("sources.pieces.fineTuneCents", nextValue, () => {
+      applyPiecesStateUpdate("fineTuneCents", nextValue);
+    });
+  });
+
+  elements.piecesStart.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesStart.value);
+    setPiecesStartLabel(nextValue);
+    setParamTempLive("sources.pieces.start", nextValue, () => {
+      applyPiecesStateUpdate("start", nextValue);
+    });
+  });
+
+  elements.piecesEnd.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesEnd.value);
+    setPiecesEndLabel(nextValue);
+    setParamTempLive("sources.pieces.end", nextValue, () => {
+      applyPiecesStateUpdate("end", nextValue);
+    });
+  });
+
+  elements.piecesAttack.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesAttack.value);
+    setPiecesAttackLabel(nextValue);
+    setParamTempLive("sources.pieces.envelope.attackMs", nextValue, () => {
+      applyPiecesEnvelopeUpdate("attackMs", nextValue);
+    });
+  });
+
+  elements.piecesDecay.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesDecay.value);
+    setPiecesDecayLabel(nextValue);
+    setParamTempLive("sources.pieces.envelope.decayMs", nextValue, () => {
+      applyPiecesEnvelopeUpdate("decayMs", nextValue);
+    });
+  });
+
+  elements.piecesSustain.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesSustain.value);
+    setPiecesSustainLabel(nextValue);
+    setParamTempLive("sources.pieces.envelope.sustain", nextValue, () => {
+      applyPiecesEnvelopeUpdate("sustain", nextValue);
+    });
+  });
+
+  elements.piecesRelease.addEventListener("input", () => {
+    const nextValue = Number(elements.piecesRelease.value);
+    setPiecesReleaseLabel(nextValue);
+    setParamTempLive("sources.pieces.envelope.releaseMs", nextValue, () => {
+      applyPiecesEnvelopeUpdate("releaseMs", nextValue);
     });
   });
 

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "synth/audio/SampleBuffer.hpp"
+#include "synth/audio/SamplePlaybackMode.hpp"
 #include "synth/dsp/Oscillator.hpp"
 
 namespace synth::app {
@@ -35,7 +36,9 @@ struct PiecesSourceState {
     bool playable = true;
     bool midiEnabled = true;
     bool loopEnabled = false;
+    bool reverse = false;
     bool sampleLoaded = false;
+    audio::SamplePlaybackMode playbackMode = audio::SamplePlaybackMode::Gate;
     std::uint32_t voiceCount = 8;
     int rootNote = 60;
     float gain = 0.8f;
@@ -47,6 +50,7 @@ struct PiecesSourceState {
     std::uint64_t sampleFrames = 0;
     std::string samplePath;
     std::string sampleName;
+    std::vector<float> samplePeaks;
     EnvelopeState envelope;
     std::vector<bool> outputs;
     std::shared_ptr<const audio::SampleBuffer> sampleBuffer;

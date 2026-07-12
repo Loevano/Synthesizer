@@ -1747,6 +1747,8 @@ void SynthHost::applyRenderStateCommandLocked(const RealtimeCommand& command) {
         case RealtimeCommandType::PiecesStart:
         case RealtimeCommandType::PiecesEnd:
         case RealtimeCommandType::PiecesLoopEnabled:
+        case RealtimeCommandType::PiecesPlaybackMode:
+        case RealtimeCommandType::PiecesReverse:
         case RealtimeCommandType::PiecesEnvelopeAttackMs:
         case RealtimeCommandType::PiecesEnvelopeDecayMs:
         case RealtimeCommandType::PiecesEnvelopeSustain:

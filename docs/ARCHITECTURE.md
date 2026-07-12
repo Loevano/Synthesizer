@@ -187,7 +187,8 @@ Current model:
 
 - one decoded mono sample buffer
 - MIDI-triggered polyphonic sample voices
-- root note, transpose, fine tune, gain, loop, start, and end controls
+- root note, transpose, fine tune, gain, playback mode, reverse, start, and end controls
+- waveform preview peaks with directly draggable playback-window markers in the browser UI
 - `VCA ENV`
 - manual output targets
 - source mixer dry/FX routing
@@ -198,7 +199,7 @@ Sample file decoding happens on the control side before a realtime command is qu
 
 - `SynthHost` is still large and should shrink over time
 - `Decor` is still a placeholder
-- Pieces still needs multisample, velocity zones, waveform editing, and granulator mode
+- Pieces still needs multisample, velocity zones, detailed waveform editing, and granulator mode
 - saturator and sidechain still need real DSP designs
 - modulation can grow beyond the current Robin LFO/spread system into a clearer destination model
 - more routing and thread-behavior regression coverage is still worth adding

@@ -169,9 +169,11 @@ Source nodes apply source-level gain smoothing before adding audio into the grap
 1. the UI asks the macOS bridge to choose a sample file
 2. the UI sends `sources.pieces.samplePath`
 3. `SynthHost` decodes the file before queuing a realtime command
-4. the controller snapshot stores sample metadata and the prepared sample buffer
+4. the controller snapshot stores sample metadata, waveform preview peaks, and the prepared sample buffer
 5. the render copy receives the prepared buffer at a block boundary
 6. `PiecesSourceNode` renders MIDI-triggered sample voices from that buffer
+
+Playback mode is a realtime Pieces parameter. `gate` follows note-off and the VCA release, `oneShot` ignores note-off and plays until the sample window ends, and `loop` wraps inside the selected start/end window. Reverse is also render-side state: new voices traverse the same selected window from end to start.
 
 The render side does not open files or decode audio during the audio callback.
 

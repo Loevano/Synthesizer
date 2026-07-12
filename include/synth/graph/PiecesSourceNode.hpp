@@ -23,6 +23,8 @@ public:
     void setStartPosition(float startPosition);
     void setEndPosition(float endPosition);
     void setLoopEnabled(bool enabled);
+    void setPlaybackMode(audio::SamplePlaybackMode mode);
+    void setReverse(bool reverse);
     void setEnvelopeAttackSeconds(float attackSeconds);
     void setEnvelopeDecaySeconds(float decaySeconds);
     void setEnvelopeSustainLevel(float sustainLevel);

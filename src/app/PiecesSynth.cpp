@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cmath>
 #include <sstream>
 
 namespace synth::app {
@@ -114,6 +115,11 @@ RealtimeParamResult PiecesSynth::tryBuildRealtimeNumericCommand(const std::vecto
         command.value = value >= 0.5 ? 1.0f : 0.0f;
         return RealtimeParamResult::Applied;
     }
+    if (parts.size() == 3 && parts[2] == "reverse") {
+        command.type = RealtimeCommandType::PiecesReverse;
+        command.value = value >= 0.5 ? 1.0f : 0.0f;
+        return RealtimeParamResult::Applied;
+    }
     if (parts.size() == 4 && parts[2] == "output") {
         std::uint32_t outputIndex = 0;
         const char* begin = parts[3].data();
@@ -161,10 +167,24 @@ RealtimeParamResult PiecesSynth::tryBuildRealtimeStringCommand(const std::vector
                                                               std::string_view value,
                                                               RealtimeCommand& command,
                                                               std::string* errorMessage) const {
-    (void)parts;
-    (void)value;
-    (void)command;
-    (void)errorMessage;
+    if (parts.size() < 3 || parts[0] != "sources" || parts[1] != "pieces") {
+        return RealtimeParamResult::NotHandled;
+    }
+
+    if (parts.size() == 3 && parts[2] == "playbackMode") {
+        audio::SamplePlaybackMode mode = audio::SamplePlaybackMode::Gate;
+        if (!parsePlaybackMode(value, mode)) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "Invalid pieces playback mode.";
+            }
+            return RealtimeParamResult::Failed;
+        }
+
+        command.type = RealtimeCommandType::PiecesPlaybackMode;
+        command.code = static_cast<std::uint32_t>(mode);
+        return RealtimeParamResult::Applied;
+    }
+
     return RealtimeParamResult::NotHandled;
 }
 
@@ -179,6 +199,8 @@ bool PiecesSynth::handlesRealtimeCommand(RealtimeCommandType type) const {
         case RealtimeCommandType::PiecesStart:
         case RealtimeCommandType::PiecesEnd:
         case RealtimeCommandType::PiecesLoopEnabled:
+        case RealtimeCommandType::PiecesPlaybackMode:
+        case RealtimeCommandType::PiecesReverse:
         case RealtimeCommandType::PiecesEnvelopeAttackMs:
         case RealtimeCommandType::PiecesEnvelopeDecayMs:
         case RealtimeCommandType::PiecesEnvelopeSustain:
@@ -200,11 +222,13 @@ void PiecesSynth::applyRealtimeCommand(const RealtimeCommand& command) {
                 state_.sampleName = state_.sampleBuffer->displayName;
                 state_.sampleRate = state_.sampleBuffer->sampleRate;
                 state_.sampleFrames = state_.sampleBuffer->frameCount();
+                state_.samplePeaks = buildWaveformPeaks(*state_.sampleBuffer);
             } else {
                 state_.samplePath.clear();
                 state_.sampleName.clear();
                 state_.sampleRate = 0.0;
                 state_.sampleFrames = 0;
+                state_.samplePeaks.clear();
             }
             sourceNode_.setSampleBuffer(state_.sampleBuffer);
             break;
@@ -246,7 +270,22 @@ void PiecesSynth::applyRealtimeCommand(const RealtimeCommand& command) {
             break;
         case RealtimeCommandType::PiecesLoopEnabled:
             state_.loopEnabled = command.value >= 0.5f;
-            sourceNode_.setLoopEnabled(state_.loopEnabled);
+            state_.playbackMode = state_.loopEnabled ? audio::SamplePlaybackMode::Loop : audio::SamplePlaybackMode::Gate;
+            sourceNode_.setPlaybackMode(state_.playbackMode);
+            break;
+        case RealtimeCommandType::PiecesPlaybackMode:
+            state_.playbackMode = static_cast<audio::SamplePlaybackMode>(command.code);
+            if (state_.playbackMode != audio::SamplePlaybackMode::Gate
+                && state_.playbackMode != audio::SamplePlaybackMode::OneShot
+                && state_.playbackMode != audio::SamplePlaybackMode::Loop) {
+                state_.playbackMode = audio::SamplePlaybackMode::Gate;
+            }
+            state_.loopEnabled = state_.playbackMode == audio::SamplePlaybackMode::Loop;
+            sourceNode_.setPlaybackMode(state_.playbackMode);
+            break;
+        case RealtimeCommandType::PiecesReverse:
+            state_.reverse = command.value >= 0.5f;
+            sourceNode_.setReverse(state_.reverse);
             break;
         case RealtimeCommandType::PiecesEnvelopeAttackMs:
             state_.envelope.attackMs = std::clamp(command.value, 0.0f, 5000.0f);
@@ -290,13 +329,25 @@ void PiecesSynth::appendStateJson(std::ostringstream& json) const {
          << "\"fineTuneCents\":" << state_.fineTuneCents << ","
          << "\"start\":" << state_.start << ","
          << "\"end\":" << state_.end << ","
+         << "\"playbackMode\":\"" << playbackModeId(state_.playbackMode) << "\","
          << "\"loopEnabled\":" << (state_.loopEnabled ? "true" : "false") << ","
+         << "\"reverse\":" << (state_.reverse ? "true" : "false") << ","
          << "\"sample\":{"
          << "\"loaded\":" << (state_.sampleLoaded ? "true" : "false") << ","
          << "\"path\":\"" << escapeJson(state_.samplePath) << "\","
          << "\"name\":\"" << escapeJson(state_.sampleName) << "\","
          << "\"sampleRate\":" << state_.sampleRate << ","
-         << "\"frames\":" << state_.sampleFrames
+         << "\"frames\":" << state_.sampleFrames << ","
+         << "\"peaks\":[";
+
+    for (std::size_t peakIndex = 0; peakIndex < state_.samplePeaks.size(); ++peakIndex) {
+        if (peakIndex > 0) {
+            json << ",";
+        }
+        json << state_.samplePeaks[peakIndex];
+    }
+
+    json << "]"
          << "},"
          << "\"envelope\":{"
          << "\"attackMs\":" << state_.envelope.attackMs << ","
@@ -347,6 +398,12 @@ const PiecesSourceState& PiecesSynth::state() const {
 void PiecesSynth::applyState(const PiecesSourceState& state) {
     state_ = state;
     resizeOutputs(static_cast<std::uint32_t>(state_.outputs.size()));
+    state_.loopEnabled = state_.playbackMode == audio::SamplePlaybackMode::Loop;
+    if (state_.sampleBuffer != nullptr && !state_.sampleBuffer->empty()) {
+        state_.samplePeaks = buildWaveformPeaks(*state_.sampleBuffer);
+    } else {
+        state_.samplePeaks.clear();
+    }
     syncNodeState();
 }
 
@@ -388,6 +445,54 @@ std::string PiecesSynth::escapeJson(std::string_view value) {
     return escaped;
 }
 
+std::string_view PiecesSynth::playbackModeId(audio::SamplePlaybackMode mode) {
+    switch (mode) {
+        case audio::SamplePlaybackMode::OneShot:
+            return "oneShot";
+        case audio::SamplePlaybackMode::Loop:
+            return "loop";
+        case audio::SamplePlaybackMode::Gate:
+        default:
+            return "gate";
+    }
+}
+
+bool PiecesSynth::parsePlaybackMode(std::string_view value, audio::SamplePlaybackMode& mode) {
+    if (value == "gate") {
+        mode = audio::SamplePlaybackMode::Gate;
+        return true;
+    }
+    if (value == "oneShot") {
+        mode = audio::SamplePlaybackMode::OneShot;
+        return true;
+    }
+    if (value == "loop") {
+        mode = audio::SamplePlaybackMode::Loop;
+        return true;
+    }
+    return false;
+}
+
+std::vector<float> PiecesSynth::buildWaveformPeaks(const audio::SampleBuffer& sampleBuffer) {
+    constexpr std::size_t kPeakCount = 96;
+    std::vector<float> peaks;
+    if (sampleBuffer.samples.empty()) {
+        return peaks;
+    }
+
+    peaks.resize(kPeakCount, 0.0f);
+    for (std::size_t peakIndex = 0; peakIndex < kPeakCount; ++peakIndex) {
+        const std::size_t begin = (peakIndex * sampleBuffer.samples.size()) / kPeakCount;
+        const std::size_t end = std::max(begin + 1, ((peakIndex + 1) * sampleBuffer.samples.size()) / kPeakCount);
+        float peak = 0.0f;
+        for (std::size_t sampleIndex = begin; sampleIndex < std::min(end, sampleBuffer.samples.size()); ++sampleIndex) {
+            peak = std::max(peak, std::abs(sampleBuffer.samples[sampleIndex]));
+        }
+        peaks[peakIndex] = std::clamp(peak, 0.0f, 1.0f);
+    }
+    return peaks;
+}
+
 void PiecesSynth::syncNodeState() {
     sourceNode_.setVoiceCount(state_.voiceCount);
     sourceNode_.setSampleBuffer(state_.sampleBuffer);
@@ -398,7 +503,8 @@ void PiecesSynth::syncNodeState() {
     sourceNode_.setFineTuneCents(state_.fineTuneCents);
     sourceNode_.setStartPosition(state_.start);
     sourceNode_.setEndPosition(state_.end);
-    sourceNode_.setLoopEnabled(state_.loopEnabled);
+    sourceNode_.setPlaybackMode(state_.playbackMode);
+    sourceNode_.setReverse(state_.reverse);
     sourceNode_.setEnvelopeAttackSeconds(state_.envelope.attackMs / 1000.0f);
     sourceNode_.setEnvelopeDecaySeconds(state_.envelope.decayMs / 1000.0f);
     sourceNode_.setEnvelopeSustainLevel(state_.envelope.sustain);

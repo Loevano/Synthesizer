@@ -49,6 +49,14 @@ void PiecesSourceNode::setLoopEnabled(bool enabled) {
     engine_.setLoopEnabled(enabled);
 }
 
+void PiecesSourceNode::setPlaybackMode(audio::SamplePlaybackMode mode) {
+    engine_.setPlaybackMode(mode);
+}
+
+void PiecesSourceNode::setReverse(bool reverse) {
+    engine_.setReverse(reverse);
+}
+
 void PiecesSourceNode::setEnvelopeAttackSeconds(float attackSeconds) {
     engine_.setEnvelopeAttackSeconds(attackSeconds);
 }

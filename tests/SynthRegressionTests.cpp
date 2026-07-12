@@ -501,6 +501,84 @@ void testSamplePlayerTransposesPlaybackRate() {
     expectNear(octaveOutput[2], 4.0f, 0.0001f, "octave note second playback frame");
 }
 
+void testSamplePlayerOneShotIgnoresNoteOff() {
+    auto sampleBuffer = std::make_shared<synth::audio::SampleBuffer>();
+    sampleBuffer->sampleRate = 48000.0;
+    sampleBuffer->displayName = "Ramp";
+    sampleBuffer->sourcePath = "/tmp/ramp.wav";
+    sampleBuffer->samples.resize(16);
+    for (std::size_t index = 0; index < sampleBuffer->samples.size(); ++index) {
+        sampleBuffer->samples[index] = static_cast<float>(index);
+    }
+
+    auto configureEngine = [&sampleBuffer](synth::audio::SamplePlayerEngine& engine) {
+        engine.setSampleRate(48000.0);
+        engine.setOutputChannelCount(1);
+        engine.setVoiceCount(1);
+        engine.setSampleBuffer(sampleBuffer);
+        engine.setGain(1.0f);
+        engine.setRootNote(60);
+        engine.setEnvelopeAttackSeconds(0.0f);
+        engine.setEnvelopeDecaySeconds(0.0f);
+        engine.setEnvelopeSustainLevel(1.0f);
+        engine.setEnvelopeReleaseSeconds(0.0f);
+    };
+
+    synth::audio::SamplePlayerEngine gateEngine;
+    configureEngine(gateEngine);
+    gateEngine.setPlaybackMode(synth::audio::SamplePlaybackMode::Gate);
+    std::vector<float> gateOutput(1, 0.0f);
+    gateEngine.noteOn(60, 1.0f);
+    gateEngine.process(gateOutput.data(), 1, 1, 1.0f);
+    gateEngine.noteOff(60);
+    gateOutput[0] = 0.0f;
+    gateEngine.process(gateOutput.data(), 1, 1, 1.0f);
+
+    synth::audio::SamplePlayerEngine oneShotEngine;
+    configureEngine(oneShotEngine);
+    oneShotEngine.setPlaybackMode(synth::audio::SamplePlaybackMode::OneShot);
+    std::vector<float> oneShotOutput(1, 0.0f);
+    oneShotEngine.noteOn(60, 1.0f);
+    oneShotEngine.process(oneShotOutput.data(), 1, 1, 1.0f);
+    oneShotEngine.noteOff(60);
+    oneShotOutput[0] = 0.0f;
+    oneShotEngine.process(oneShotOutput.data(), 1, 1, 1.0f);
+
+    expectNear(gateOutput[0], 0.0f, 0.0001f, "gate mode stops after note off");
+    expectNear(oneShotOutput[0], 1.0f, 0.0001f, "one-shot mode ignores note off and keeps playing");
+}
+
+void testSamplePlayerReverseTraversesSelectedWindow() {
+    auto sampleBuffer = std::make_shared<synth::audio::SampleBuffer>();
+    sampleBuffer->sampleRate = 48000.0;
+    sampleBuffer->samples = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
+
+    synth::audio::SamplePlayerEngine engine;
+    engine.setSampleRate(48000.0);
+    engine.setOutputChannelCount(1);
+    engine.setVoiceCount(1);
+    engine.setSampleBuffer(sampleBuffer);
+    engine.setGain(1.0f);
+    engine.setRootNote(60);
+    engine.setStartPosition(0.25f);
+    engine.setEndPosition(0.75f);
+    engine.setReverse(true);
+    engine.setEnvelopeAttackSeconds(0.0f);
+    engine.setEnvelopeDecaySeconds(0.0f);
+    engine.setEnvelopeSustainLevel(1.0f);
+    engine.setEnvelopeReleaseSeconds(0.0f);
+
+    std::vector<float> output(5, 0.0f);
+    engine.noteOn(60, 1.0f);
+    engine.process(output.data(), static_cast<std::uint32_t>(output.size()), 1, 1.0f);
+
+    expectNear(output[0], 5.0f, 0.0001f, "reverse starts at selected end");
+    expectNear(output[1], 4.0f, 0.0001f, "reverse moves backward through selected window");
+    expectNear(output[2], 3.0f, 0.0001f, "reverse keeps selected window bounds");
+    expectNear(output[3], 2.0f, 0.0001f, "reverse includes selected start");
+    expectNear(output[4], 0.0f, 0.0001f, "reverse stops after selected start");
+}
+
 void testMidiInputParsesMultipleMessagesPerPacketAndTransportStop() {
     synth::core::Logger logger(testLogDirectory());
     synth::io::MidiInput midiInput(logger);
@@ -1114,6 +1192,8 @@ int main() {
         {"robin keeps independent assignments for repeated same-pitch notes", testRobinRetainsIndependentAssignmentsForRepeatedSamePitchNotes},
         {"robin voice steal restarts from silence", testRobinVoiceStealRestartsFromSilence},
         {"sample player transposes playback rate", testSamplePlayerTransposesPlaybackRate},
+        {"sample player one-shot ignores note off", testSamplePlayerOneShotIgnoresNoteOff},
+        {"sample player reverse traverses selected window", testSamplePlayerReverseTraversesSelectedWindow},
         {"midi input parses multi-message packets and transport stop", testMidiInputParsesMultipleMessagesPerPacketAndTransportStop},
         {"midi source connections preserve user choices across structure restart", testMidiSourceConnectionsPreserveUserChoicesAcrossStructureRestart},
         {"midi source routes preserve user choices across structure restart", testMidiSourceRoutesPreserveUserChoicesAcrossStructureRestart},

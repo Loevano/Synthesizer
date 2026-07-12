@@ -80,7 +80,15 @@ void SamplePlayerEngine::setEndPosition(float endPosition) {
 }
 
 void SamplePlayerEngine::setLoopEnabled(bool enabled) {
-    loopEnabled_ = enabled;
+    setPlaybackMode(enabled ? SamplePlaybackMode::Loop : SamplePlaybackMode::Gate);
+}
+
+void SamplePlayerEngine::setPlaybackMode(SamplePlaybackMode mode) {
+    playbackMode_ = mode;
+}
+
+void SamplePlayerEngine::setReverse(bool reverse) {
+    reverse_ = reverse;
 }
 
 void SamplePlayerEngine::setEnvelopeAttackSeconds(float attackSeconds) {
@@ -133,7 +141,8 @@ void SamplePlayerEngine::noteOn(int noteNumber, float velocity) {
     voice.gateOpen = true;
     voice.noteNumber = noteNumber;
     voice.velocity = std::clamp(velocity, 0.0f, 1.0f);
-    voice.position = startFrame;
+    voice.direction = reverse_ ? -1 : 1;
+    voice.position = voice.direction > 0 ? startFrame : endFrame - 1.0;
     voice.startFrame = startFrame;
     voice.endFrame = endFrame;
     const double semitones =
@@ -145,6 +154,9 @@ void SamplePlayerEngine::noteOn(int noteNumber, float velocity) {
 
 void SamplePlayerEngine::noteOff(int noteNumber) {
     if (!midiEnabled_) {
+        return;
+    }
+    if (playbackMode_ == SamplePlaybackMode::OneShot) {
         return;
     }
 
@@ -180,11 +192,23 @@ void SamplePlayerEngine::process(float* output, std::uint32_t frames, std::uint3
                 continue;
             }
 
-            if (voice.position >= voice.endFrame) {
-                if (loopEnabled_) {
+            const bool outsidePlaybackWindow = voice.direction > 0
+                ? voice.position >= voice.endFrame
+                : voice.position < voice.startFrame;
+            if (outsidePlaybackWindow) {
+                if (playbackMode_ == SamplePlaybackMode::Loop) {
                     const double loopLength = std::max(1.0, voice.endFrame - voice.startFrame);
-                    while (voice.position >= voice.endFrame) {
-                        voice.position -= loopLength;
+                    if (voice.direction > 0) {
+                        while (voice.position >= voice.endFrame) {
+                            voice.position -= loopLength;
+                        }
+                    } else {
+                        while (voice.position < voice.startFrame) {
+                            voice.position += loopLength;
+                        }
+                        while (voice.position >= voice.endFrame) {
+                            voice.position -= loopLength;
+                        }
                     }
                 } else {
                     resetVoice(voice);
@@ -202,7 +226,7 @@ void SamplePlayerEngine::process(float* output, std::uint32_t frames, std::uint3
                 * appliedGain
                 * voice.velocity
                 * envelopeValue;
-            voice.position += voice.step;
+            voice.position += voice.step * static_cast<double>(voice.direction);
         }
 
         if (voiceSum == 0.0f) {
@@ -258,6 +282,7 @@ void SamplePlayerEngine::resetVoice(Voice& voice) {
     voice.velocity = 1.0f;
     voice.position = 0.0;
     voice.step = 1.0;
+    voice.direction = 1;
     voice.startFrame = 0.0;
     voice.endFrame = 0.0;
     voice.envelope.reset();
@@ -281,10 +306,10 @@ std::pair<double, double> SamplePlayerEngine::playbackWindow() const {
         return {0.0, 0.0};
     }
 
-    const double lastFrame = static_cast<double>(sampleBuffer_->samples.size() - 1);
-    const double startFrame = std::floor(startPosition_ * lastFrame);
-    const double endFrame = std::max(startFrame + 1.0, std::ceil(endPosition_ * lastFrame));
-    return {startFrame, std::min(endFrame, lastFrame)};
+    const double frameCount = static_cast<double>(sampleBuffer_->samples.size());
+    const double startFrame = std::floor(startPosition_ * frameCount);
+    const double endFrame = std::max(startFrame + 1.0, std::ceil(endPosition_ * frameCount));
+    return {startFrame, std::min(endFrame, frameCount)};
 }
 
 bool SamplePlayerEngine::hasEnabledOutput(std::uint32_t channels) const {

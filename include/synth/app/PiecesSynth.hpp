@@ -56,6 +56,9 @@ public:
 private:
     static void assignDefaultOutputs(std::vector<bool>& outputs);
     static std::string escapeJson(std::string_view value);
+    static std::string_view playbackModeId(audio::SamplePlaybackMode mode);
+    static bool parsePlaybackMode(std::string_view value, audio::SamplePlaybackMode& mode);
+    static std::vector<float> buildWaveformPeaks(const audio::SampleBuffer& sampleBuffer);
 
     void syncNodeState();
 

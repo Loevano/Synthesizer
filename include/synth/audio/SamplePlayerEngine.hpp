@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "synth/audio/SampleBuffer.hpp"
+#include "synth/audio/SamplePlaybackMode.hpp"
 #include "synth/dsp/Envelope.hpp"
 
 namespace synth::audio {
@@ -23,6 +24,8 @@ public:
     void setStartPosition(float startPosition);
     void setEndPosition(float endPosition);
     void setLoopEnabled(bool enabled);
+    void setPlaybackMode(SamplePlaybackMode mode);
+    void setReverse(bool reverse);
     void setEnvelopeAttackSeconds(float attackSeconds);
     void setEnvelopeDecaySeconds(float decaySeconds);
     void setEnvelopeSustainLevel(float sustainLevel);
@@ -42,6 +45,7 @@ private:
         float velocity = 1.0f;
         double position = 0.0;
         double step = 1.0;
+        int direction = 1;
         double startFrame = 0.0;
         double endFrame = 0.0;
         dsp::Envelope envelope;
@@ -72,7 +76,8 @@ private:
     std::uint32_t nextVoiceIndex_ = 0;
     int rootNote_ = 60;
     bool midiEnabled_ = true;
-    bool loopEnabled_ = false;
+    bool reverse_ = false;
+    SamplePlaybackMode playbackMode_ = SamplePlaybackMode::Gate;
 };
 
 }  // namespace synth::audio

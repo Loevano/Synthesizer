@@ -736,6 +736,7 @@
               <strong id="piecesVoiceCountValue">0 voices</strong>
             </div>
           </div>
+          <canvas id="piecesWaveform" class="sample-waveform" width="640" height="160" aria-label="Pieces waveform playback window"></canvas>
         </article>
 
         <article class="panel controls">
@@ -751,9 +752,18 @@
             <span>Respond to MIDI</span>
           </label>
 
+          <label class="field">
+            <span>Mode</span>
+            <select id="piecesPlaybackMode">
+              <option value="gate">Gate</option>
+              <option value="oneShot">One-shot</option>
+              <option value="loop">Loop</option>
+            </select>
+          </label>
+
           <label class="toggle-pill toggle-pill--block">
-            <input id="piecesLoopEnabled" type="checkbox">
-            <span>Loop</span>
+            <input id="piecesReverse" type="checkbox">
+            <span>Reverse</span>
           </label>
 
           <label class="field">

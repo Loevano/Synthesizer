@@ -200,7 +200,9 @@ const UI_RESET_DEFAULTS = {
     fineTuneCents: 0,
     start: 0,
     end: 1,
+    playbackMode: "gate",
     loopEnabled: false,
+    reverse: false,
     envelope: {
       attackMs: 10,
       decayMs: 80,
@@ -364,8 +366,10 @@ const elements = {
   piecesSampleNameValue: document.getElementById("piecesSampleNameValue"),
   piecesSampleMetaValue: document.getElementById("piecesSampleMetaValue"),
   piecesVoiceCountValue: document.getElementById("piecesVoiceCountValue"),
+  piecesWaveform: document.getElementById("piecesWaveform"),
   piecesMidiEnabled: document.getElementById("piecesMidiEnabled"),
-  piecesLoopEnabled: document.getElementById("piecesLoopEnabled"),
+  piecesPlaybackMode: document.getElementById("piecesPlaybackMode"),
+  piecesReverse: document.getElementById("piecesReverse"),
   piecesGain: document.getElementById("piecesGain"),
   piecesGainValue: document.getElementById("piecesGainValue"),
   piecesRootNote: document.getElementById("piecesRootNote"),
@@ -523,6 +527,13 @@ function formatRobinSpreadValue(target, value) {
 
 function getTest() {
   return state?.sources?.test ?? null;
+}
+
+function normalizePiecesPlaybackMode(value) {
+  if (value === "oneShot" || value === "loop" || value === "gate") {
+    return value;
+  }
+  return "gate";
 }
 
 function cloneJsonValue(value) {
@@ -690,7 +701,9 @@ function extractPatchStateFromLiveState(liveState) {
         fineTuneCents: Number(pieces.fineTuneCents ?? 0),
         start: Number(pieces.start ?? 0),
         end: Number(pieces.end ?? 1),
+        playbackMode: normalizePiecesPlaybackMode(pieces.playbackMode ?? (pieces.loopEnabled ? "loop" : "gate")),
         loopEnabled: Boolean(pieces.loopEnabled),
+        reverse: Boolean(pieces.reverse),
         envelope: {
           attackMs: Number(pieces.envelope?.attackMs ?? 10),
           decayMs: Number(pieces.envelope?.decayMs ?? 80),
@@ -1053,7 +1066,12 @@ function buildPatchOperations(patchData) {
   pushPatchParam(operations, "sources.pieces.fineTuneCents", pieces.fineTuneCents);
   pushPatchParam(operations, "sources.pieces.start", pieces.start);
   pushPatchParam(operations, "sources.pieces.end", pieces.end);
-  pushPatchParam(operations, "sources.pieces.loopEnabled", pieces.loopEnabled);
+  pushPatchParam(operations, "sources.pieces.reverse", pieces.reverse);
+  if (pieces.playbackMode === undefined || pieces.playbackMode === null) {
+    pushPatchParam(operations, "sources.pieces.loopEnabled", pieces.loopEnabled);
+  } else {
+    pushPatchParam(operations, "sources.pieces.playbackMode", pieces.playbackMode);
+  }
   pushEnvelopePatchParams(operations, "sources.pieces.envelope", pieces.envelope);
   if (Array.isArray(pieces.outputs)) {
     pieces.outputs.slice(0, outputCount).forEach((enabled, outputIndex) => {
@@ -1315,7 +1333,8 @@ function getStaticResetValue(controlId) {
     testSustain: UI_RESET_DEFAULTS.test.envelope.sustain,
     testRelease: UI_RESET_DEFAULTS.test.envelope.releaseMs,
     piecesMidiEnabled: UI_RESET_DEFAULTS.pieces.midiEnabled,
-    piecesLoopEnabled: UI_RESET_DEFAULTS.pieces.loopEnabled,
+    piecesPlaybackMode: UI_RESET_DEFAULTS.pieces.playbackMode,
+    piecesReverse: UI_RESET_DEFAULTS.pieces.reverse,
     piecesGain: UI_RESET_DEFAULTS.pieces.gain,
     piecesRootNote: UI_RESET_DEFAULTS.pieces.rootNote,
     piecesTransposeSemitones: UI_RESET_DEFAULTS.pieces.transposeSemitones,
@@ -2567,8 +2586,14 @@ function applyPiecesStateUpdate(field, rawValue) {
     return;
   }
 
-  if (field === "midiEnabled" || field === "loopEnabled") {
+  if (field === "midiEnabled" || field === "loopEnabled" || field === "reverse") {
     pieces[field] = Boolean(rawValue);
+    return;
+  }
+
+  if (field === "playbackMode") {
+    pieces.playbackMode = normalizePiecesPlaybackMode(rawValue);
+    pieces.loopEnabled = pieces.playbackMode === "loop";
     return;
   }
 
@@ -4652,10 +4677,207 @@ function renderTestSource() {
   bindTestOutputControls();
 }
 
+function drawPiecesWaveform(pieces) {
+  const canvas = elements.piecesWaveform;
+  if (!(canvas instanceof HTMLCanvasElement)) {
+    return;
+  }
+
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return;
+  }
+
+  const width = canvas.width;
+  const height = canvas.height;
+  const peaks = Array.isArray(pieces?.sample?.peaks) ? pieces.sample.peaks : [];
+  const start = clampValue(pieces?.start ?? 0, 0, 0.999);
+  const end = clampValue(pieces?.end ?? 1, 0.001, 1);
+  const selectionStart = Math.floor(width * start);
+  const selectionEnd = Math.max(selectionStart + 1, Math.ceil(width * end));
+
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = "#111827";
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = "#1f2937";
+  context.fillRect(0, 0, width, height);
+
+  if (peaks.length === 0) {
+    context.fillStyle = "#6b7280";
+    context.fillRect(0, Math.floor(height / 2), width, 1);
+    return;
+  }
+
+  context.fillStyle = "#374151";
+  context.fillRect(0, 0, selectionStart, height);
+  context.fillRect(selectionEnd, 0, Math.max(0, width - selectionEnd), height);
+
+  context.strokeStyle = "#e5e7eb";
+  context.lineWidth = 2;
+  context.beginPath();
+  const centerY = height / 2;
+  const usableHeight = height * 0.84;
+  peaks.forEach((rawPeak, peakIndex) => {
+    const x = (peakIndex / Math.max(1, peaks.length - 1)) * (width - 1);
+    const peak = clampValue(rawPeak, 0, 1);
+    const y = centerY - (peak * usableHeight * 0.5);
+    if (peakIndex === 0) {
+      context.moveTo(x, y);
+    } else {
+      context.lineTo(x, y);
+    }
+  });
+  for (let peakIndex = peaks.length - 1; peakIndex >= 0; peakIndex -= 1) {
+    const x = (peakIndex / Math.max(1, peaks.length - 1)) * (width - 1);
+    const peak = clampValue(peaks[peakIndex], 0, 1);
+    const y = centerY + (peak * usableHeight * 0.5);
+    context.lineTo(x, y);
+  }
+  context.closePath();
+  context.stroke();
+  context.fillStyle = "rgba(229, 231, 235, 0.16)";
+  context.fill();
+
+  context.strokeStyle = "#f59e0b";
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(selectionStart, 0);
+  context.lineTo(selectionStart, height);
+  context.moveTo(selectionEnd, 0);
+  context.lineTo(selectionEnd, height);
+  context.stroke();
+
+  context.fillStyle = "#f59e0b";
+  context.beginPath();
+  context.moveTo(selectionStart, 0);
+  context.lineTo(selectionStart + 6, 8);
+  context.lineTo(selectionStart - 6, 8);
+  context.closePath();
+  context.fill();
+  context.beginPath();
+  context.moveTo(selectionEnd, 0);
+  context.lineTo(selectionEnd + 6, 8);
+  context.lineTo(selectionEnd - 6, 8);
+  context.closePath();
+  context.fill();
+}
+
+function piecesWaveformPosition(event) {
+  const canvas = elements.piecesWaveform;
+  if (!(canvas instanceof HTMLCanvasElement)) {
+    return null;
+  }
+
+  const bounds = canvas.getBoundingClientRect();
+  if (bounds.width <= 0) {
+    return null;
+  }
+
+  return clampValue((event.clientX - bounds.left) / bounds.width, 0, 1);
+}
+
+function updatePiecesWaveformWindow(marker, position) {
+  const pieces = getPieces();
+  if (!pieces || (marker !== "start" && marker !== "end")) {
+    return;
+  }
+
+  const minimumWindow = 0.001;
+  const start = clampValue(Number(pieces.start ?? 0), 0, 0.999);
+  const end = clampValue(Number(pieces.end ?? 1), 0.001, 1);
+  const nextValue = marker === "start"
+    ? clampValue(position, 0, end - minimumWindow)
+    : clampValue(position, start + minimumWindow, 1);
+  const input = marker === "start" ? elements.piecesStart : elements.piecesEnd;
+  const setLabel = marker === "start" ? setPiecesStartLabel : setPiecesEndLabel;
+  const path = marker === "start" ? "sources.pieces.start" : "sources.pieces.end";
+
+  input.value = String(nextValue);
+  setLabel(nextValue);
+  setParamTempLive(path, nextValue, () => {
+    applyPiecesStateUpdate(marker, nextValue);
+    drawPiecesWaveform(getPieces());
+  });
+}
+
+function bindPiecesWaveformInteraction() {
+  const canvas = elements.piecesWaveform;
+  if (!(canvas instanceof HTMLCanvasElement)) {
+    return;
+  }
+
+  let activeMarker = null;
+  let activePointerId = null;
+
+  const markerNearPointer = (event) => {
+    const pieces = getPieces();
+    const position = piecesWaveformPosition(event);
+    if (!pieces?.sample?.loaded || position === null) {
+      return null;
+    }
+
+    const bounds = canvas.getBoundingClientRect();
+    const threshold = Math.max(0.015, 12 / Math.max(1, bounds.width));
+    const startDistance = Math.abs(position - Number(pieces.start ?? 0));
+    const endDistance = Math.abs(position - Number(pieces.end ?? 1));
+    if (startDistance > threshold && endDistance > threshold) {
+      return null;
+    }
+    return startDistance <= endDistance ? "start" : "end";
+  };
+
+  canvas.addEventListener("pointermove", (event) => {
+    if (activeMarker === null) {
+      canvas.style.cursor = markerNearPointer(event) ? "ew-resize" : "default";
+      return;
+    }
+
+    if (event.pointerId !== activePointerId) {
+      return;
+    }
+    const position = piecesWaveformPosition(event);
+    if (position !== null) {
+      updatePiecesWaveformWindow(activeMarker, position);
+    }
+  });
+
+  canvas.addEventListener("pointerdown", (event) => {
+    const marker = markerNearPointer(event);
+    if (marker === null) {
+      return;
+    }
+
+    event.preventDefault();
+    activeMarker = marker;
+    activePointerId = event.pointerId;
+    canvas.setPointerCapture(event.pointerId);
+    canvas.style.cursor = "ew-resize";
+  });
+
+  const finishDrag = (event) => {
+    if (event.pointerId !== activePointerId) {
+      return;
+    }
+    if (canvas.hasPointerCapture(event.pointerId)) {
+      canvas.releasePointerCapture(event.pointerId);
+    }
+    activeMarker = null;
+    activePointerId = null;
+    canvas.style.cursor = "default";
+    if (state) {
+      syncPatchStateFromLiveState(state);
+    }
+  };
+
+  canvas.addEventListener("pointerup", finishDrag);
+  canvas.addEventListener("pointercancel", finishDrag);
+}
+
 function renderPiecesSource() {
   const pieces = getPieces();
   if (!pieces) {
     elements.piecesOutputGrid.innerHTML = "";
+    drawPiecesWaveform(null);
     return;
   }
 
@@ -4667,6 +4889,7 @@ function renderPiecesSource() {
     ? `${frames} frames${sampleRate > 0 ? ` / ${Math.round(sampleRate)} Hz` : ""}`
     : "0 frames";
   elements.piecesVoiceCountValue.textContent = `${pieces.voiceCount} voices`;
+  drawPiecesWaveform(pieces);
 
   elements.piecesOutputGrid.innerHTML = (pieces.outputs ?? [])
     .map(
@@ -4885,7 +5108,8 @@ function applyStateToUi(nextState) {
   setTestReleaseLabel(test.envelope.releaseMs);
 
   elements.piecesMidiEnabled.checked = pieces.midiEnabled;
-  elements.piecesLoopEnabled.checked = pieces.loopEnabled;
+  elements.piecesPlaybackMode.value = normalizePiecesPlaybackMode(pieces.playbackMode ?? (pieces.loopEnabled ? "loop" : "gate"));
+  elements.piecesReverse.checked = Boolean(pieces.reverse);
   elements.piecesGain.value = String(pieces.gain);
   setPiecesGainLabel(pieces.gain);
   elements.piecesRootNote.value = String(pieces.rootNote);
@@ -5834,6 +6058,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     void choosePiecesSample();
   });
 
+  bindPiecesWaveformInteraction();
+
   elements.piecesMidiEnabled.addEventListener("change", () => {
     const nextValue = elements.piecesMidiEnabled.checked;
     setParamTemp("sources.pieces.midiEnabled", nextValue, {
@@ -5843,11 +6069,20 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
   });
 
-  elements.piecesLoopEnabled.addEventListener("change", () => {
-    const nextValue = elements.piecesLoopEnabled.checked;
-    setParamTemp("sources.pieces.loopEnabled", nextValue, {
+  elements.piecesPlaybackMode.addEventListener("change", () => {
+    const nextValue = normalizePiecesPlaybackMode(elements.piecesPlaybackMode.value);
+    setParamTemp("sources.pieces.playbackMode", nextValue, {
       applyLocalState: () => {
-        applyPiecesStateUpdate("loopEnabled", nextValue);
+        applyPiecesStateUpdate("playbackMode", nextValue);
+      },
+    });
+  });
+
+  elements.piecesReverse.addEventListener("change", () => {
+    const nextValue = elements.piecesReverse.checked;
+    setParamTemp("sources.pieces.reverse", nextValue, {
+      applyLocalState: () => {
+        applyPiecesStateUpdate("reverse", nextValue);
       },
     });
   });
@@ -5889,6 +6124,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     setPiecesStartLabel(nextValue);
     setParamTempLive("sources.pieces.start", nextValue, () => {
       applyPiecesStateUpdate("start", nextValue);
+      drawPiecesWaveform(getPieces());
     });
   });
 
@@ -5897,6 +6133,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     setPiecesEndLabel(nextValue);
     setParamTempLive("sources.pieces.end", nextValue, () => {
       applyPiecesStateUpdate("end", nextValue);
+      drawPiecesWaveform(getPieces());
     });
   });
 

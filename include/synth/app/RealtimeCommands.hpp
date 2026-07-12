@@ -80,6 +80,8 @@ enum class RealtimeCommandType : std::uint8_t {
     PiecesStart,
     PiecesEnd,
     PiecesLoopEnabled,
+    PiecesPlaybackMode,
+    PiecesReverse,
     PiecesEnvelopeAttackMs,
     PiecesEnvelopeDecayMs,
     PiecesEnvelopeSustain,

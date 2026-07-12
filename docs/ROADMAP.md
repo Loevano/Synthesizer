@@ -166,7 +166,7 @@ Scope:
 
 - multisample zones by note range
 - velocity sample ranges
-- waveform/source-window editing
+- detailed waveform/source-window editing
 - granulator mode where one grain behaves like the sampler
 - grain amount, length, tune, position, random amounts, and divergence
 - spatial grain or voice distribution

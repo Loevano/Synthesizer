@@ -341,12 +341,14 @@ Current controls:
 - MIDI response
 - root note, transpose, and fine tune
 - gain
-- loop
-- start and end
+- playback mode: `Gate`, `One-shot`, or `Loop`
+- reverse playback
+- start and end, using either the controls or the draggable waveform markers
+- waveform preview with the selected playback window
 - `VCA ENV`
 - manual output targets
 
-It plays one decoded sample across MIDI pitches. Multisample zones, velocity sample ranges, waveform editing, and granulator mode are planned next.
+It plays one decoded sample across MIDI pitches. Multisample zones, velocity sample ranges, loop editing with crossfade, and granulator mode are planned next.
 
 ## Double-Click Reset
 
